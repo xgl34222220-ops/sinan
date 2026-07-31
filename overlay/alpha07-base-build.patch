@@ -1,0 +1,14 @@
+diff -ruN sinan_alpha06/app/build.gradle sinan_alpha07/app/build.gradle
+--- sinan_alpha06/app/build.gradle	2026-07-31 05:49:26.000000000 +0000
++++ sinan_alpha07/app/build.gradle	2026-07-31 06:45:45.637220962 +0000
+@@ -11,8 +11,8 @@
+         applicationId "io.github.xgl34222220.sinan"
+         minSdk 29
+         targetSdk 35
+-        versionCode 2026073106
+-        versionName "0.4.0-alpha06"
++        versionCode 2026073107
++        versionName "0.4.0-alpha07"
+         vectorDrawables.useSupportLibrary = true
+     }
+ 

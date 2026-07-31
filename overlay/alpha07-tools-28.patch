@@ -1,0 +1,89 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt	2026-07-31 04:36:06.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt	2026-07-31 06:39:44.909212724 +0000
+@@ -34,8 +50,84 @@
+             verticalArrangement = Arrangement.spacedBy(12.dp),
+         ) {
+             item {
++                MiuixCard(strong = true) {
++                    Column {
++                        MiuixPreferenceRow(
++                            title = "Wi-Fi 匹配",
++                            summary = "为不同 Wi-Fi 网络匹配代理规则",
++                            icon = Icons.Rounded.Wifi,
++                            value = if (state.networkTools.wifi.enabled) "已启用" else null,
++                            onClick = onOpenWifi,
++                        )
++                        MiuixDivider(startPadding = 72.dp)
++                        MiuixPreferenceRow(
++                            title = "热点配置",
++                            summary = "管理热点共享与接口、MAC 过滤设置",
++                            icon = Icons.Rounded.WifiTethering,
++                            value = if (state.networkTools.hotspot.macFilter) "过滤中" else null,
++                            onClick = onOpenHotspot,
++                        )
++                        MiuixDivider(startPadding = 72.dp)
++                        MiuixPreferenceRow(
++                            title = "绕过规则",
++                            summary = "维护本地 IPv4 / IPv6 CIDR 与接口规则",
++                            icon = Icons.Rounded.Security,
++                            value = "${state.networkTools.bypass.ipv4.size + state.networkTools.bypass.ipv6.size} 条",
++                            onClick = onOpenBypass,
++                        )
++                    }
++                }
++            }
++
++            item {
++                MiuixCard(strong = true) {
++                    Column {
++                        MiuixPreferenceRow(
++                            title = "订阅管理",
++                            summary = "配置订阅并更新代理列表和流量信息",
++                            icon = Icons.Rounded.RssFeed,
++                            value = if (state.proxyProviders.isEmpty()) null else "${state.proxyProviders.size} 个",
++                            onClick = onOpenSubscriptions,
++                        )
++                        MiuixDivider(startPadding = 72.dp)
++                        MiuixPreferenceRow(
++                            title = "CNIP 设置",
++                            summary = "配置 CNIP 数据源并更新中国大陆地址库",
++                            icon = Icons.Rounded.NetworkCheck,
++                            value = if (state.networkTools.cnip.enabled) "已启用" else null,
++                            onClick = onOpenCnip,
++                        )
++                    }
++                }
++            }
++
++            item {
++                MiuixCard(strong = true) {
++                    Column {
++                        MiuixPreferenceRow(
++                            title = "更新 WebUI",
++                            summary = if (state.networkTools.webUiUpdating) "正在下载 ${state.networkTools.webUiProgress}%" else "检查并更新 MetaCubeX Dashboard",
++                            icon = Icons.Rounded.Language,
++                            value = if (state.networkTools.webUiUpdating) "${state.networkTools.webUiProgress}%" else "更新",
++                            enabledValueColor = true,
++                            onClick = if (state.networkTools.webUiUpdating) null else onUpdateWebUi,
++                        )
++                        MiuixDivider(startPadding = 72.dp)
++                        MiuixPreferenceRow(
++                            title = "更新核心",
++                            summary = if (state.coreInstalling) "正在下载 ${state.coreProgress}%" else "下载并安装最新 Mihomo arm64-v8a 核心",
++                            icon = Icons.Rounded.SystemUpdate,
++                            value = if (state.coreInstalling) "${state.coreProgress}%" else "Mihomo",
++                            enabledValueColor = true,
++                            onClick = if (state.coreInstalling) null else onUpdateCore,
++                        )
++                    }
++                }
++            }
++
++            item {
+                 Column {
+-                    MiuixSectionTitle("配置与分流")
++                    MiuixSectionTitle("配置与诊断")
+                     MiuixCard(strong = true) {
+                         Column {
+                             MiuixPreferenceRow(

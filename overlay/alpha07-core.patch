@@ -1,0 +1,223 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/core/CoreDownloader.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/core/CoreDownloader.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/core/CoreDownloader.kt	2026-07-31 01:05:20.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/core/CoreDownloader.kt	2026-07-31 06:32:28.729202763 +0000
+@@ -12,7 +12,10 @@
+     val releaseTag: String
+ )
+ 
+-class CoreDownloader(private val context: Context) {
++class CoreDownloader(
++    private val context: Context,
++    private val mirrorPrefix: String = "",
++) {
+     fun downloadLatest(onProgress: (Int) -> Unit): CoreDownload {
+         val release = readJson(
+             "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest"
+@@ -39,7 +42,7 @@
+         val url = asset.getString("browser_download_url")
+         val target = File(context.cacheDir, "$name-${System.nanoTime()}")
+ 
+-        val connection = open(url)
++        val connection = open(mirrored(url))
+         val total = connection.contentLengthLong
+         connection.inputStream.use { input ->
+             target.outputStream().use { output ->
+@@ -65,12 +68,17 @@
+     }
+ 
+     private fun readJson(url: String): JSONObject {
+-        val connection = open(url)
++        val connection = open(mirrored(url))
+         return connection.inputStream.bufferedReader().use { reader ->
+             JSONObject(reader.readText())
+         }.also { connection.disconnect() }
+     }
+ 
++    private fun mirrored(url: String): String {
++        val prefix = mirrorPrefix.trim()
++        return if (prefix.isBlank()) url else prefix.trimEnd('/') + "/" + url
++    }
++
+     private fun open(url: String): HttpURLConnection {
+         val connection = URL(url).openConnection() as HttpURLConnection
+         connection.connectTimeout = 15_000
+ diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/core/MihomoApi.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/core/MihomoApi.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/core/MihomoApi.kt	2026-07-31 05:49:26.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/core/MihomoApi.kt	2026-07-31 06:32:52.341203302 +0000
+@@ -43,6 +43,18 @@
+     val activeConnections: Int,
+ )
+ 
++data class ConnectionDetail(
++    val id: String,
++    val host: String,
++    val destination: String,
++    val network: String,
++    val rule: String,
++    val chains: List<String>,
++    val upload: Long,
++    val download: Long,
++    val start: String,
++)
++
+ data class MemorySnapshot(
+     val inUse: Long,
+     val osLimit: Long,
+@@ -141,6 +153,48 @@
+         )
+     }
+ 
++    fun connectionDetails(): List<ConnectionDetail> {
++        val array = request("GET", "/connections").optJSONArray("connections") ?: return emptyList()
++        return buildList {
++            for (index in 0 until array.length()) {
++                val item = array.optJSONObject(index) ?: continue
++                val metadata = item.optJSONObject("metadata")
++                val chainsJson = item.optJSONArray("chains")
++                val chains = buildList {
++                    if (chainsJson != null) for (i in 0 until chainsJson.length()) {
++                        chainsJson.optString(i).takeIf(String::isNotBlank)?.let(::add)
++                    }
++                }
++                val host = metadata?.optString("host").orEmpty()
++                val destination = listOfNotNull(
++                    metadata?.optString("destinationIP")?.takeIf(String::isNotBlank),
++                    metadata?.optString("destinationPort")?.takeIf(String::isNotBlank),
++                ).joinToString(":")
++                add(
++                    ConnectionDetail(
++                        id = item.optString("id", index.toString()),
++                        host = host.ifBlank { destination.ifBlank { "未知目标" } },
++                        destination = destination,
++                        network = metadata?.optString("network").orEmpty().uppercase(),
++                        rule = item.optString("rule", item.optString("rulePayload", "")),
++                        chains = chains,
++                        upload = item.optLong("upload", 0L),
++                        download = item.optLong("download", 0L),
++                        start = item.optString("start", ""),
++                    ),
++                )
++            }
++        }
++    }
++
++    fun closeConnection(id: String) {
++        request("DELETE", "/connections/${encode(id)}")
++    }
++
++    fun closeAllConnections() {
++        request("DELETE", "/connections")
++    }
++
+     fun memory(): MemorySnapshot {
+         val root = request("GET", "/memory")
+         return MemorySnapshot(
+ diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/core/RuntimePaths.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/core/RuntimePaths.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/core/RuntimePaths.kt	2026-07-31 00:21:54.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/core/RuntimePaths.kt	2026-07-31 06:31:47.169201814 +0000
+@@ -14,12 +14,13 @@
+     val boxbpf = File(bin, "boxbpf")
+     val mihomo = File(bin, "mihomo")
+     val config = File(mihomoDir, "config.yaml")
++    val webUi = File(mihomoDir, "ui")
+     val pid = File(run, "box.pid")
+     val runtimeLog = File(run, "runs.log")
+     val coreLog = File(run, "mihomo.log")
+ 
+     fun createDirectories() {
+-        listOf(home, bin, run, state, mihomoDir).forEach { directory ->
++        listOf(home, bin, run, state, mihomoDir, webUi).forEach { directory ->
+             check(directory.exists() || directory.mkdirs()) {
+                 "无法创建目录：${directory.absolutePath}"
+             }
+ diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/core/WebUiUpdater.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/core/WebUiUpdater.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/core/WebUiUpdater.kt	1970-01-01 00:00:00.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/core/WebUiUpdater.kt	2026-07-31 06:32:16.217202477 +0000
+@@ -0,0 +1,87 @@
++package io.github.xgl34222220.sinan.core
++
++import android.content.Context
++import java.io.File
++import java.net.HttpURLConnection
++import java.net.URL
++import java.util.zip.ZipInputStream
++
++class WebUiUpdater(
++    private val context: Context,
++    private val runtime: RuntimeManager,
++) {
++    fun update(onProgress: (Int) -> Unit = {}): String {
++        val targetZip = File(context.cacheDir, "metacubexd-${System.nanoTime()}.zip")
++        val connection = URL(DASHBOARD_ZIP).openConnection() as HttpURLConnection
++        try {
++            connection.connectTimeout = 15_000
++            connection.readTimeout = 90_000
++            connection.instanceFollowRedirects = true
++            connection.setRequestProperty("User-Agent", "Sinan/${io.github.xgl34222220.sinan.BuildConfig.VERSION_NAME}")
++            val code = connection.responseCode
++            if (code !in 200..299) error("WebUI 下载返回 HTTP $code")
++            val total = connection.contentLengthLong
++            connection.inputStream.use { input ->
++                targetZip.outputStream().use { output ->
++                    val buffer = ByteArray(64 * 1024)
++                    var copied = 0L
++                    while (true) {
++                        val read = input.read(buffer)
++                        if (read < 0) break
++                        output.write(buffer, 0, read)
++                        copied += read
++                        if (total > 0) onProgress(((copied * 100L) / total).toInt().coerceIn(0, 100))
++                    }
++                }
++            }
++        } finally {
++            connection.disconnect()
++        }
++
++        val staging = File(context.cacheDir, "metacubexd-${System.nanoTime()}")
++        check(staging.mkdirs()) { "无法创建 WebUI 临时目录" }
++        try {
++            ZipInputStream(targetZip.inputStream().buffered()).use { zip ->
++                while (true) {
++                    val entry = zip.nextEntry ?: break
++                    val stripped = entry.name.substringAfter('/', "").trimStart('/')
++                    if (stripped.isBlank()) continue
++                    val output = File(staging, stripped)
++                    val safeRoot = staging.canonicalPath + File.separator
++                    check(output.canonicalPath.startsWith(safeRoot)) { "WebUI 压缩包包含非法路径" }
++                    if (entry.isDirectory) output.mkdirs() else {
++                        output.parentFile?.mkdirs()
++                        output.outputStream().use { zip.copyTo(it) }
++                    }
++                    zip.closeEntry()
++                }
++            }
++            val index = File(staging, "index.html")
++            check(index.isFile) { "WebUI 压缩包中没有 index.html" }
++            runtime.paths.webUi.deleteRecursively()
++            check(staging.copyRecursively(runtime.paths.webUi, overwrite = true)) { "写入 WebUI 目录失败" }
++            ensureConfigPointsToUi()
++            val applied = runtime.applyDatabaseChanges()
++            if (!applied.success) error(applied.output.ifBlank { "WebUI 已写入，但重载配置失败" })
++            return "MetaCubeX Dashboard 已更新"
++        } finally {
++            targetZip.delete()
++            staging.deleteRecursively()
++        }
++    }
++
++    private fun ensureConfigPointsToUi() {
++        val config = runtime.readConfig()
++        val updated = when {
++            Regex("(?m)^\\s*external-ui\\s*:").containsMatchIn(config) ->
++                config.replace(Regex("(?m)^\\s*external-ui\\s*:.*$"), "external-ui: ui")
++            else -> config.trimEnd() + "\nexternal-ui: ui\n"
++        }
++        val saved = runtime.saveConfig(updated)
++        if (!saved.success) error(saved.output.ifBlank { "无法更新 external-ui 配置" })
++    }
++
++    companion object {
++        private const val DASHBOARD_ZIP = "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip"
++    }
++}

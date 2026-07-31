@@ -1,0 +1,90 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt	2026-07-31 05:49:26.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt	2026-07-31 06:45:56.521221211 +0000
+@@ -6,12 +6,16 @@
+ import android.content.pm.ApplicationInfo
+ import android.content.pm.PackageManager
+ import android.net.Uri
++import android.content.Intent
++import android.provider.Settings
+ import android.graphics.drawable.Drawable
+ import androidx.lifecycle.AndroidViewModel
+ import androidx.lifecycle.viewModelScope
+ import io.github.xgl34222220.sinan.core.CoreDownloader
+ import io.github.xgl34222220.sinan.core.MihomoApi
+ import io.github.xgl34222220.sinan.core.ConnectionSnapshot
++import io.github.xgl34222220.sinan.core.ConnectionDetail
++import io.github.xgl34222220.sinan.core.WebUiUpdater
+ import io.github.xgl34222220.sinan.core.ProxyGroup
+ import io.github.xgl34222220.sinan.core.ProxyProviderInfo
+ import io.github.xgl34222220.sinan.core.RuleEntry
+@@ -20,8 +24,13 @@
+ import io.github.xgl34222220.sinan.core.RuntimeState
+ import io.github.xgl34222220.sinan.core.ShellResult
+ import io.github.xgl34222220.sinan.data.RuntimeSettings
++import io.github.xgl34222220.sinan.data.WifiMatchSettings
++import io.github.xgl34222220.sinan.data.HotspotSettings
++import io.github.xgl34222220.sinan.data.CnipSettings
++import io.github.xgl34222220.sinan.data.BypassRules
+ import java.io.BufferedInputStream
+ import java.io.OutputStreamWriter
++import java.io.File
+ import java.net.HttpURLConnection
+ import java.net.URL
+ import java.text.Collator
+@@ -39,14 +48,46 @@
+ import kotlinx.coroutines.withContext
+ 
+ enum class ThemeMode { SYSTEM, LIGHT, DARK }
++enum class UiStyle { MIUIX, MATERIAL3 }
++enum class ColorStyle { VIBRANT, EXPRESSIVE, TONAL, NEUTRAL }
++enum class ColorStandard { MATERIAL_2021, MATERIAL_2025 }
++enum class StartupDestination { HOME, PANEL, TOOLS, SETTINGS }
++
++data class AppBehaviorState(
++    val acceleratedDownload: Boolean = true,
++    val mirrorUrl: String = "https://gh-proxy.org/",
++    val notificationsEnabled: Boolean = true,
++    val detailedNotification: Boolean = true,
++    val statusPanelEntry: Boolean = true,
++    val openPanelOnStart: Boolean = false,
++    val startupDestination: StartupDestination = StartupDestination.PANEL,
++)
++
++data class NetworkToolsUiState(
++    val loaded: Boolean = false,
++    val saving: Boolean = false,
++    val cnipUpdating: Boolean = false,
++    val webUiUpdating: Boolean = false,
++    val webUiProgress: Int = 0,
++    val wifi: WifiMatchSettings = WifiMatchSettings(),
++    val hotspot: HotspotSettings = HotspotSettings(),
++    val cnip: CnipSettings = CnipSettings(),
++    val bypass: BypassRules = BypassRules(),
++)
+ 
+ data class AppearanceState(
++    val uiStyle: UiStyle = UiStyle.MIUIX,
+     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+     val monetEnabled: Boolean = true,
++    val colorStyle: ColorStyle = ColorStyle.VIBRANT,
++    val colorStandard: ColorStandard = ColorStandard.MATERIAL_2021,
++    val accentName: String = "默认",
+     val amoledBlack: Boolean = false,
+     val blurEnabled: Boolean = false,
+     val floatingDock: Boolean = true,
+     val glassEnabled: Boolean = true,
++    val bottomBarTransition: Boolean = true,
++    val predictiveBack: Boolean = true,
+     val highRefreshRate: Boolean = true,
+ )
+ 
+@@ -109,6 +150,8 @@
+     val proxyProviderUpdates: Map<String, ProviderUpdateUiState> = emptyMap(),
+     val traffic: TrafficUiState = TrafficUiState(),
+     val trafficHistory: List<TrafficPoint> = emptyList(),
++    val connectionDetails: List<ConnectionDetail> = emptyList(),
++    val connectionsLoading: Boolean = false,
+     val trafficLoading: Boolean = false,
+     val mihomoMemoryInUse: Long = 0L,
+     val mihomoMemoryLimit: Long = 0L,

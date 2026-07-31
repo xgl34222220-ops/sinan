@@ -1,0 +1,39 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt	2026-07-31 04:36:06.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt	2026-07-31 06:39:44.909212724 +0000
+@@ -54,29 +146,21 @@
+                             MiuixDivider(startPadding = 72.dp)
+                             MiuixPreferenceRow(
+                                 title = "应用分流",
+-                                summary = "按应用设置核心、白名单或黑名单模式",
++                                summary = "按应用设置代理范围",
+                                 icon = Icons.Rounded.Apps,
+                                 onClick = onOpenApps,
+                             )
+-                        }
+-                    }
+-                }
+-            }
+-            item {
+-                Column {
+-                    MiuixSectionTitle("面板与诊断")
+-                    MiuixCard(strong = true) {
+-                        Column {
++                            MiuixDivider(startPadding = 72.dp)
+                             MiuixPreferenceRow(
+                                 title = "内置 WebUI",
+-                                summary = "直接在司南内打开 Mihomo 控制面板",
+-                                icon = Icons.Rounded.Language,
++                                summary = "在司南内打开完整 Mihomo 控制面板",
++                                icon = Icons.Rounded.Router,
+                                 onClick = onOpenWebUi,
+                             )
+                             MiuixDivider(startPadding = 72.dp)
+                             MiuixPreferenceRow(
+-                                title = "运行日志",
+-                                summary = "查看 BoxProxy 与 Mihomo 输出",
++                                title = "日志查看",
++                                summary = "查看运行日志与调试输出",
+                                 icon = Icons.Rounded.Description,
+                                 onClick = onOpenLogs,
+                             )

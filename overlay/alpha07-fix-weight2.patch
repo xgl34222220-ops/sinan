@@ -1,0 +1,33 @@
+diff -ruN a/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt b/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt
+--- a/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt
++++ b/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt
+@@ -8,7 +8,6 @@
+ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.height
+ import androidx.compose.foundation.layout.padding
+-import androidx.compose.foundation.layout.weight
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.MaterialTheme
+diff -ruN a/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/SettingsScreen.kt b/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/SettingsScreen.kt
+--- a/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/SettingsScreen.kt
++++ b/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/SettingsScreen.kt
+@@ -12,7 +12,6 @@
+ import androidx.compose.foundation.layout.height
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.layout.size
+-import androidx.compose.foundation.layout.weight
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.shape.CircleShape
+ import androidx.compose.foundation.shape.RoundedCornerShape
+diff -ruN a/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/StrategyIconScreen.kt b/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/StrategyIconScreen.kt
+--- a/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/StrategyIconScreen.kt
++++ b/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/StrategyIconScreen.kt
+@@ -12,7 +12,6 @@
+ import androidx.compose.foundation.layout.height
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.layout.size
+-import androidx.compose.foundation.layout.weight
+ import androidx.compose.foundation.lazy.grid.GridCells
+ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+ import androidx.compose.foundation.lazy.grid.items

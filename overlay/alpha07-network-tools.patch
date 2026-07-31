@@ -1,0 +1,265 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt	1970-01-01 00:00:00.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt	2026-07-31 06:46:19.857221743 +0000
+@@ -0,0 +1,261 @@
++package io.github.xgl34222220.sinan.ui.screens
++
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.PaddingValues
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.weight
++import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.foundation.lazy.items
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedTextField
++import androidx.compose.material3.OutlinedTextFieldDefaults
++import androidx.compose.material3.Text
++import androidx.compose.runtime.Composable
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++import io.github.xgl34222220.sinan.ProviderUpdatePhase
++import io.github.xgl34222220.sinan.SinanUiState
++import io.github.xgl34222220.sinan.data.BypassRules
++import io.github.xgl34222220.sinan.data.CnipSettings
++import io.github.xgl34222220.sinan.data.HotspotSettings
++import io.github.xgl34222220.sinan.data.WifiMatchSettings
++import io.github.xgl34222220.sinan.ui.components.MiuixCard
++import io.github.xgl34222220.sinan.ui.components.MiuixDivider
++import io.github.xgl34222220.sinan.ui.components.MiuixFilledButton
++import io.github.xgl34222220.sinan.ui.components.MiuixPage
++import io.github.xgl34222220.sinan.ui.components.MiuixPreferenceRow
++import io.github.xgl34222220.sinan.ui.components.MiuixSwitchRow
++import io.github.xgl34222220.sinan.ui.theme.LocalMiuixTokens
++
++@Composable
++fun WifiMatchScreen(
++    state: SinanUiState,
++    onBack: () -> Unit,
++    onUpdate: ((WifiMatchSettings) -> WifiMatchSettings) -> Unit,
++    onSave: () -> Unit,
++) {
++    val value = state.networkTools.wifi
++    MiuixPage(title = "Wi-Fi 匹配", onBack = onBack, contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 30.dp)) {
++        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++            item {
++                MiuixCard(strong = true) {
++                    Column {
++                        MiuixSwitchRow("启用网络控制", value.enabled, { checked -> onUpdate { it.copy(enabled = checked) } })
++                        MiuixDivider()
++                        MiuixSwitchRow("Wi-Fi 连接时应用", value.useOnConnect, { checked -> onUpdate { it.copy(useOnConnect = checked) } })
++                        MiuixDivider()
++                        MiuixSwitchRow("Wi-Fi 断开时应用", value.useOnDisconnect, { checked -> onUpdate { it.copy(useOnDisconnect = checked) } })
++                        MiuixDivider()
++                        MiuixSwitchRow("启用 SSID 匹配", value.ssidMatching, { checked -> onUpdate { it.copy(ssidMatching = checked) } })
++                        MiuixDivider()
++                        MiuixSwitchRow("记录匹配日志", value.logEnabled, { checked -> onUpdate { it.copy(logEnabled = checked) } })
++                        MiuixDivider()
++                        MiuixPreferenceRow(
++                            title = "列表模式",
++                            value = if (value.listMode == "whitelist") "白名单" else "黑名单",
++                            enabledValueColor = true,
++                            onClick = { onUpdate { it.copy(listMode = if (it.listMode == "whitelist") "blacklist" else "whitelist") } },
++                        )
++                    }
++                }
++            }
++            item { ListEditor("SSID 列表", value.ssids.joinToString("\n")) { text -> onUpdate { it.copy(ssids = parseLines(text)) } } }
++            item { ListEditor("BSSID 列表", value.bssids.joinToString("\n")) { text -> onUpdate { it.copy(bssids = parseLines(text)) } } }
++            item { MiuixFilledButton(if (state.networkTools.saving) "正在保存…" else "保存并应用", onSave, enabled = !state.networkTools.saving) }
++        }
++    }
++}
++
++@Composable
++fun HotspotScreen(
++    state: SinanUiState,
++    onBack: () -> Unit,
++    onUpdate: ((HotspotSettings) -> HotspotSettings) -> Unit,
++    onSave: () -> Unit,
++) {
++    val value = state.networkTools.hotspot
++    MiuixPage(title = "热点配置", onBack = onBack, contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 30.dp)) {
++        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++            item {
++                MiuixCard(strong = true) {
++                    Column {
++                        MiuixSwitchRow("MAC 地址过滤", value.macFilter, { checked -> onUpdate { it.copy(macFilter = checked) } })
++                        MiuixDivider()
++                        MiuixPreferenceRow(
++                            title = "MAC 列表模式",
++                            value = if (value.macMode == "whitelist") "白名单" else "黑名单",
++                            enabledValueColor = true,
++                            onClick = { onUpdate { it.copy(macMode = if (it.macMode == "whitelist") "blacklist" else "whitelist") } },
++                        )
++                    }
++                }
++            }
++            item { ListEditor("热点接口", value.interfaces.joinToString("\n"), "例如 wlan1、ap0") { text -> onUpdate { it.copy(interfaces = parseLines(text)) } } }
++            item { ListEditor("MAC 地址", value.macs.joinToString("\n"), "每行一个 MAC 地址") { text -> onUpdate { it.copy(macs = parseLines(text)) } } }
++            item { MiuixFilledButton(if (state.networkTools.saving) "正在保存…" else "保存并应用", onSave, enabled = !state.networkTools.saving) }
++        }
++    }
++}
++
++@Composable
++fun BypassRulesScreen(
++    state: SinanUiState,
++    onBack: () -> Unit,
++    onUpdate: ((BypassRules) -> BypassRules) -> Unit,
++    onSave: () -> Unit,
++) {
++    val value = state.networkTools.bypass
++    MiuixPage(title = "绕过规则", onBack = onBack, contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 30.dp)) {
++        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++            item { ListEditor("IPv4 CIDR", value.ipv4.joinToString("\n"), "每行一个 CIDR，例如 192.168.0.0/16") { text -> onUpdate { it.copy(ipv4 = parseLines(text)) } } }
++            item { ListEditor("IPv6 CIDR", value.ipv6.joinToString("\n"), "每行一个 CIDR，例如 fe80::/10") { text -> onUpdate { it.copy(ipv6 = parseLines(text)) } } }
++            item { MiuixFilledButton(if (state.networkTools.saving) "正在保存…" else "保存并应用", onSave, enabled = !state.networkTools.saving) }
++        }
++    }
++}
++
++@Composable
++fun CnipSettingsScreen(
++    state: SinanUiState,
++    onBack: () -> Unit,
++    onUpdate: ((CnipSettings) -> CnipSettings) -> Unit,
++    onSave: () -> Unit,
++    onUpdateLists: () -> Unit,
++) {
++    val value = state.networkTools.cnip
++    MiuixPage(title = "CNIP 设置", onBack = onBack, contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 30.dp)) {
++        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++            item {
++                MiuixCard(strong = true) {
++                    Column {
++                        MiuixSwitchRow("启用 CNIP 绕过", value.enabled, { checked -> onUpdate { it.copy(enabled = checked) } })
++                        MiuixDivider()
++                        MiuixSwitchRow("更新 IPv4 地址库", value.ipv4Enabled, { checked -> onUpdate { it.copy(ipv4Enabled = checked) } })
++                        MiuixDivider()
++                        MiuixSwitchRow("更新 IPv6 地址库", value.ipv6Enabled, { checked -> onUpdate { it.copy(ipv6Enabled = checked) } })
++                        MiuixDivider()
++                        MiuixPreferenceRow(
++                            title = "CNIP 模式",
++                            value = value.mode,
++                            enabledValueColor = true,
++                            onClick = { onUpdate { it.copy(mode = if (it.mode == "ipset") "nftset" else "ipset") } },
++                        )
++                    }
++                }
++            }
++            item { SingleLineEditor("IPv4 数据源", value.ipv4Url) { text -> onUpdate { it.copy(ipv4Url = text) } } }
++            item { SingleLineEditor("IPv6 数据源", value.ipv6Url) { text -> onUpdate { it.copy(ipv6Url = text) } } }
++            item {
++                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                    MiuixFilledButton("保存设置", onSave, Modifier.weight(1f), enabled = !state.networkTools.saving)
++                    MiuixFilledButton(
++                        if (state.networkTools.cnipUpdating) "更新中…" else "立即更新",
++                        onUpdateLists,
++                        Modifier.weight(1f),
++                        enabled = !state.networkTools.cnipUpdating,
++                    )
++                }
++            }
++        }
++    }
++}
++
++@Composable
++fun SubscriptionManagerScreen(
++    state: SinanUiState,
++    onBack: () -> Unit,
++    onRefresh: () -> Unit,
++    onUpdate: (String) -> Unit,
++    onUpdateAll: () -> Unit,
++) {
++    val tokens = LocalMiuixTokens.current
++    MiuixPage(title = "订阅管理", onBack = onBack, contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 30.dp)) {
++        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++            item {
++                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                    MiuixFilledButton("刷新", onRefresh, Modifier.weight(1f), enabled = !state.providersLoading)
++                    MiuixFilledButton("全部更新", onUpdateAll, Modifier.weight(1f), enabled = state.proxyProviders.isNotEmpty())
++                }
++            }
++            items(state.proxyProviders.size) { index ->
++                val provider = state.proxyProviders[index]
++                val update = state.proxyProviderUpdates[provider.name]
++                MiuixCard(strong = true) {
++                    Column(Modifier.fillMaxWidth().padding(15.dp)) {
++                        Row {
++                            Column(Modifier.weight(1f)) {
++                                Text(provider.name, color = tokens.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Black)
++                                Text("${provider.proxyCount} 个节点 · ${provider.vehicleType}", color = tokens.textSecondary, fontSize = 11.5.sp)
++                            }
++                            Text(
++                                when (update?.phase) {
++                                    ProviderUpdatePhase.UPDATING -> "更新中"
++                                    ProviderUpdatePhase.SUCCESS -> "成功"
++                                    ProviderUpdatePhase.ERROR -> "失败"
++                                    else -> "更新"
++                                },
++                                modifier = Modifier.padding(8.dp),
++                                color = MaterialTheme.colorScheme.primary,
++                                fontWeight = FontWeight.Bold,
++                            )
++                        }
++                        MiuixPreferenceRow(
++                            title = update?.message?.ifBlank { provider.updatedAt } ?: provider.updatedAt.ifBlank { "尚未更新" },
++                            showArrow = false,
++                            onClick = if (update?.phase == ProviderUpdatePhase.UPDATING) null else ({ onUpdate(provider.name) }),
++                        )
++                    }
++                }
++            }
++            if (state.proxyProviders.isEmpty()) item { Text("暂无订阅，请先启动代理并检查配置", color = tokens.textSecondary, modifier = Modifier.padding(12.dp)) }
++        }
++    }
++}
++
++@Composable
++private fun ListEditor(title: String, value: String, hint: String = "每行一项", onChange: (String) -> Unit) {
++    val tokens = LocalMiuixTokens.current
++    MiuixCard(strong = true) {
++        Column(Modifier.fillMaxWidth().padding(15.dp)) {
++            Text(title, color = tokens.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Black)
++            Spacer(Modifier.height(8.dp))
++            OutlinedTextField(
++                value = value,
++                onValueChange = onChange,
++                modifier = Modifier.fillMaxWidth(),
++                minLines = 5,
++                placeholder = { Text(hint) },
++                colors = editorColors(),
++            )
++        }
++    }
++}
++
++@Composable
++private fun SingleLineEditor(title: String, value: String, onChange: (String) -> Unit) {
++    val tokens = LocalMiuixTokens.current
++    MiuixCard(strong = true) {
++        Column(Modifier.fillMaxWidth().padding(15.dp)) {
++            Text(title, color = tokens.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Black)
++            Spacer(Modifier.height(8.dp))
++            OutlinedTextField(value = value, onValueChange = onChange, modifier = Modifier.fillMaxWidth(), singleLine = true, colors = editorColors())
++        }
++    }
++}
++
++@Composable
++private fun editorColors() = OutlinedTextFieldDefaults.colors(
++    focusedContainerColor = LocalMiuixTokens.current.neutralSoft.copy(alpha = .55f),
++    unfocusedContainerColor = LocalMiuixTokens.current.neutralSoft.copy(alpha = .55f),
++    focusedBorderColor = MaterialTheme.colorScheme.primary,
++    unfocusedBorderColor = LocalMiuixTokens.current.divider,
++)
++
++private fun parseLines(value: String): List<String> = value.lineSequence().map(String::trim).filter(String::isNotEmpty).distinct().toList()

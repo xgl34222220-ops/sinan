@@ -1,0 +1,172 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt	2026-07-31 05:49:26.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt	2026-07-31 06:45:56.521221211 +0000
+@@ -819,6 +884,168 @@
+         }
+     }
+ 
++    fun loadNetworkTools() {
++        if (_state.value.networkTools.loaded) return
++        viewModelScope.launch {
++            val loaded = withContext(Dispatchers.IO) {
++                runCatching {
++                    runtime.database.ensureCreated()
++                    NetworkToolsUiState(
++                        loaded = true,
++                        wifi = runtime.database.wifiMatchSettings(),
++                        hotspot = runtime.database.hotspotSettings(),
++                        cnip = runtime.database.cnipSettings(),
++                        bypass = runtime.database.bypassRules(),
++                    )
++                }
++            }
++            loaded.fold(
++                onSuccess = { _state.value = _state.value.copy(networkTools = it) },
++                onFailure = { emitMessage("读取网络工具设置失败：${it.message ?: "未知错误"}") },
++            )
++        }
++    }
++
++    fun updateWifiSettings(transform: (WifiMatchSettings) -> WifiMatchSettings) {
++        _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(wifi = transform(_state.value.networkTools.wifi)))
++    }
++
++    fun updateHotspotSettings(transform: (HotspotSettings) -> HotspotSettings) {
++        _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(hotspot = transform(_state.value.networkTools.hotspot)))
++    }
++
++    fun updateCnipSettings(transform: (CnipSettings) -> CnipSettings) {
++        _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(cnip = transform(_state.value.networkTools.cnip)))
++    }
++
++    fun updateBypassRules(transform: (BypassRules) -> BypassRules) {
++        _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(bypass = transform(_state.value.networkTools.bypass)))
++    }
++
++    fun saveNetworkTools(message: String = "设置已保存") {
++        if (_state.value.networkTools.saving) return
++        val snapshot = _state.value.networkTools
++        _state.value = _state.value.copy(networkTools = snapshot.copy(saving = true))
++        viewModelScope.launch {
++            val result = withContext(Dispatchers.IO) {
++                runCatching {
++                    runtime.database.ensureCreated()
++                    runtime.database.saveWifiMatchSettings(snapshot.wifi)
++                    runtime.database.saveHotspotSettings(snapshot.hotspot)
++                    runtime.database.saveCnipSettings(snapshot.cnip)
++                    runtime.database.saveBypassRules(snapshot.bypass)
++                    val applied = runtime.applyDatabaseChanges()
++                    if (!applied.success) error(applied.output.ifBlank { "应用网络规则失败" })
++                }
++            }
++            _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(saving = false))
++            emitMessage(result.fold({ message }, { "保存失败：${it.message ?: "未知错误"}" }))
++        }
++    }
++
++    fun updateCnipLists() {
++        if (_state.value.networkTools.cnipUpdating) return
++        val settings = _state.value.networkTools.cnip
++        _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(cnipUpdating = true))
++        viewModelScope.launch {
++            val result = withContext(Dispatchers.IO) {
++                runCatching {
++                    runtime.paths.createDirectories()
++                    if (settings.ipv4Enabled) downloadTextFile(settings.ipv4Url, resolveRuntimeFile(settings.ipv4File))
++                    if (settings.ipv6Enabled) downloadTextFile(settings.ipv6Url, resolveRuntimeFile(settings.ipv6File))
++                    runtime.database.saveCnipSettings(settings)
++                    val applied = runtime.applyDatabaseChanges()
++                    if (!applied.success) error(applied.output.ifBlank { "CNIP 规则应用失败" })
++                }
++            }
++            _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(cnipUpdating = false))
++            emitMessage(result.fold({ "CNIP 地址库已更新" }, { "CNIP 更新失败：${it.message ?: "未知错误"}" }))
++        }
++    }
++
++    fun updateWebUi() {
++        if (_state.value.networkTools.webUiUpdating) return
++        _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(webUiUpdating = true, webUiProgress = 0))
++        viewModelScope.launch {
++            val result = withContext(Dispatchers.IO) {
++                runCatching {
++                    WebUiUpdater(appContext, runtime).update { progress ->
++                        _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(webUiProgress = progress))
++                    }
++                }
++            }
++            _state.value = _state.value.copy(networkTools = _state.value.networkTools.copy(webUiUpdating = false, webUiProgress = 0))
++            emitMessage(result.fold({ it }, { "WebUI 更新失败：${it.message ?: "未知错误"}" }))
++            if (result.isSuccess) loadWebUiUrl()
++        }
++    }
++
++    fun loadConnectionDetails() {
++        if (!_state.value.runtime.running || _state.value.connectionsLoading) return
++        _state.value = _state.value.copy(connectionsLoading = true)
++        viewModelScope.launch {
++            val result = withContext(Dispatchers.IO) { runCatching { mihomoApi().connectionDetails() } }
++            _state.value = _state.value.copy(
++                connectionsLoading = false,
++                connectionDetails = result.getOrElse { emptyList() },
++            )
++        }
++    }
++
++    fun closeConnection(id: String) {
++        viewModelScope.launch {
++            val result = withContext(Dispatchers.IO) { runCatching { mihomoApi().closeConnection(id) } }
++            emitMessage(result.fold({ "连接已关闭" }, { "关闭连接失败：${it.message ?: "未知错误"}" }))
++            loadConnectionDetails()
++        }
++    }
++
++    fun closeAllConnections() {
++        viewModelScope.launch {
++            val result = withContext(Dispatchers.IO) { runCatching { mihomoApi().closeAllConnections() } }
++            emitMessage(result.fold({ "已关闭全部连接" }, { "关闭连接失败：${it.message ?: "未知错误"}" }))
++            loadConnectionDetails()
++        }
++    }
++
++    fun setStrategyIcon(group: String, icon: String) {
++        val updated = _state.value.strategyIcons.toMutableMap().apply {
++            if (icon.isBlank()) remove(group) else put(group, icon)
++        }.toMap()
++        _state.value = _state.value.copy(strategyIcons = updated)
++        iconPrefs.edit().putString("icons", JSONObject(updated).toString()).apply()
++    }
++
++    fun setUiStyle(value: UiStyle) = updateAppearance { it.copy(uiStyle = value) }
++    fun setColorStyle(value: ColorStyle) = updateAppearance { it.copy(colorStyle = value) }
++    fun setColorStandard(value: ColorStandard) = updateAppearance { it.copy(colorStandard = value) }
++    fun setAccentName(value: String) = updateAppearance { it.copy(accentName = value) }
++    fun setBottomBarTransition(value: Boolean) = updateAppearance { it.copy(bottomBarTransition = value) }
++    fun setPredictiveBack(value: Boolean) = updateAppearance { it.copy(predictiveBack = value) }
++
++    fun updateBehavior(transform: (AppBehaviorState) -> AppBehaviorState) {
++        val updated = transform(_state.value.behavior)
++        _state.value = _state.value.copy(behavior = updated)
++        behaviorPrefs.edit()
++            .putBoolean("accelerated_download", updated.acceleratedDownload)
++            .putString("mirror_url", updated.mirrorUrl)
++            .putBoolean("notifications", updated.notificationsEnabled)
++            .putBoolean("detailed_notification", updated.detailedNotification)
++            .putBoolean("status_panel_entry", updated.statusPanelEntry)
++            .putBoolean("open_panel_on_start", updated.openPanelOnStart)
++            .putString("startup_destination", updated.startupDestination.name)
++            .apply()
++        updateNotification()
++    }
++
++    fun openNotificationSettings() {
++        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
++            putExtra(Settings.EXTRA_APP_PACKAGE, appContext.packageName)
++            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++        }
++        runCatching { appContext.startActivity(intent) }
++    }
++
+     fun setThemeMode(mode: ThemeMode) = updateAppearance { it.copy(themeMode = mode) }
+     fun setMonetEnabled(value: Boolean) = updateAppearance { it.copy(monetEnabled = value) }
+     fun setAmoledBlack(value: Boolean) = updateAppearance { it.copy(amoledBlack = value) }

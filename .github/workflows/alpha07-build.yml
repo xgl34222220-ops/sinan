@@ -1,0 +1,195 @@
+name: Build Sinan alpha07 APK
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preserve alpha07 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sinan-alpha07-patches /tmp/sinan-alpha07-files
+          cp overlay/alpha07-base-build.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-base-manifest.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-notification.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-03.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-04.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-05.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-06.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-core.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-database.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-13.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-14.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-15.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-16.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-components-home.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-network-tools.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-panel.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-strategy-icons.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-tools-27.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-tools-28.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-tools-29.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-theme.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-fix-weight2.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-files/SettingsScreen.kt.part* /tmp/sinan-alpha07-files/
+
+      - name: Reconstruct alpha06 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp bootstrap/ui-fix.b64 /tmp/sinan-ui-fix.b64
+          cp overlay/apply-alpha03-compile-fixes.py /tmp/apply-alpha03-compile-fixes.py
+          cp overlay/alpha05-fix1.b64 /tmp/sinan-alpha05-fix1.b64
+
+          cat overlay/alpha03.part00 overlay/alpha03.part01 overlay/alpha03.part02 overlay/alpha03.part03 overlay/alpha03.part04 overlay/alpha03.part05 overlay/alpha03.part06 > /tmp/sinan-alpha03-overlay.b64
+          cat overlay/alpha04.part00 overlay/alpha04.part01 overlay/alpha04.part02 overlay/alpha04.part03 > /tmp/sinan-alpha04-overlay.b64
+          cat overlay/alpha05.part00 overlay/alpha05.part01 overlay/alpha05.part02 overlay/alpha05.part03 overlay/alpha05.part04 > /tmp/sinan-alpha05-overlay.b64
+          cat overlay/alpha06.part00 overlay/alpha06.part01 overlay/alpha06.part02 overlay/alpha06.part03 overlay/alpha06.part04 overlay/alpha06.part05 > /tmp/sinan-alpha06-overlay.b64
+          cat bootstrap/source.part00 bootstrap/source.part01 bootstrap/source.part02 bootstrap/source.part03 > /tmp/sinan-source.b64
+
+          base64 --decode /tmp/sinan-source.b64 > /tmp/sinan-source.tar.xz
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          tar -xJf /tmp/sinan-source.tar.xz -C .
+
+          base64 --decode /tmp/sinan-ui-fix.b64 > /tmp/sinan-ui-fix.tar.xz
+          tar -xJf /tmp/sinan-ui-fix.tar.xz -C .
+          base64 --decode /tmp/sinan-alpha03-overlay.b64 > /tmp/sinan-alpha03-overlay.tar.xz
+          tar -xJf /tmp/sinan-alpha03-overlay.tar.xz -C .
+          python3 /tmp/apply-alpha03-compile-fixes.py
+          base64 --decode /tmp/sinan-alpha04-overlay.b64 > /tmp/sinan-alpha04-overlay.tar.xz
+          tar -xJf /tmp/sinan-alpha04-overlay.tar.xz -C .
+          base64 --decode /tmp/sinan-alpha05-overlay.b64 > /tmp/sinan-alpha05-overlay.tar.xz
+          tar -xJf /tmp/sinan-alpha05-overlay.tar.xz -C .
+          base64 --decode /tmp/sinan-alpha05-fix1.b64 > /tmp/sinan-alpha05-fix1.tar.xz
+          tar -xJf /tmp/sinan-alpha05-fix1.tar.xz -C .
+          base64 --decode /tmp/sinan-alpha06-overlay.b64 > /tmp/sinan-alpha06-overlay.tar.xz
+          tar -xJf /tmp/sinan-alpha06-overlay.tar.xz -C .
+
+      - name: Apply video UI alpha07
+        shell: bash
+        run: |
+          set -euo pipefail
+          for patch_name in \
+            alpha07-base-build.patch \
+            alpha07-base-manifest.patch \
+            alpha07-notification.patch \
+            alpha07-03.patch alpha07-04.patch alpha07-05.patch alpha07-06.patch \
+            alpha07-core.patch alpha07-database.patch \
+            alpha07-13.patch alpha07-14.patch alpha07-15.patch alpha07-16.patch \
+            alpha07-components-home.patch alpha07-network-tools.patch alpha07-panel.patch \
+            alpha07-strategy-icons.patch \
+            alpha07-tools-27.patch alpha07-tools-28.patch alpha07-tools-29.patch \
+            alpha07-theme.patch
+          do
+            echo "Applying ${patch_name}"
+            patch -p1 --batch --forward < "/tmp/sinan-alpha07-patches/${patch_name}"
+          done
+
+          cat \
+            /tmp/sinan-alpha07-files/SettingsScreen.kt.part00 \
+            /tmp/sinan-alpha07-files/SettingsScreen.kt.part01 \
+            /tmp/sinan-alpha07-files/SettingsScreen.kt.part02 \
+            /tmp/sinan-alpha07-files/SettingsScreen.kt.part03 \
+            > app/src/main/java/io/github/xgl34222220/sinan/ui/screens/SettingsScreen.kt
+
+          sed -i '/import androidx.compose.foundation.layout.weight/d' \
+            app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt \
+            app/src/main/java/io/github/xgl34222220/sinan/ui/screens/SettingsScreen.kt \
+            app/src/main/java/io/github/xgl34222220/sinan/ui/screens/StrategyIconScreen.kt
+
+          grep -q '0.4.0-alpha07' app/build.gradle
+          test -f app/src/main/java/io/github/xgl34222220/sinan/core/WebUiUpdater.kt
+          test -f app/src/main/java/io/github/xgl34222220/sinan/RuntimeNotificationController.kt
+          test -f app/src/main/java/io/github/xgl34222220/sinan/ui/screens/NetworkToolsScreens.kt
+          test -f app/src/main/java/io/github/xgl34222220/sinan/ui/screens/StrategyIconScreen.kt
+
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-reconstructed-source-alpha07
+          path: |
+            app
+            build.gradle
+            settings.gradle
+            gradle.properties
+            gradle/wrapper/gradle-wrapper.properties
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Download pinned BoxProxy runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets/boxctl/arm64-v8a
+          curl -fL --retry 3 https://github.com/boxproxy/boxproxy/releases/download/v0.0.1/boxctl-arm64-v8a -o app/src/main/assets/boxctl/arm64-v8a/boxctl
+          curl -fL --retry 3 https://github.com/boxproxy/boxproxy/releases/download/v0.0.1/boxbpf-arm64-v8a -o app/src/main/assets/boxctl/arm64-v8a/boxbpf
+          chmod 755 app/src/main/assets/boxctl/arm64-v8a/boxctl app/src/main/assets/boxctl/arm64-v8a/boxbpf
+          test -s app/src/main/assets/boxctl/arm64-v8a/boxctl
+          test -s app/src/main/assets/boxctl/arm64-v8a/boxbpf
+
+      - name: Build optimized installable APK
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-build-log-alpha07
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Prepare APK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Sinan-0.4.0-alpha07-release.apk
+          sha256sum dist/Sinan-0.4.0-alpha07-release.apk > dist/SHA256SUMS.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-0.4.0-alpha07-APK
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,179 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/data/RuntimeDatabase.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/data/RuntimeDatabase.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/data/RuntimeDatabase.kt	2026-07-31 05:49:26.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/data/RuntimeDatabase.kt	2026-07-31 06:31:36.417201568 +0000
+@@ -11,6 +11,40 @@
+     val bootAutoStart: Boolean = false
+ )
+ 
++data class WifiMatchSettings(
++    val enabled: Boolean = false,
++    val useOnDisconnect: Boolean = true,
++    val useOnConnect: Boolean = true,
++    val ssidMatching: Boolean = false,
++    val logEnabled: Boolean = true,
++    val listMode: String = "blacklist",
++    val ssids: List<String> = emptyList(),
++    val bssids: List<String> = emptyList(),
++)
++
++data class HotspotSettings(
++    val macFilter: Boolean = false,
++    val macMode: String = "blacklist",
++    val macs: List<String> = emptyList(),
++    val interfaces: List<String> = emptyList(),
++)
++
++data class CnipSettings(
++    val enabled: Boolean = false,
++    val mode: String = "ipset",
++    val ipv4Enabled: Boolean = true,
++    val ipv6Enabled: Boolean = false,
++    val ipv4File: String = "run/state/cn_ip.txt",
++    val ipv4Url: String = "https://github.com/Hackl0us/GeoIP2-CN/raw/release/CN-ip-cidr.txt",
++    val ipv6File: String = "run/state/cn_ipv6.txt",
++    val ipv6Url: String = "https://ispip.clang.cn/all_cn_ipv6.txt",
++)
++
++data class BypassRules(
++    val ipv4: List<String> = emptyList(),
++    val ipv6: List<String> = emptyList(),
++)
++
+ data class RuntimeProfileSummary(
+     val coreName: String = "mihomo",
+     val mode: String = "tproxy",
+@@ -101,6 +135,134 @@
+         db.update("runtime_profile", values, "id=1", null)
+     }
+ 
++
++    fun wifiMatchSettings(): WifiMatchSettings = withDatabase { db ->
++        val base = db.rawQuery(
++            "SELECT network_control_enabled,use_on_wifi_disconnect,use_on_wifi_connect,enable_ssid_matching,enable_network_control_log,list_mode FROM wifi_match_settings WHERE id=1",
++            null,
++        ).use { cursor ->
++            if (!cursor.moveToFirst()) WifiMatchSettings() else WifiMatchSettings(
++                enabled = cursor.getInt(0) != 0,
++                useOnDisconnect = cursor.getInt(1) != 0,
++                useOnConnect = cursor.getInt(2) != 0,
++                ssidMatching = cursor.getInt(3) != 0,
++                logEnabled = cursor.getInt(4) != 0,
++                listMode = cursor.getString(5).orEmpty().ifBlank { "blacklist" },
++            )
++        }
++        base.copy(
++            ssids = readStringList(db, "wifi_match_ssids"),
++            bssids = readStringList(db, "wifi_match_bssids"),
++        )
++    }
++
++    fun saveWifiMatchSettings(settings: WifiMatchSettings) = withDatabase { db ->
++        db.beginTransaction()
++        try {
++            val values = ContentValues().apply {
++                put("network_control_enabled", if (settings.enabled) 1 else 0)
++                put("use_on_wifi_disconnect", if (settings.useOnDisconnect) 1 else 0)
++                put("use_on_wifi_connect", if (settings.useOnConnect) 1 else 0)
++                put("enable_ssid_matching", if (settings.ssidMatching) 1 else 0)
++                put("enable_network_control_log", if (settings.logEnabled) 1 else 0)
++                put("list_mode", settings.listMode)
++            }
++            db.update("wifi_match_settings", values, "id=1", null)
++            replaceStringList(db, "wifi_match_ssids", settings.ssids)
++            replaceStringList(db, "wifi_match_bssids", settings.bssids)
++            db.setTransactionSuccessful()
++        } finally { db.endTransaction() }
++    }
++
++    fun hotspotSettings(): HotspotSettings = withDatabase { db ->
++        val base = db.rawQuery("SELECT mac_filter,mac_mode FROM hotspot_settings WHERE id=1", null).use { cursor ->
++            if (!cursor.moveToFirst()) HotspotSettings() else HotspotSettings(
++                macFilter = cursor.getInt(0) != 0,
++                macMode = cursor.getString(1).orEmpty().ifBlank { "blacklist" },
++            )
++        }
++        base.copy(
++            macs = readStringList(db, "hotspot_macs"),
++            interfaces = readStringList(db, "hotspot_ap_interfaces"),
++        )
++    }
++
++    fun saveHotspotSettings(settings: HotspotSettings) = withDatabase { db ->
++        db.beginTransaction()
++        try {
++            val values = ContentValues().apply {
++                put("mac_filter", if (settings.macFilter) 1 else 0)
++                put("mac_mode", settings.macMode)
++            }
++            db.update("hotspot_settings", values, "id=1", null)
++            replaceStringList(db, "hotspot_macs", settings.macs)
++            replaceStringList(db, "hotspot_ap_interfaces", settings.interfaces)
++            db.setTransactionSuccessful()
++        } finally { db.endTransaction() }
++    }
++
++    fun cnipSettings(): CnipSettings = withDatabase { db ->
++        db.rawQuery(
++            "SELECT bypass_cnip,cnip_mode,bypass_ipv4,bypass_ipv6,ipv4_file,ipv4_url,ipv6_file,ipv6_url FROM cnip_settings WHERE id=1",
++            null,
++        ).use { cursor ->
++            if (!cursor.moveToFirst()) return@withDatabase CnipSettings()
++            CnipSettings(
++                enabled = cursor.getInt(0) != 0,
++                mode = cursor.getString(1).orEmpty().ifBlank { "ipset" },
++                ipv4Enabled = cursor.getInt(2) != 0,
++                ipv6Enabled = cursor.getInt(3) != 0,
++                ipv4File = cursor.getString(4).orEmpty(),
++                ipv4Url = cursor.getString(5).orEmpty(),
++                ipv6File = cursor.getString(6).orEmpty(),
++                ipv6Url = cursor.getString(7).orEmpty(),
++            )
++        }
++    }
++
++    fun saveCnipSettings(settings: CnipSettings) = withDatabase { db ->
++        val values = ContentValues().apply {
++            put("bypass_cnip", if (settings.enabled) 1 else 0)
++            put("cnip_mode", settings.mode)
++            put("bypass_ipv4", if (settings.ipv4Enabled) 1 else 0)
++            put("bypass_ipv6", if (settings.ipv6Enabled) 1 else 0)
++            put("ipv4_file", settings.ipv4File)
++            put("ipv4_url", settings.ipv4Url)
++            put("ipv6_file", settings.ipv6File)
++            put("ipv6_url", settings.ipv6Url)
++        }
++        db.update("cnip_settings", values, "id=1", null)
++    }
++
++    fun bypassRules(): BypassRules = withDatabase { db ->
++        BypassRules(
++            ipv4 = readStringList(db, "intranet_ipv4_cidrs"),
++            ipv6 = readStringList(db, "intranet_ipv6_cidrs"),
++        )
++    }
++
++    fun saveBypassRules(rules: BypassRules) = withDatabase { db ->
++        db.beginTransaction()
++        try {
++            replaceStringList(db, "intranet_ipv4_cidrs", rules.ipv4)
++            replaceStringList(db, "intranet_ipv6_cidrs", rules.ipv6)
++            db.setTransactionSuccessful()
++        } finally { db.endTransaction() }
++    }
++
++    private fun readStringList(db: SQLiteDatabase, table: String): List<String> = buildList {
++        db.rawQuery("SELECT value FROM $table ORDER BY id", null).use { cursor ->
++            while (cursor.moveToNext()) cursor.getString(0)?.trim()?.takeIf { it.isNotEmpty() }?.let(::add)
++        }
++    }
++
++    private fun replaceStringList(db: SQLiteDatabase, table: String, values: List<String>) {
++        db.delete(table, null, null)
++        values.map(String::trim).filter(String::isNotEmpty).distinct().forEach { value ->
++            db.insertOrThrow(table, null, ContentValues().apply { put("value", value) })
++        }
++    }
++
+     private fun <T> withDatabase(block: (SQLiteDatabase) -> T): T {
+         paths.createDirectories()
+         return SQLiteDatabase.openOrCreateDatabase(paths.database, null).use(block)
