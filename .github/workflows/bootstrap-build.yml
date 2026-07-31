@@ -1,36 +1,42 @@
-name: Import Source and Build APK
+name: Build Sinan APK
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  issues:
-    types: [ opened ]
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  bootstrap-build:
+  android-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout bootstrap repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 0
 
-      - name: Reconstruct Android source
+      - name: Reconstruct source and apply LuoShu UI overlay
         shell: bash
         run: |
           set -euo pipefail
+
           cp bootstrap/ui-fix.b64 /tmp/sinan-ui-fix.b64
+          cp overlay/apply-alpha03-compile-fixes.py /tmp/apply-alpha03-compile-fixes.py
+          cat overlay/alpha03.part00 \
+              overlay/alpha03.part01 \
+              overlay/alpha03.part02 \
+              overlay/alpha03.part03 \
+              overlay/alpha03.part04 \
+              overlay/alpha03.part05 \
+              overlay/alpha03.part06 > /tmp/sinan-alpha03-overlay.b64
+          echo "778c056b72491b2e537ad58ddd48f745b2db43cfc2919de117b6b8a631af8deb  /tmp/sinan-alpha03-overlay.b64" | sha256sum -c -
+
           cat bootstrap/source.part00 \
               bootstrap/source.part01 \
               bootstrap/source.part02 \
@@ -38,37 +44,33 @@ jobs:
           echo "0b021fd12cdd6f8747342eea6e0ae0fd96bd1cb5ed15e85b00852bfe46b6db08  /tmp/sinan-source.b64" | sha256sum -c -
           base64 --decode /tmp/sinan-source.b64 > /tmp/sinan-source.tar.xz
           echo "a82e1417db3e606ae84eb80addf1f1cc5de78ccd9abce8dc72ed5bf786842069  /tmp/sinan-source.tar.xz" | sha256sum -c -
+
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           tar -xJf /tmp/sinan-source.tar.xz -C .
+
           base64 --decode /tmp/sinan-ui-fix.b64 > /tmp/sinan-ui-fix.tar.xz
           echo "016f58ff39fd58d69b96898ea6f1d865addf79fb49562dfc881d08007d57ea37  /tmp/sinan-ui-fix.tar.xz" | sha256sum -c -
           tar -xJf /tmp/sinan-ui-fix.tar.xz -C .
+
+          base64 --decode /tmp/sinan-alpha03-overlay.b64 > /tmp/sinan-alpha03-overlay.tar.xz
+          echo "fac980368aec81c2cad1695b7db4db067c95cd1f6bafbe2e45f4d23378e7062f  /tmp/sinan-alpha03-overlay.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/sinan-alpha03-overlay.tar.xz -C .
+          python3 /tmp/apply-alpha03-compile-fixes.py
+
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
-
-      - name: Apply Android compatibility fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          sed -i \
-            -e '/app:itemActiveIndicatorColor=/d' \
-            -e '/app:itemActiveIndicatorEnabled=/d' \
-            -e '/app:itemActiveIndicatorHeight=/d' \
-            -e '/app:itemActiveIndicatorMarginHorizontal=/d' \
-            -e '/app:itemRippleColor=/d' \
-            app/src/main/res/layout/activity_main.xml
-
-      - name: Pack reconstructed source
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar --exclude=.git --exclude='*/build' -cJf /tmp/Sinan-reconstructed-source.tar.xz .
+          test -f app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt
 
       - name: Upload reconstructed source
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-reconstructed-source-alpha02
-          path: /tmp/Sinan-reconstructed-source.tar.xz
+          name: Sinan-reconstructed-source-alpha03
+          path: |
+            app
+            build.gradle
+            settings.gradle
+            gradle.properties
+            gradle/wrapper/gradle-wrapper.properties
           if-no-files-found: error
           retention-days: 7
 
@@ -78,10 +80,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 7.5
+      - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '7.5'
+          gradle-version: '8.7'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -91,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-33" "build-tools;33.0.2"
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Download pinned BoxProxy runtime
         shell: bash
@@ -107,7 +109,6 @@ jobs:
           chmod 755 app/src/main/assets/boxctl/arm64-v8a/boxctl app/src/main/assets/boxctl/arm64-v8a/boxbpf
           test -s app/src/main/assets/boxctl/arm64-v8a/boxctl
           test -s app/src/main/assets/boxctl/arm64-v8a/boxbpf
-          sha256sum app/src/main/assets/boxctl/arm64-v8a/boxctl app/src/main/assets/boxctl/arm64-v8a/boxbpf
 
       - name: Build installable debug APK
         id: build
@@ -120,7 +121,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-build-log-alpha02
+          name: Sinan-build-log-alpha03
           path: build.log
           if-no-files-found: warn
           retention-days: 7
@@ -130,13 +131,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Sinan-0.4.0-alpha02-debug.apk
-          sha256sum dist/Sinan-0.4.0-alpha02-debug.apk > dist/SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Sinan-0.4.0-alpha03-debug.apk
+          sha256sum dist/Sinan-0.4.0-alpha03-debug.apk > dist/SHA256SUMS.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-0.4.0-alpha02-APK
+          name: Sinan-0.4.0-alpha03-APK
           path: dist/*
           if-no-files-found: error
           retention-days: 30
