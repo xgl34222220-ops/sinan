@@ -37,6 +37,12 @@ jobs:
               overlay/alpha03.part06 > /tmp/sinan-alpha03-overlay.b64
           echo "778c056b72491b2e537ad58ddd48f745b2db43cfc2919de117b6b8a631af8deb  /tmp/sinan-alpha03-overlay.b64" | sha256sum -c -
 
+          cat overlay/alpha04.part00 \
+              overlay/alpha04.part01 \
+              overlay/alpha04.part02 \
+              overlay/alpha04.part03 > /tmp/sinan-alpha04-overlay.b64
+          echo "202d7b5da7a8b43817b71c9184f2c77a3cb220b6042d5f289f3ff2d86310b82f  /tmp/sinan-alpha04-overlay.b64" | sha256sum -c -
+
           cat bootstrap/source.part00 \
               bootstrap/source.part01 \
               bootstrap/source.part02 \
@@ -57,14 +63,19 @@ jobs:
           tar -xJf /tmp/sinan-alpha03-overlay.tar.xz -C .
           python3 /tmp/apply-alpha03-compile-fixes.py
 
+          base64 --decode /tmp/sinan-alpha04-overlay.b64 > /tmp/sinan-alpha04-overlay.tar.xz
+          echo "786c1f44b66f8376ab6fc6042e7ae3bd3732d4dc161b0aa203c3695c2479170c  /tmp/sinan-alpha04-overlay.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/sinan-alpha04-overlay.tar.xz -C .
+
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt
+          test -f app/src/main/java/io/github/xgl34222220/sinan/DisplayPerformanceController.kt
 
       - name: Upload reconstructed source
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-reconstructed-source-alpha03
+          name: Sinan-reconstructed-source-alpha04
           path: |
             app
             build.gradle
@@ -121,7 +132,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-build-log-alpha03
+          name: Sinan-build-log-alpha04
           path: build.log
           if-no-files-found: warn
           retention-days: 7
@@ -131,13 +142,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Sinan-0.4.0-alpha03-debug.apk
-          sha256sum dist/Sinan-0.4.0-alpha03-debug.apk > dist/SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Sinan-0.4.0-alpha04-debug.apk
+          sha256sum dist/Sinan-0.4.0-alpha04-debug.apk > dist/SHA256SUMS.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-0.4.0-alpha03-APK
+          name: Sinan-0.4.0-alpha04-APK
           path: dist/*
           if-no-files-found: error
           retention-days: 30
