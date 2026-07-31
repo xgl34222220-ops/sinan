@@ -1,0 +1,57 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/theme/SinanTheme.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/theme/SinanTheme.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/theme/SinanTheme.kt	2026-07-31 04:37:26.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/theme/SinanTheme.kt	2026-07-31 06:42:31.033216518 +0000
+@@ -23,6 +23,8 @@
+ import androidx.compose.ui.unit.sp
+ import io.github.xgl34222220.sinan.AppearanceState
+ import io.github.xgl34222220.sinan.ThemeMode
++import io.github.xgl34222220.sinan.UiStyle
++import io.github.xgl34222220.sinan.ColorStyle
+ 
+ @Immutable
+ data class MiuixTokens(
+@@ -110,13 +112,18 @@
+         ThemeMode.DARK -> true
+     }
+     val context = LocalContext.current
+-    val scheme = when {
++    val baseScheme = when {
+         appearance.monetEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+         }
+         dark -> DarkScheme
+         else -> LightScheme
+-    }.withAmoled(appearance.amoledBlack && dark)
++    }
++    val accent = accentColor(appearance.accentName, dark)
++    val scheme = (if (appearance.monetEnabled) baseScheme else baseScheme.copy(
++        primary = accent,
++        primaryContainer = accent.copy(alpha = if (dark) .30f else .16f),
++    )).withAmoled(appearance.amoledBlack && dark)
+ 
+     val tokens = if (dark) {
+         val page = if (appearance.amoledBlack) Color.Black else Color(0xFF111116)
+@@ -137,8 +144,8 @@
+         )
+     } else {
+         MiuixTokens(
+-            pageBackground = Color(0xFFF0F1FF),
+-            card = Color(0xFFFAFAFF),
++            pageBackground = if (appearance.uiStyle == UiStyle.MIUIX) Color(0xFFF0F1FF) else scheme.background,
++            card = if (appearance.uiStyle == UiStyle.MIUIX) Color(0xFFFAFAFF) else scheme.surface,
+             elevatedCard = Color.White,
+             textPrimary = Color(0xFF17171D),
+             textSecondary = Color(0xFF6D6D78),
+@@ -181,3 +188,12 @@
+         surfaceContainerHighest = Color(0xFF1E1E1E),
+     )
+ }
++
++
++private fun accentColor(name: String, dark: Boolean): Color = when (name) {
++    "紫色" -> if (dark) Color(0xFFD0BCFF) else Color(0xFF7355C7)
++    "绿色" -> if (dark) Color(0xFF75D9A7) else Color(0xFF168B5D)
++    "橙色" -> if (dark) Color(0xFFFFB875) else Color(0xFFC55A11)
++    "蓝色" -> if (dark) Color(0xFFAFC6FF) else Color(0xFF0B65D8)
++    else -> if (dark) Color(0xFFAFC6FF) else Color(0xFF0B65D8)
++}
