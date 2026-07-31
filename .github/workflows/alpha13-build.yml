@@ -34,11 +34,20 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android 37 platform
+      - name: Install Android 17 preview SDK
         shell: bash
         run: |
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-37' 'build-tools;36.0.0'
+          sdkmanager --list --channel=3 > /tmp/sdk-packages.txt
+          grep -E 'platforms;android-37|build-tools;37' /tmp/sdk-packages.txt || true
+          sdkmanager 'platforms;android-37' --channel=3
+          BUILD_TOOLS_PACKAGE="$(grep -oE 'build-tools;37[^ |]*' /tmp/sdk-packages.txt | sort -V | tail -n 1)"
+          if [ -n "$BUILD_TOOLS_PACKAGE" ]; then
+            sdkmanager "$BUILD_TOOLS_PACKAGE" --channel=3
+          else
+            sdkmanager 'build-tools;36.0.0'
+          fi
 
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
