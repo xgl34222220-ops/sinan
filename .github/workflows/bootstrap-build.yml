@@ -70,7 +70,7 @@ jobs:
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt
-          test -f app/src/main/java/io/github/xgl34222220/sinan/ui/DisplayPerformanceController.kt
+          test -f app/src/main/java/io/github/xgl34222220/sinan/DisplayPerformanceController.kt
 
       - name: Upload reconstructed source
         uses: actions/upload-artifact@v4
