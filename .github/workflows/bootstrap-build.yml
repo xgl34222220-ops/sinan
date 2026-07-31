@@ -3,6 +3,10 @@ name: Import Source and Build APK
 on:
   push:
     branches: [ main ]
+  issues:
+    types: [ opened ]
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
