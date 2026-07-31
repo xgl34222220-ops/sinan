@@ -1,0 +1,95 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt	2026-07-31 05:49:26.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/SinanViewModel.kt	2026-07-31 06:45:56.521221211 +0000
+@@ -831,28 +1058,91 @@
+         val updated = transform(_state.value.appearance)
+         _state.value = _state.value.copy(appearance = updated)
+         prefs.edit()
++            .putString("ui_style", updated.uiStyle.name)
+             .putString("theme_mode", updated.themeMode.name)
+             .putBoolean("monet", updated.monetEnabled)
++            .putString("color_style", updated.colorStyle.name)
++            .putString("color_standard", updated.colorStandard.name)
++            .putString("accent_name", updated.accentName)
+             .putBoolean("amoled", updated.amoledBlack)
+             .putBoolean("blur", updated.blurEnabled)
+             .putBoolean("floating_dock", updated.floatingDock)
+             .putBoolean("glass", updated.glassEnabled)
++            .putBoolean("bottom_bar_transition", updated.bottomBarTransition)
++            .putBoolean("predictive_back", updated.predictiveBack)
+             .putBoolean("high_refresh_rate", updated.highRefreshRate)
+             .apply()
+     }
+ 
+     private fun readAppearance(): AppearanceState = AppearanceState(
++        uiStyle = runCatching { UiStyle.valueOf(prefs.getString("ui_style", UiStyle.MIUIX.name)!!) }.getOrDefault(UiStyle.MIUIX),
+         themeMode = runCatching {
+             ThemeMode.valueOf(prefs.getString("theme_mode", ThemeMode.SYSTEM.name)!!)
+         }.getOrDefault(ThemeMode.SYSTEM),
+         monetEnabled = prefs.getBoolean("monet", true),
++        colorStyle = runCatching { ColorStyle.valueOf(prefs.getString("color_style", ColorStyle.VIBRANT.name)!!) }.getOrDefault(ColorStyle.VIBRANT),
++        colorStandard = runCatching { ColorStandard.valueOf(prefs.getString("color_standard", ColorStandard.MATERIAL_2021.name)!!) }.getOrDefault(ColorStandard.MATERIAL_2021),
++        accentName = prefs.getString("accent_name", "默认").orEmpty().ifBlank { "默认" },
+         amoledBlack = prefs.getBoolean("amoled", false),
+         blurEnabled = prefs.getBoolean("blur", false),
+         floatingDock = prefs.getBoolean("floating_dock", true),
+         glassEnabled = prefs.getBoolean("glass", true),
++        bottomBarTransition = prefs.getBoolean("bottom_bar_transition", true),
++        predictiveBack = prefs.getBoolean("predictive_back", true),
+         highRefreshRate = prefs.getBoolean("high_refresh_rate", true),
+     )
+ 
++    private fun readBehavior(): AppBehaviorState = AppBehaviorState(
++        acceleratedDownload = behaviorPrefs.getBoolean("accelerated_download", true),
++        mirrorUrl = behaviorPrefs.getString("mirror_url", "https://gh-proxy.org/").orEmpty(),
++        notificationsEnabled = behaviorPrefs.getBoolean("notifications", true),
++        detailedNotification = behaviorPrefs.getBoolean("detailed_notification", true),
++        statusPanelEntry = behaviorPrefs.getBoolean("status_panel_entry", true),
++        openPanelOnStart = behaviorPrefs.getBoolean("open_panel_on_start", false),
++        startupDestination = runCatching {
++            StartupDestination.valueOf(behaviorPrefs.getString("startup_destination", StartupDestination.PANEL.name)!!)
++        }.getOrDefault(StartupDestination.PANEL),
++    )
++
++    private fun readStrategyIcons(): Map<String, String> {
++        val json = runCatching { JSONObject(iconPrefs.getString("icons", "{}")) }.getOrElse { JSONObject() }
++        return buildMap {
++            json.keys().forEach { key -> json.optString(key).takeIf(String::isNotBlank)?.let { put(key, it) } }
++        }
++    }
++
++    private fun updateNotification() {
++        val current = _state.value
++        notificationController.update(
++            runtime = current.runtime,
++            traffic = current.traffic,
++            enabled = current.behavior.notificationsEnabled,
++            detailed = current.behavior.detailedNotification,
++            statusEntry = current.behavior.statusPanelEntry,
++        )
++    }
++
++    private fun resolveRuntimeFile(path: String): File {
++        val relative = path.trim().removePrefix("/")
++        return File(runtime.paths.home, relative).also { it.parentFile?.mkdirs() }
++    }
++
++    private fun downloadTextFile(url: String, target: File) {
++        val connection = URL(url).openConnection() as HttpURLConnection
++        try {
++            connection.connectTimeout = 12_000
++            connection.readTimeout = 45_000
++            connection.instanceFollowRedirects = true
++            connection.setRequestProperty("User-Agent", "Sinan/${BuildConfig.VERSION_NAME}")
++            if (connection.responseCode !in 200..299) error("HTTP ${connection.responseCode}")
++            val temp = File(target.parentFile, target.name + ".download")
++            connection.inputStream.use { input -> temp.outputStream().use { input.copyTo(it) } }
++            check(temp.length() > 16L) { "下载内容为空" }
++            if (target.exists()) target.delete()
++            check(temp.renameTo(target)) { "无法写入 ${target.name}" }
++        } finally { connection.disconnect() }
++    }
++
+     private fun mihomoApi(): MihomoApi {
+         cachedMihomoApi?.let { return it }
+         return MihomoApi.fromConfig(runtime.readConfig()).also { cachedMihomoApi = it }
