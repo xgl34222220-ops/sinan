@@ -30,6 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cp bootstrap/ui-fix.b64 /tmp/sinan-ui-fix.b64
           cat bootstrap/source.part00 \
               bootstrap/source.part01 \
               bootstrap/source.part02 \
@@ -39,6 +40,9 @@ jobs:
           echo "a82e1417db3e606ae84eb80addf1f1cc5de78ccd9abce8dc72ed5bf786842069  /tmp/sinan-source.tar.xz" | sha256sum -c -
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           tar -xJf /tmp/sinan-source.tar.xz -C .
+          base64 --decode /tmp/sinan-ui-fix.b64 > /tmp/sinan-ui-fix.tar.xz
+          echo "016f58ff39fd58d69b96898ea6f1d865addf79fb49562dfc881d08007d57ea37  /tmp/sinan-ui-fix.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/sinan-ui-fix.tar.xz -C .
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
 
@@ -63,7 +67,7 @@ jobs:
       - name: Upload reconstructed source
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-reconstructed-source
+          name: Sinan-reconstructed-source-alpha02
           path: /tmp/Sinan-reconstructed-source.tar.xz
           if-no-files-found: error
           retention-days: 7
@@ -116,7 +120,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-build-log
+          name: Sinan-build-log-alpha02
           path: build.log
           if-no-files-found: warn
           retention-days: 7
@@ -126,13 +130,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Sinan-0.4.0-alpha01-debug.apk
-          sha256sum dist/Sinan-0.4.0-alpha01-debug.apk > dist/SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Sinan-0.4.0-alpha02-debug.apk
+          sha256sum dist/Sinan-0.4.0-alpha02-debug.apk > dist/SHA256SUMS.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-0.4.0-alpha01-APK
+          name: Sinan-0.4.0-alpha02-APK
           path: dist/*
           if-no-files-found: error
           retention-days: 30
