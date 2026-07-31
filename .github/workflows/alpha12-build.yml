@@ -17,17 +17,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Diagnose alpha12 patch chunks
+      - name: Diagnose alpha12 part00 blocks
         shell: bash
         run: |
           set -euo pipefail
-          for f in overlay/alpha12-parts/part*; do
-            printf '%s raw-bytes=' "$f"
-            wc -c < "$f"
-            sha256sum "$f"
-            tr -d '\r\n\t ' < "$f" | sha256sum
+          rm -rf /tmp/a12blocks && mkdir -p /tmp/a12blocks
+          split -b 100 -d -a 2 overlay/alpha12-parts/part00 /tmp/a12blocks/block
+          for f in /tmp/a12blocks/block*; do
+            printf '%s ' "$(basename "$f")"
+            sha256sum "$f" | cut -d' ' -f1
           done
-          cat overlay/alpha12-parts/part* | tr -d '\r\n\t ' | sha256sum
           exit 1
 
       - name: Set up Java 17
@@ -59,7 +58,7 @@ jobs:
             --output /tmp/alpha11-source.zip
           unzip -q /tmp/alpha11-source.zip -d .
 
-          cat overlay/alpha12-parts/part* | tr -d '\r\n\t ' > /tmp/alpha12.patch.xz.b64
+          cat overlay/alpha12-parts/part* > /tmp/alpha12.patch.xz.b64
           base64 --decode /tmp/alpha12.patch.xz.b64 > /tmp/alpha12.patch.xz
           echo 'ea0fe9f96a0290569a3a6df112e0dc42d5d387e5b432de17602be7f1bf060f09  /tmp/alpha12.patch.xz' | sha256sum -c -
           xz -dc /tmp/alpha12.patch.xz > /tmp/alpha12.patch
