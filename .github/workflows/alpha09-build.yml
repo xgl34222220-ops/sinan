@@ -157,6 +157,33 @@ jobs:
           patch -p1 --batch < /tmp/alpha09.patch
           patch -p1 --batch < /tmp/alpha09-compile-fix.patch
 
+          # Prefer official repositories; mirror 5xx responses must not block dependency resolution.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('settings.gradle')
+          lines = path.read_text().splitlines()
+          output = []
+          index = 0
+          while index < len(lines):
+              line = lines[index]
+              output.append(line)
+              if line.strip() != 'repositories {':
+                  index += 1
+                  continue
+              index += 1
+              block = []
+              while index < len(lines) and lines[index].strip() != '}':
+                  block.append(lines[index])
+                  index += 1
+              preferred = [item for item in block if any(token in item for token in ('google()', 'mavenCentral()', 'gradlePluginPortal()'))]
+              fallback = [item for item in block if item not in preferred]
+              output.extend(preferred + fallback)
+              if index < len(lines):
+                  output.append(lines[index])
+                  index += 1
+          path.write_text('\n'.join(output) + '\n')
+          PY
+
           grep -q '0.5.0-alpha09' app/build.gradle
           test -f app/src/main/java/io/github/xgl34222220/sinan/core/MihomoConfigMetadata.kt
           grep -q 'supportsWebUi = false' app/src/main/java/io/github/xgl34222220/sinan/core/CoreCatalog.kt
