@@ -17,17 +17,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Diagnose alpha12 part00 blocks
+      - name: Verify alpha12 patch chunks
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/a12blocks && mkdir -p /tmp/a12blocks
-          split -b 100 -d -a 2 overlay/alpha12-parts/part00 /tmp/a12blocks/block
-          for f in /tmp/a12blocks/block*; do
-            printf '%s ' "$(basename "$f")"
-            sha256sum "$f" | cut -d' ' -f1
-          done
-          exit 1
+          echo 'a2ab8bb1b14362607b4dd2ec3d9ccd209e082c298a2273aa44b9505b47a88183  overlay/alpha12-parts/part00' | sha256sum -c -
+          echo '1c1dc54cc5c760904b0beec4ef9df0fd52b8c9a9e374f3a03e1675cf8d38ffa2  overlay/alpha12-parts/part01' | sha256sum -c -
+          echo '36f5fc705e05f0ad76cc0ae9a492d69263d9cf00f0cd9b4546314a227cabc7f9  overlay/alpha12-parts/part02' | sha256sum -c -
+          echo 'd4a8ce84f2797547328fc55fa6a2f9eb447126ba5185784c91eed7ed8f7f94b9  overlay/alpha12-parts/part03' | sha256sum -c -
+          echo 'fe33e467107ade5c54a89481a43b7e76e7e167743f848cf606667dc55f9ef1c2  overlay/alpha12-parts/part04' | sha256sum -c -
+          echo '56c7f332bb08c50b9d8783b17f11d1c2d5a3dee43f613fa71b2126f4cb8bbd1e  overlay/alpha12-parts/part05' | sha256sum -c -
+          echo '2a837ea22517ca09237d14ac1894ae86f4e7015f6c7029ef30107273fc99746b  overlay/alpha12-parts/part06' | sha256sum -c -
+          cat overlay/alpha12-parts/part* > /tmp/alpha12.patch.xz.b64
+          echo '7343919aa6b6ca6739262a15f5cbf1787d3623a8be9169784bb63ae73a1808d9  /tmp/alpha12.patch.xz.b64' | sha256sum -c -
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
