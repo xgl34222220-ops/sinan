@@ -18,6 +18,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Reconstruct and build alpha10
         shell: bash
         run: |
