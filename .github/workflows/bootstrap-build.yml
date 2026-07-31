@@ -3,6 +3,8 @@ name: Import Source and Build APK
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   issues:
     types: [ opened ]
   schedule:
@@ -21,6 +23,7 @@ jobs:
       - name: Checkout bootstrap repository
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Reconstruct Android source
