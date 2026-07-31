@@ -28,6 +28,9 @@ jobs:
 
           cp bootstrap/ui-fix.b64 /tmp/sinan-ui-fix.b64
           cp overlay/apply-alpha03-compile-fixes.py /tmp/apply-alpha03-compile-fixes.py
+          cp overlay/alpha05-fix1.b64 /tmp/sinan-alpha05-fix1.b64
+          echo "c090883bb26f6940e350ce06c77226f14ceb9b79b749b87e5f618a9a026f345f  /tmp/sinan-alpha05-fix1.b64" | sha256sum -c -
+
           cat overlay/alpha03.part00 \
               overlay/alpha03.part01 \
               overlay/alpha03.part02 \
@@ -77,6 +80,10 @@ jobs:
           base64 --decode /tmp/sinan-alpha05-overlay.b64 > /tmp/sinan-alpha05-overlay.tar.xz
           echo "dc526a16af94b7939486016a716fd79dd398e672187e218ebb90a17759deb7f4  /tmp/sinan-alpha05-overlay.tar.xz" | sha256sum -c -
           tar -xJf /tmp/sinan-alpha05-overlay.tar.xz -C .
+
+          base64 --decode /tmp/sinan-alpha05-fix1.b64 > /tmp/sinan-alpha05-fix1.tar.xz
+          echo "e15a552023b904ee3851e8ca5b400a03eb6d6f589da380e0ad2833004cde35da  /tmp/sinan-alpha05-fix1.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/sinan-alpha05-fix1.tar.xz -C .
 
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
