@@ -45,6 +45,7 @@ jobs:
           cp overlay/alpha07-tools-28.patch /tmp/sinan-alpha07-patches/
           cp overlay/alpha07-tools-29.patch /tmp/sinan-alpha07-patches/
           cp overlay/alpha07-theme.patch /tmp/sinan-alpha07-patches/
+          cp overlay/alpha07-fix-weight2.patch /tmp/sinan-alpha07-patches/
           cp overlay/alpha07-files/SettingsScreen.kt.part* /tmp/sinan-alpha07-files/
 
       - name: Reconstruct alpha06 source
@@ -93,7 +94,7 @@ jobs:
             alpha07-components-home.patch alpha07-network-tools.patch alpha07-panel.patch \
             alpha07-strategy-icons.patch \
             alpha07-tools-27.patch alpha07-tools-28.patch alpha07-tools-29.patch \
-            alpha07-theme.patch
+            alpha07-theme.patch alpha07-fix-weight2.patch
           do
             echo "Applying ${patch_name}"
             patch -p1 --batch --forward < "/tmp/sinan-alpha07-patches/${patch_name}"
