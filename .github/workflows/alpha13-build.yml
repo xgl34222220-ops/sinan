@@ -21,9 +21,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '8630f84ce0e87faf8718cf7ba40864e9f5b12cea0a2c54944fdfd5b255dc367f  overlay/alpha13-parts/part00' | sha256sum -c -
+          echo '2689c9a81ee04c70d0d7ce549affb76fa7b71ab25f047ae9b80128bdf3f82db4  overlay/alpha13-parts/part00' | sha256sum -c -
           cat overlay/alpha13-parts/part* > /tmp/alpha13.patch.xz.b64
-          echo '8630f84ce0e87faf8718cf7ba40864e9f5b12cea0a2c54944fdfd5b255dc367f  /tmp/alpha13.patch.xz.b64' | sha256sum -c -
+          echo '2689c9a81ee04c70d0d7ce549affb76fa7b71ab25f047ae9b80128bdf3f82db4  /tmp/alpha13.patch.xz.b64' | sha256sum -c -
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -34,16 +34,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android 36 platform
+      - name: Install Android 37 platform
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+          sdkmanager 'platforms;android-37' 'build-tools;36.0.0'
 
-      - name: Set up Gradle 8.13
+      - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.13'
+          gradle-version: '9.4.1'
 
       - name: Restore alpha12 source and apply alpha13 patch
         shell: bash
@@ -62,9 +62,9 @@ jobs:
 
           cat overlay/alpha13-parts/part* > /tmp/alpha13.patch.xz.b64
           base64 --decode /tmp/alpha13.patch.xz.b64 > /tmp/alpha13.patch.xz
-          echo 'cb2a16f5eb487d4b567bb502f0ca57cbb282b3fdbcd87abf4e92aaae65f0ee1b  /tmp/alpha13.patch.xz' | sha256sum -c -
+          echo '71119059cec70231b2d6b32e6fbf3b19df6fc8c018e356851f3cd1ded61891ce  /tmp/alpha13.patch.xz' | sha256sum -c -
           xz -dc /tmp/alpha13.patch.xz > /tmp/alpha13.patch
-          echo 'cd6794774bc12964fa7b78df478c36b84d1d614680fabfbb3824bccc4c9e9c61  /tmp/alpha13.patch' | sha256sum -c -
+          echo 'f92ae7edeb0c8b51c2a94aec083267e497eeae7e2c973ad25ffbc8b951de4cf3  /tmp/alpha13.patch' | sha256sum -c -
           patch -p1 --forward --batch < /tmp/alpha13.patch
 
           grep -q "miuix-ui-android:0.9.3" app/build.gradle
@@ -72,6 +72,7 @@ jobs:
           grep -q "MiuixTheme(colors = miuixColors" app/src/main/java/io/github/xgl34222220/sinan/ui/theme/SinanTheme.kt
           grep -q "fun LibrariesScreen" app/src/main/java/io/github/xgl34222220/sinan/ui/screens/LibrariesScreen.kt
           grep -q "coil3.compose.AsyncImage" app/src/main/java/io/github/xgl34222220/sinan/ui/screens/PanelScreen.kt
+          grep -q 'compileSdk 37' app/build.gradle
           grep -q 'versionName "0.5.0-alpha13"' app/build.gradle
 
       - name: Build release APK
