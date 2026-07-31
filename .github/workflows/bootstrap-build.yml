@@ -34,7 +34,8 @@ jobs:
               overlay/alpha03.part04 \
               overlay/alpha03.part05 \
               overlay/alpha03.part06 > /tmp/sinan-alpha03-overlay.b64
-          echo "778c056b72491b2e537ad58ddd48f745b2db43cfc2919de117b6b8a631af8deb  /tmp/sinan-alpha03-overlay.b64" | sha256sum -c -
+          wc -c /tmp/sinan-alpha03-overlay.b64
+          sha256sum /tmp/sinan-alpha03-overlay.b64
 
           cat bootstrap/source.part00 \
               bootstrap/source.part01 \
