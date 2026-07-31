@@ -54,6 +54,20 @@ jobs:
             -e '/app:itemRippleColor=/d' \
             app/src/main/res/layout/activity_main.xml
 
+      - name: Pack reconstructed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude='*/build' -cJf /tmp/Sinan-reconstructed-source.tar.xz .
+
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-reconstructed-source
+          path: /tmp/Sinan-reconstructed-source.tar.xz
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
