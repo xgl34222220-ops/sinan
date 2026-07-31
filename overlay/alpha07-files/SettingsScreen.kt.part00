@@ -1,0 +1,124 @@
+package io.github.xgl34222220.sinan.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.xgl34222220.sinan.AppBehaviorState
+import io.github.xgl34222220.sinan.AppearanceState
+import io.github.xgl34222220.sinan.BuildConfig
+import io.github.xgl34222220.sinan.ColorStandard
+import io.github.xgl34222220.sinan.ColorStyle
+import io.github.xgl34222220.sinan.SinanUiState
+import io.github.xgl34222220.sinan.StartupDestination
+import io.github.xgl34222220.sinan.ThemeMode
+import io.github.xgl34222220.sinan.UiStyle
+import io.github.xgl34222220.sinan.data.RuntimeSettings
+import io.github.xgl34222220.sinan.ui.components.MiuixCard
+import io.github.xgl34222220.sinan.ui.components.MiuixDivider
+import io.github.xgl34222220.sinan.ui.components.MiuixFilledButton
+import io.github.xgl34222220.sinan.ui.components.MiuixPage
+import io.github.xgl34222220.sinan.ui.components.MiuixPreferenceRow
+import io.github.xgl34222220.sinan.ui.components.MiuixSectionTitle
+import io.github.xgl34222220.sinan.ui.components.MiuixSwitchRow
+import io.github.xgl34222220.sinan.ui.theme.LocalMiuixTokens
+
+@Composable
+fun SettingsScreen(
+    state: SinanUiState,
+    onBootAutoStart: (Boolean) -> Unit,
+    onUpdateBehavior: ((AppBehaviorState) -> AppBehaviorState) -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onOpenProxy: () -> Unit,
+    onOpenApps: () -> Unit,
+    onOpenAppearance: () -> Unit,
+) {
+    var destinationDialog by remember { mutableStateOf(false) }
+    MiuixPage(title = "设置") {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                MiuixCard(strong = true) {
+                    Column {
+                        MiuixSwitchRow(
+                            title = "开机自启",
+                            summary = "安装 Root 开机脚本，开机后自动启动透明代理",
+                            icon = Icons.Rounded.PowerSettingsNew,
+                            checked = state.settings.bootAutoStart,
+                            onCheckedChange = onBootAutoStart,
+                        )
+                        MiuixDivider(startPadding = 72.dp)
+                        MiuixSwitchRow(
+                            title = "加速下载",
+                            summary = "为下载远程资源启用加速通道",
+                            icon = Icons.Rounded.Download,
+                            checked = state.behavior.acceleratedDownload,
+                            onCheckedChange = { value -> onUpdateBehavior { it.copy(acceleratedDownload = value) } },
+                        )
+                        if (state.behavior.acceleratedDownload) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().padding(start = 72.dp, end = 16.dp, bottom = 14.dp),
+                                shape = RoundedCornerShape(15.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = .10f),
+                            ) {
+                                Text(
+                                    state.behavior.mirrorUrl,
+                                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 11.5.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                MiuixCard(strong = true) {
+                    Column {
+                        MiuixSwitchRow(
+                            title = "通知",
