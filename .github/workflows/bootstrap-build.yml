@@ -60,6 +60,15 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt
 
+      - name: Upload overlay diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-alpha03-overlay-diagnostic
+          path: /tmp/sinan-alpha03-overlay.b64
+          if-no-files-found: warn
+          retention-days: 1
+
       - name: Upload reconstructed source
         uses: actions/upload-artifact@v4
         with:
