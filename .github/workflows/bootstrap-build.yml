@@ -47,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           sed -i \
+            -e '/app:itemActiveIndicatorColor=/d' \
             -e '/app:itemActiveIndicatorEnabled=/d' \
             -e '/app:itemActiveIndicatorHeight=/d' \
             -e '/app:itemActiveIndicatorMarginHorizontal=/d' \
