@@ -48,6 +48,7 @@ jobs:
           cp overlay/alpha07-files/SettingsScreen.kt.part* /tmp/sinan-alpha07-files/
           cp overlay/alpha08-xor/*.bin /tmp/sinan-alpha08-xor/
           cp overlay/alpha09-b64/part* /tmp/sinan-alpha09-b64/
+          cp overlay/alpha09-compile-fix.patch /tmp/alpha09-compile-fix.patch
           cp bootstrap/ui-fix.b64 /tmp/sinan-ui-fix.b64
           cp overlay/apply-alpha03-compile-fixes.py /tmp/apply-alpha03-compile-fixes.py
           cp overlay/alpha05-fix1.b64 /tmp/sinan-alpha05-fix1.b64
@@ -154,6 +155,7 @@ jobs:
           xz -dc /tmp/alpha09.patch.xz > /tmp/alpha09.patch
           echo '6c7debe1fad152deba7af2bcc41c5fda0a6da8ec56bacf615ba8410afaeafa3e  /tmp/alpha09.patch' | sha256sum -c -
           patch -p1 --batch < /tmp/alpha09.patch
+          patch -p1 --batch < /tmp/alpha09-compile-fix.patch
 
           grep -q '0.5.0-alpha09' app/build.gradle
           test -f app/src/main/java/io/github/xgl34222220/sinan/core/MihomoConfigMetadata.kt
