@@ -4,3 +4,4 @@ Retry with Java 17 for Android SDK tools.
 Retry with pinned BoxProxy release assets.
 Retry after navigation resource compatibility fix.
 Capture Gradle build log artifact.
+Retry after removing itemActiveIndicatorColor.
