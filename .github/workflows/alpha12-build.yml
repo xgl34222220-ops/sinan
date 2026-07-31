@@ -46,8 +46,7 @@ jobs:
             --output /tmp/alpha11-source.zip
           unzip -q /tmp/alpha11-source.zip -d .
 
-          cat overlay/alpha12-parts/part* > /tmp/alpha12.patch.xz.b64
-          echo '7343919aa6b6ca6739262a15f5cbf1787d3623a8be9169784bb63ae73a1808d9  /tmp/alpha12.patch.xz.b64' | sha256sum -c -
+          cat overlay/alpha12-parts/part* | tr -d '\r\n\t ' > /tmp/alpha12.patch.xz.b64
           base64 --decode /tmp/alpha12.patch.xz.b64 > /tmp/alpha12.patch.xz
           echo 'ea0fe9f96a0290569a3a6df112e0dc42d5d387e5b432de17602be7f1bf060f09  /tmp/alpha12.patch.xz' | sha256sum -c -
           xz -dc /tmp/alpha12.patch.xz > /tmp/alpha12.patch
