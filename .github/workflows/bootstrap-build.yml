@@ -27,6 +27,7 @@ jobs:
           set -euo pipefail
 
           cp bootstrap/ui-fix.b64 /tmp/sinan-ui-fix.b64
+          cp overlay/apply-alpha03-compile-fixes.py /tmp/apply-alpha03-compile-fixes.py
           cat overlay/alpha03.part00 \
               overlay/alpha03.part01 \
               overlay/alpha03.part02 \
@@ -34,8 +35,7 @@ jobs:
               overlay/alpha03.part04 \
               overlay/alpha03.part05 \
               overlay/alpha03.part06 > /tmp/sinan-alpha03-overlay.b64
-          wc -c /tmp/sinan-alpha03-overlay.b64
-          sha256sum /tmp/sinan-alpha03-overlay.b64
+          echo "778c056b72491b2e537ad58ddd48f745b2db43cfc2919de117b6b8a631af8deb  /tmp/sinan-alpha03-overlay.b64" | sha256sum -c -
 
           cat bootstrap/source.part00 \
               bootstrap/source.part01 \
@@ -55,19 +55,11 @@ jobs:
           base64 --decode /tmp/sinan-alpha03-overlay.b64 > /tmp/sinan-alpha03-overlay.tar.xz
           echo "fac980368aec81c2cad1695b7db4db067c95cd1f6bafbe2e45f4d23378e7062f  /tmp/sinan-alpha03-overlay.tar.xz" | sha256sum -c -
           tar -xJf /tmp/sinan-alpha03-overlay.tar.xz -C .
+          python3 /tmp/apply-alpha03-compile-fixes.py
 
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt
-
-      - name: Upload overlay diagnostic
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Sinan-alpha03-overlay-diagnostic
-          path: /tmp/sinan-alpha03-overlay.b64
-          if-no-files-found: warn
-          retention-days: 1
 
       - name: Upload reconstructed source
         uses: actions/upload-artifact@v4
