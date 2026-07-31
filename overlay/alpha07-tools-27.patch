@@ -1,0 +1,36 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt	2026-07-31 04:36:06.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/screens/ToolsScreen.kt	2026-07-31 06:39:44.909212724 +0000
+@@ -11,9 +11,17 @@
+ import androidx.compose.material.icons.rounded.FileUpload
+ import androidx.compose.material.icons.rounded.Folder
+ import androidx.compose.material.icons.rounded.Language
++import androidx.compose.material.icons.rounded.NetworkCheck
++import androidx.compose.material.icons.rounded.Router
++import androidx.compose.material.icons.rounded.RssFeed
++import androidx.compose.material.icons.rounded.Security
++import androidx.compose.material.icons.rounded.SystemUpdate
++import androidx.compose.material.icons.rounded.Wifi
++import androidx.compose.material.icons.rounded.WifiTethering
+ import androidx.compose.runtime.Composable
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
++import io.github.xgl34222220.sinan.SinanUiState
+ import io.github.xgl34222220.sinan.ui.components.MiuixCard
+ import io.github.xgl34222220.sinan.ui.components.MiuixDivider
+ import io.github.xgl34222220.sinan.ui.components.MiuixPage
+@@ -22,6 +30,14 @@
+ 
+ @Composable
+ fun ToolsScreen(
++    state: SinanUiState,
++    onOpenWifi: () -> Unit,
++    onOpenHotspot: () -> Unit,
++    onOpenBypass: () -> Unit,
++    onOpenSubscriptions: () -> Unit,
++    onOpenCnip: () -> Unit,
++    onUpdateWebUi: () -> Unit,
++    onUpdateCore: () -> Unit,
+     onOpenConfig: () -> Unit,
+     onImportConfig: () -> Unit,
+     onOpenLogs: () -> Unit,
