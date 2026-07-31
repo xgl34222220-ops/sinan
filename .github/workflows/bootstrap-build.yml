@@ -91,8 +91,20 @@ jobs:
           sha256sum app/src/main/assets/boxctl/arm64-v8a/boxctl app/src/main/assets/boxctl/arm64-v8a/boxbpf
 
       - name: Build installable debug APK
+        id: build
         shell: bash
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-build-log
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Prepare APK artifact
         shell: bash
