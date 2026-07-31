@@ -1,0 +1,92 @@
+diff -ruN sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt
+--- sinan_alpha06/app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt	2026-07-31 05:49:26.000000000 +0000
++++ sinan_alpha07/app/src/main/java/io/github/xgl34222220/sinan/ui/SinanApp.kt	2026-07-31 06:43:59.085218529 +0000
+@@ -155,11 +200,18 @@
+             ScreenRoute.Appearance -> AppearanceSettingsScreen(
+                 appearance = state.appearance,
+                 onBack = { route = ScreenRoute.Main(MainTab.SETTINGS) },
++                onUiStyle = viewModel::setUiStyle,
+                 onThemeMode = viewModel::setThemeMode,
+                 onMonet = viewModel::setMonetEnabled,
+                 onAmoled = viewModel::setAmoledBlack,
++                onColorStyle = viewModel::setColorStyle,
++                onColorStandard = viewModel::setColorStandard,
++                onAccentName = viewModel::setAccentName,
++                onBlur = viewModel::setBlurEnabled,
+                 onFloatingDock = viewModel::setFloatingDock,
+                 onGlass = viewModel::setGlassEnabled,
++                onBottomTransition = viewModel::setBottomBarTransition,
++                onPredictiveBack = viewModel::setPredictiveBack,
+                 onHighRefresh = viewModel::setHighRefreshRate,
+             )
+             ScreenRoute.ProxySettings -> BasicProxySettingsScreen(
+@@ -172,26 +224,11 @@
+                 state = state,
+                 onBack = { route = ScreenRoute.Main(MainTab.TOOLS) },
+                 onChange = viewModel::updateConfig,
+-                onImport = {
+-                    configPicker.launch(
+-                        arrayOf(
+-                            "application/x-yaml",
+-                            "application/yaml",
+-                            "text/yaml",
+-                            "text/x-yaml",
+-                            "text/plain",
+-                            "application/octet-stream",
+-                        ),
+-                    )
+-                },
++                onImport = { launchConfigPicker(configPicker) },
+                 onExport = { configExporter.launch("config.yaml") },
+                 onSave = viewModel::saveConfig,
+             )
+-            ScreenRoute.Logs -> LogsScreen(
+-                state = state,
+-                onBack = { route = ScreenRoute.Main(MainTab.TOOLS) },
+-                onRefresh = viewModel::loadLogs,
+-            )
++            ScreenRoute.Logs -> LogsScreen(state, { route = ScreenRoute.Main(MainTab.TOOLS) }, viewModel::loadLogs)
+             ScreenRoute.Apps -> AppsScreen(
+                 state = state,
+                 onBack = { route = ScreenRoute.Main(MainTab.TOOLS) },
+@@ -202,10 +239,28 @@
+                 onToggleVisible = viewModel::toggleVisibleAppSelection,
+                 onSave = viewModel::saveApps,
+             )
+-            ScreenRoute.WebUi -> EmbeddedWebUiScreen(
+-                url = state.webUiUrl,
+-                running = state.runtime.running,
+-                onBack = { route = ScreenRoute.Main(MainTab.TOOLS) },
++            ScreenRoute.WebUi -> EmbeddedWebUiScreen(state.webUiUrl, state.runtime.running) { route = ScreenRoute.Main(MainTab.TOOLS) }
++            ScreenRoute.Wifi -> WifiMatchScreen(state, { route = ScreenRoute.Main(MainTab.TOOLS) }, viewModel::updateWifiSettings) { viewModel.saveNetworkTools("Wi-Fi 匹配规则已保存") }
++            ScreenRoute.Hotspot -> HotspotScreen(state, { route = ScreenRoute.Main(MainTab.TOOLS) }, viewModel::updateHotspotSettings) { viewModel.saveNetworkTools("热点配置已保存") }
++            ScreenRoute.Bypass -> BypassRulesScreen(state, { route = ScreenRoute.Main(MainTab.TOOLS) }, viewModel::updateBypassRules) { viewModel.saveNetworkTools("绕过规则已保存") }
++            ScreenRoute.Cnip -> CnipSettingsScreen(
++                state,
++                { route = ScreenRoute.Main(MainTab.TOOLS) },
++                viewModel::updateCnipSettings,
++                { viewModel.saveNetworkTools("CNIP 设置已保存") },
++                viewModel::updateCnipLists,
++            )
++            ScreenRoute.Subscriptions -> SubscriptionManagerScreen(
++                state,
++                { route = ScreenRoute.Main(MainTab.TOOLS) },
++                viewModel::loadProxyProviders,
++                viewModel::updateProxyProvider,
++                viewModel::updateAllProxyProviders,
++            )
++            ScreenRoute.StrategyIcons -> StrategyIconScreen(
++                state = state,
++                onBack = { route = ScreenRoute.Main(MainTab.PANEL) },
++                onSetIcon = viewModel::setStrategyIcon,
+             )
+         }
+ 
+@@ -223,6 +278,7 @@
+                 onSelect = { route = ScreenRoute.Main(tabs[it]) },
+                 floating = state.appearance.floatingDock,
+                 glass = state.appearance.glassEnabled,
++                animateSelection = state.appearance.bottomBarTransition,
+                 modifier = Modifier.align(Alignment.BottomCenter),
+             )
+         }
