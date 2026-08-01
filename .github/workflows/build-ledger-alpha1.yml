@@ -20,7 +20,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '9f0302fee732a69160301bba94d156260512d8b92969c15f6dd567288768cdc7  source/ledger-alpha1.tar.xz.b64' | sha256sum -c -
           base64 --decode source/ledger-alpha1.tar.xz.b64 > /tmp/sinan-ledger-alpha1.tar.xz
           echo 'a6fc781868cf5332ee3a74190a9ec1492f6730aab1ef41fb685769e63c5c5b96  /tmp/sinan-ledger-alpha1.tar.xz' | sha256sum -c -
           rm -rf app build.gradle settings.gradle gradle.properties
