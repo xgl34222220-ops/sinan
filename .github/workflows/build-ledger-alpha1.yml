@@ -1,4 +1,4 @@
-name: Build Sinan Ledger alpha1
+name: Build Sinan Ledger alpha2
 
 on:
   pull_request:
@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   build:
@@ -17,36 +16,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Restore alpha1 source
+      - name: Restore and audit alpha2 source
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          rm -rf app build.gradle settings.gradle gradle.properties dist build.log
-          curl --fail --location \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/8811035962/zip" \
-            --output /tmp/ledger-alpha1-source.zip
-          unzip -q -o /tmp/ledger-alpha1-source.zip -d .
-          rm -rf app/build
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("app/src/main/java/io/github/xgl34222220/sinanledger/ui/LedgerApp.kt")
-          source = path.read_text(encoding="utf-8")
-          old = "Modifier.padding(horizontal = 12.dp, top = 4.dp)"
-          new = "Modifier.padding(start = 12.dp, top = 4.dp, end = 12.dp)"
-          if old not in source:
-              raise SystemExit("Expected SectionLabel padding expression not found")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8")
-          PY
-          grep -q "applicationId 'io.github.xgl34222220.sinanledger'" app/build.gradle
-          grep -q 'class PaymentNotificationListener' app/src/main/java/io/github/xgl34222220/sinanledger/service/PaymentNotificationListener.kt
-          grep -q "org.jetbrains.kotlin.plugin.compose.*2.4.0" build.gradle
-          grep -q 'versionName .0.1.0-alpha1.' app/build.gradle
-          grep -q 'padding(start = 12.dp, top = 4.dp, end = 12.dp)' app/src/main/java/io/github/xgl34222220/sinanledger/ui/LedgerApp.kt
+          rm -rf app build.gradle settings.gradle gradle.properties README.md dist build.log
+          base64 --decode source/ledger-alpha2.tar.xz.b64 > /tmp/sinan-ledger-alpha2.tar.xz
+          echo 'ff115b748bd3719318b83239e36182873e00fc7a9123ae8127379682fe144efe  /tmp/sinan-ledger-alpha2.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/sinan-ledger-alpha2.tar.xz -C .
+
+          grep -q "versionName '0.1.0-alpha2'" app/build.gradle
+          grep -q 'miuix-ui-android:0.9.3' app/build.gradle
+          grep -q 'miuix-preference-android:0.9.3' app/build.gradle
+          grep -q 'miuix-icons-android:0.9.3' app/build.gradle
+          grep -q 'miuix-squircle-android:0.9.3' app/build.gradle
+          ! grep -q 'androidx.compose.material3:material3' app/build.gradle
+
+          UI_FILE=app/src/main/java/io/github/xgl34222220/sinanledger/ui/LedgerApp.kt
+          THEME_FILE=app/src/main/java/io/github/xgl34222220/sinanledger/ui/theme/SinanLedgerTheme.kt
+          grep -q 'top.yukonga.miuix.kmp.basic.Scaffold' "$UI_FILE"
+          grep -q 'top.yukonga.miuix.kmp.basic.TopAppBar' "$UI_FILE"
+          grep -q 'top.yukonga.miuix.kmp.basic.FloatingNavigationBar' "$UI_FILE"
+          grep -q 'top.yukonga.miuix.kmp.basic.Card' "$UI_FILE"
+          grep -q 'top.yukonga.miuix.kmp.basic.BasicComponent' "$UI_FILE"
+          grep -q 'top.yukonga.miuix.kmp.preference.SwitchPreference' "$UI_FILE"
+          grep -q 'top.yukonga.miuix.kmp.preference.ArrowPreference' "$UI_FILE"
+          grep -q 'top.yukonga.miuix.kmp.overlay.OverlayDialog' "$UI_FILE"
+          grep -q 'top.yukonga.miuix.kmp.basic.TextField' "$UI_FILE"
+          grep -q 'ThemeController' "$THEME_FILE"
+          ! grep -q 'androidx.compose.material3' "$UI_FILE"
+          ! grep -q 'androidx.compose.material3' "$THEME_FILE"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -76,15 +75,15 @@ jobs:
           set -euo pipefail
           gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee build.log
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Sinan-Ledger-0.1.0-alpha1.apk
-          sha256sum dist/Sinan-Ledger-0.1.0-alpha1.apk > dist/Sinan-Ledger-0.1.0-alpha1-SHA256.txt
-          unzip -t dist/Sinan-Ledger-0.1.0-alpha1.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Sinan-Ledger-0.1.0-alpha2.apk
+          sha256sum dist/Sinan-Ledger-0.1.0-alpha2.apk > dist/Sinan-Ledger-0.1.0-alpha2-SHA256.txt
+          unzip -tq dist/Sinan-Ledger-0.1.0-alpha2.apk
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-Ledger-alpha1-build-log
+          name: Sinan-Ledger-alpha2-build-log
           path: build.log
           if-no-files-found: warn
           retention-days: 7
@@ -93,7 +92,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-Ledger-alpha1-source-fixed
+          name: Sinan-Ledger-alpha2-source
           path: |
             app
             build.gradle
@@ -106,7 +105,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-Ledger-0.1.0-alpha1
+          name: Sinan-Ledger-0.1.0-alpha2
           path: dist/*
           if-no-files-found: error
           retention-days: 30
