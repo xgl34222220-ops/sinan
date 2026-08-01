@@ -20,13 +20,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '02434cff1cef0d88a8679532734b20e023de6c98810accadc31de0bcdc004ffb  source/ledger-alpha1.tar.xz.b64' | sha256sum -c -
+          echo '9f0302fee732a69160301bba94d156260512d8b92969c15f6dd567288768cdc7  source/ledger-alpha1.tar.xz.b64' | sha256sum -c -
           base64 --decode source/ledger-alpha1.tar.xz.b64 > /tmp/sinan-ledger-alpha1.tar.xz
-          echo 'f7bde973d5fc42198840560315ea83bc37319e4a3308b2373bcfd95525d4bb44  /tmp/sinan-ledger-alpha1.tar.xz' | sha256sum -c -
+          echo 'a6fc781868cf5332ee3a74190a9ec1492f6730aab1ef41fb685769e63c5c5b96  /tmp/sinan-ledger-alpha1.tar.xz' | sha256sum -c -
           rm -rf app build.gradle settings.gradle gradle.properties
           tar -xJf /tmp/sinan-ledger-alpha1.tar.xz -C .
           grep -q "applicationId 'io.github.xgl34222220.sinanledger'" app/build.gradle
           grep -q 'class PaymentNotificationListener' app/src/main/java/io/github/xgl34222220/sinanledger/service/PaymentNotificationListener.kt
+          grep -q "org.jetbrains.kotlin.plugin.compose.*2.4.0" build.gradle
           grep -q 'versionName .0.1.0-alpha1.' app/build.gradle
 
       - name: Set up Java 17
