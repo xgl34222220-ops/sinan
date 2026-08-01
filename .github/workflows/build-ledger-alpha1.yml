@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
@@ -16,14 +17,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify and restore source
+      - name: Restore alpha1 source
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          base64 --decode source/ledger-alpha1.tar.xz.b64 > /tmp/sinan-ledger-alpha1.tar.xz
-          echo 'a6fc781868cf5332ee3a74190a9ec1492f6730aab1ef41fb685769e63c5c5b96  /tmp/sinan-ledger-alpha1.tar.xz' | sha256sum -c -
-          rm -rf app build.gradle settings.gradle gradle.properties
-          tar -xJf /tmp/sinan-ledger-alpha1.tar.xz -C .
+          rm -rf app build.gradle settings.gradle gradle.properties dist build.log
+          curl --fail --location \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/8810742485/zip" \
+            --output /tmp/ledger-alpha1-source.zip
+          unzip -q -o /tmp/ledger-alpha1-source.zip -d .
+          rm -rf app/build
+          sed -i "s/version '2.2.10'/version '2.4.0'/" build.gradle
           grep -q "applicationId 'io.github.xgl34222220.sinanledger'" app/build.gradle
           grep -q 'class PaymentNotificationListener' app/src/main/java/io/github/xgl34222220/sinanledger/service/PaymentNotificationListener.kt
           grep -q "org.jetbrains.kotlin.plugin.compose.*2.4.0" build.gradle
@@ -74,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Sinan-Ledger-alpha1-source
+          name: Sinan-Ledger-alpha1-source-fixed
           path: |
             app
             build.gradle
@@ -82,7 +91,7 @@ jobs:
             gradle.properties
             README.md
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 30
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
