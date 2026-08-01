@@ -25,15 +25,16 @@ jobs:
           echo 'ff115b748bd3719318b83239e36182873e00fc7a9123ae8127379682fe144efe  /tmp/sinan-ledger-alpha2.tar.xz' | sha256sum -c -
           tar -xJf /tmp/sinan-ledger-alpha2.tar.xz -C .
 
+          UI_FILE=app/src/main/java/io/github/xgl34222220/sinanledger/ui/LedgerApp.kt
+          THEME_FILE=app/src/main/java/io/github/xgl34222220/sinanledger/ui/theme/SinanLedgerTheme.kt
+          sed -i '/import androidx.compose.foundation.layout.weight/d' "$UI_FILE"
+
           grep -q "versionName '0.1.0-alpha2'" app/build.gradle
           grep -q 'miuix-ui-android:0.9.3' app/build.gradle
           grep -q 'miuix-preference-android:0.9.3' app/build.gradle
           grep -q 'miuix-icons-android:0.9.3' app/build.gradle
           grep -q 'miuix-squircle-android:0.9.3' app/build.gradle
           ! grep -q 'androidx.compose.material3:material3' app/build.gradle
-
-          UI_FILE=app/src/main/java/io/github/xgl34222220/sinanledger/ui/LedgerApp.kt
-          THEME_FILE=app/src/main/java/io/github/xgl34222220/sinanledger/ui/theme/SinanLedgerTheme.kt
           grep -q 'top.yukonga.miuix.kmp.basic.Scaffold' "$UI_FILE"
           grep -q 'top.yukonga.miuix.kmp.basic.TopAppBar' "$UI_FILE"
           grep -q 'top.yukonga.miuix.kmp.basic.FloatingNavigationBar' "$UI_FILE"
