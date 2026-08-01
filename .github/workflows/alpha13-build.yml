@@ -21,9 +21,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '2689c9a81ee04c70d0d7ce549affb76fa7b71ab25f047ae9b80128bdf3f82db4  overlay/alpha13-parts/part00' | sha256sum -c -
+          echo 'dd70e73232a178a234ef6e10d776d4eb8ae71e1119b25abe3aed87439f22f4de  overlay/alpha13-parts/part00' | sha256sum -c -
           cat overlay/alpha13-parts/part* > /tmp/alpha13.patch.xz.b64
-          echo '2689c9a81ee04c70d0d7ce549affb76fa7b71ab25f047ae9b80128bdf3f82db4  /tmp/alpha13.patch.xz.b64' | sha256sum -c -
+          echo 'dd70e73232a178a234ef6e10d776d4eb8ae71e1119b25abe3aed87439f22f4de  /tmp/alpha13.patch.xz.b64' | sha256sum -c -
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -65,13 +65,14 @@ jobs:
 
           cat overlay/alpha13-parts/part* > /tmp/alpha13.patch.xz.b64
           base64 --decode /tmp/alpha13.patch.xz.b64 > /tmp/alpha13.patch.xz
-          echo '71119059cec70231b2d6b32e6fbf3b19df6fc8c018e356851f3cd1ded61891ce  /tmp/alpha13.patch.xz' | sha256sum -c -
+          echo '5c06cb35134b77ca70c6a2f2321a3a46f8580149f8beab2a340aa4b8b261cad1  /tmp/alpha13.patch.xz' | sha256sum -c -
           xz -dc /tmp/alpha13.patch.xz > /tmp/alpha13.patch
-          echo 'f92ae7edeb0c8b51c2a94aec083267e497eeae7e2c973ad25ffbc8b951de4cf3  /tmp/alpha13.patch' | sha256sum -c -
+          echo '76079b56a82c7f28fe85673337d29d737f2a9feebadafabd3123f5f7efbba0dd  /tmp/alpha13.patch' | sha256sum -c -
           patch -p1 --forward --batch < /tmp/alpha13.patch
 
           grep -q "miuix-ui-android:0.9.3" app/build.gradle
           grep -q "org.jetbrains.kotlin.plugin.compose" app/build.gradle
+          ! grep -q "org.jetbrains.kotlin.android" app/build.gradle
           grep -q "MiuixTheme(colors = miuixColors" app/src/main/java/io/github/xgl34222220/sinan/ui/theme/SinanTheme.kt
           grep -q "fun LibrariesScreen" app/src/main/java/io/github/xgl34222220/sinan/ui/screens/LibrariesScreen.kt
           grep -q "coil3.compose.AsyncImage" app/src/main/java/io/github/xgl34222220/sinan/ui/screens/PanelScreen.kt
