@@ -1,0 +1,120 @@
+name: Build Sinan alpha13 APK
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  android-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify alpha13 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'dd70e73232a178a234ef6e10d776d4eb8ae71e1119b25abe3aed87439f22f4de  overlay/alpha13-parts/part00' | sha256sum -c -
+          cat overlay/alpha13-parts/part* > /tmp/alpha13.patch.xz.b64
+          echo 'dd70e73232a178a234ef6e10d776d4eb8ae71e1119b25abe3aed87439f22f4de  /tmp/alpha13.patch.xz.b64' | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 17 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' --channel=3
+          test -f "$ANDROID_SDK_ROOT/platforms/android-37.0/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/37.0.0/aapt2"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore alpha12 source and apply alpha13 patch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf app build.gradle settings.gradle gradle.properties dist build.log
+          curl --fail --location \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/8809497025/zip" \
+            --output /tmp/alpha12-source.zip
+          unzip -q /tmp/alpha12-source.zip -d .
+
+          cat overlay/alpha13-parts/part* > /tmp/alpha13.patch.xz.b64
+          base64 --decode /tmp/alpha13.patch.xz.b64 > /tmp/alpha13.patch.xz
+          echo '5c06cb35134b77ca70c6a2f2321a3a46f8580149f8beab2a340aa4b8b261cad1  /tmp/alpha13.patch.xz' | sha256sum -c -
+          xz -dc /tmp/alpha13.patch.xz > /tmp/alpha13.patch
+          echo '76079b56a82c7f28fe85673337d29d737f2a9feebadafabd3123f5f7efbba0dd  /tmp/alpha13.patch' | sha256sum -c -
+          patch -p1 --forward --batch < /tmp/alpha13.patch
+
+          grep -q "miuix-ui-android:0.9.3" app/build.gradle
+          grep -q "org.jetbrains.kotlin.plugin.compose" app/build.gradle
+          ! grep -q "org.jetbrains.kotlin.android" app/build.gradle
+          grep -q "MiuixTheme(colors = miuixColors" app/src/main/java/io/github/xgl34222220/sinan/ui/theme/SinanTheme.kt
+          grep -q "fun LibrariesScreen" app/src/main/java/io/github/xgl34222220/sinan/ui/screens/LibrariesScreen.kt
+          grep -q "coil3.compose.AsyncImage" app/src/main/java/io/github/xgl34222220/sinan/ui/screens/PanelScreen.kt
+          grep -q 'compileSdk 37' app/build.gradle
+          grep -q 'versionName "0.5.0-alpha13"' app/build.gradle
+
+      - name: Build release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee build.log
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Sinan-0.5.0-alpha13-release.apk
+          sha256sum dist/Sinan-0.5.0-alpha13-release.apk > dist/Sinan-0.5.0-alpha13-SHA256.txt
+          unzip -t dist/Sinan-0.5.0-alpha13-release.apk
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-build-log-alpha13
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload reconstructed source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-reconstructed-source-alpha13
+          path: |
+            app
+            build.gradle
+            settings.gradle
+            gradle.properties
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sinan-0.5.0-alpha13-APK
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
