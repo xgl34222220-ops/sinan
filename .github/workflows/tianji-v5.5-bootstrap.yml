@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/tianji-v5.5-bootstrap.yml'
       - 'scripts/apply_v5_5_0.py'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
