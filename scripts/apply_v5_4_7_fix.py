@@ -19,9 +19,9 @@ rd = readme.read_text()
 
 a = replace_once(
     a,
-    """                maxTokens = if (primaryDecision.expectsReasoning) 4_096 else 640,
-                readTimeoutMs = if (primaryDecision.expectsReasoning) 60_000 else 30_000,""",
-    """                maxTokens = when {
+    '''                maxTokens = if (primaryDecision.expectsReasoning) 4_096 else 640,
+                readTimeoutMs = if (primaryDecision.expectsReasoning) 60_000 else 30_000,''',
+    '''                maxTokens = when {
                     primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 32_768
                     primaryDecision.expectsReasoning -> 8_192
                     else -> 1_024
@@ -30,46 +30,46 @@ a = replace_once(
                     primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 180_000
                     primaryDecision.expectsReasoning -> 90_000
                     else -> 30_000
-                },""",
+                },''',
     "primary output budget",
 )
 
 a = replace_once(
     a,
-    """            val retryDecision = if (reasoningFallback) {
+    '''            val retryDecision = if (reasoningFallback) {
                 AiReasoningEngine.resolve(config, AiReasoningMode.AUTO)
-            } else primaryDecision""",
-    """            val retryDecision = if (reasoningFallback) {
+            } else primaryDecision''',
+    '''            val retryDecision = if (reasoningFallback) {
                 AiReasoningEngine.fallback(config)
-            } else primaryDecision""",
+            } else primaryDecision''',
     "fallback decision",
 )
 
 a = replace_once(
     a,
-    """                maxTokens = 640,
-                readTimeoutMs = 20_000,""",
-    """                maxTokens = 1_024,
-                readTimeoutMs = 45_000,""",
+    '''                maxTokens = 640,
+                readTimeoutMs = 20_000,''',
+    '''                maxTokens = 1_024,
+                readTimeoutMs = 45_000,''',
     "fallback limits",
 )
 
 a = replace_once(
     a,
-    """                    val reason = if (reasoningControlFailure) "推理参数被接口拒绝" else "推理无最终答案"
-                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}重试"""",
-    """                    val reason = when {
+    '''                    val reason = if (reasoningControlFailure) "推理参数被接口拒绝" else "推理无最终答案"
+                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}重试"''',
+    '''                    val reason = when {
                         reasoningControlFailure -> "推理参数被接口拒绝"
                         firstFailure.message.orEmpty().contains("输出上限") -> "高推理达到输出上限"
                         else -> "推理无最终答案"
                     }
-                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}"""",
+                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}"''',
     "fallback note",
 )
 
 a = replace_once(
     a,
-    """    private fun JSONObject.requireCompletedResponse() {
+    '''    private fun JSONObject.requireCompletedResponse() {
         val status = optString("status")
         if (status == "incomplete") {
             val reason = optJSONObject("incomplete_details")?.optString("reason").orEmpty()
@@ -79,8 +79,8 @@ a = replace_once(
         when (choice?.optString("finish_reason")) {
             "length" -> error("模型达到输出上限，没有生成完整 JSON")
             "content_filter" -> error("模型输出被内容过滤器中断")
-        }""",
-    """    private fun JSONObject.hasCompleteForecastContent(): Boolean {
+        }''',
+    '''    private fun JSONObject.hasCompleteForecastContent(): Boolean {
         val content = extractContent()
         if (content.isBlank()) return false
         return runCatching {
@@ -105,15 +105,15 @@ a = replace_once(
         when (choice?.optString("finish_reason")) {
             "length" -> if (!completeForecastContent) error("模型达到输出上限，没有生成完整 JSON")
             "content_filter" -> error("模型输出被内容过滤器中断")
-        }""",
+        }''',
     "accept complete JSON on length finish",
 )
 
 r = replace_once(
     r,
-    """    fun stateFor(
-        decision: AiReasoningDecision,""",
-    """    fun fallback(config: AiConfig): AiReasoningDecision {
+    '''    fun stateFor(
+        decision: AiReasoningDecision,''',
+    '''    fun fallback(config: AiConfig): AiReasoningDecision {
         val low = resolve(config, AiReasoningMode.LOW)
         return when (low.protocol) {
             AiReasoningProtocol.DEEPSEEK,
@@ -129,7 +129,7 @@ r = replace_once(
     }
 
     fun stateFor(
-        decision: AiReasoningDecision,""",
+        decision: AiReasoningDecision,''',
     "explicit fallback",
 )
 
