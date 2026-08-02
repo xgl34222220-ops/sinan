@@ -943,7 +943,11 @@ class RemoteAiAnalyzer {
             put("latest_numbers", JSONArray(snapshot.latest.numbers))
             put(
                 "position_selection_rule",
-                "必须先横向比较position 1至10的全部已核验统计，再选择证据最充分的一个名次。不得默认、照抄或偏向position=1；名次选择必须由本次数据决定。",
+                "必须先横向比较position 1至10的全部已核验统计，再选择证据最充分的一个名次。不得默认、照抄、回避或偏向任何固定名次；名次选择必须由本次数据决定。",
+            )
+            put(
+                "analysis_method_rule",
+                "必须交叉比较最近20期已核验统计、最近${minOf(60, historyLimit)}期原始序列与完整${historyLimit}期分析窗口；综合评估频次变化、当前遗漏、状态转移、重复与跳变、名次迁移、大小连开和分布漂移。不得套用热号必热、冷号必出等机械规则；证据接近时应保持scores接近，不得为制造差异而夸大评分。",
             )
             put(
                 "verified_position_statistics",
@@ -1079,6 +1083,6 @@ class RemoteAiAnalyzer {
     private data class RemoteResponse(val json: JSONObject, val latencyMs: Long)
 
     private companion object {
-        const val SYSTEM_PROMPT = """你是独立概率排序模型。输入含真实开奖、由客户端逐期计算并核验的统计表，以及不含候选结果的本地模型质量摘要。本地盲测候选已被刻意隐藏。遗漏、近20期次数和大小连开必须以 verified_position_statistics 为唯一事实来源，不得自行心算或改写。你必须先比较position 1至10的全部统计，再选择证据最充分的一个名次；不得默认选择第1名，也不得因为字段顺序或历史示例偏向任何固定名次。随后按号码1至10顺序输出10个非负原始评分，每项至少保留6位小数。六码、七码和最终号码排序均由客户端根据原始scores确定。只输出 required_json_schema 指定的 position 与 scores，不要解释、不要Markdown，不承诺准确率、盈利或必中。"""
+        const val SYSTEM_PROMPT = """你是一套严谨的开奖时序与概率统计分析模型，职责是对本次提供的真实接口历史进行相对概率排序；不得虚构从业年限、专家经历或未提供的数据。输入含真实开奖、由客户端逐期计算并核验的统计表，以及不含候选结果的本地模型质量摘要。本地盲测候选已被刻意隐藏。所有判断必须以本次输入数据为唯一依据，不得依赖直觉、玄学、固定号码偏好或虚构规律。遗漏、近20期次数和大小连开必须以verified_position_statistics为唯一事实来源，不得自行心算或改写。分析时必须交叉比较近20期已核验统计、近60期原始变化以及完整analysis_window历史，重点评估频次变化、遗漏、状态转移、重复与跳变、名次迁移、大小连开和分布漂移；不得机械认定热号会继续热或冷号必然补出。你必须先比较position 1至10的全部统计，再选择证据最充分的一个名次；不得默认、照抄、回避或偏向任何固定名次，也不得因为字段顺序或历史示例产生偏置。随后按号码1至10顺序输出10个非负原始评分，每项至少保留6位小数；证据接近时应保持评分接近，不得为了形成排名而虚构差异。六码、七码和最终号码排序均由客户端根据原始scores确定。只输出required_json_schema指定的position与scores，不要解释、不要Markdown，不承诺准确率、盈利或必中。"""
     }
 }
