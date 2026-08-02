@@ -2,7 +2,7 @@ name: Tianji Android CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -10,12 +10,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: tianji-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test-build:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout Tianji
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Java 17
@@ -27,24 +31,35 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK 36
-        shell: bash
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
-
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
-      - name: Unit test and assemble Debug
-        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Upload Debug APK
+      - name: Unit tests, lint and builds
+        run: >-
+          gradle --no-daemon --stacktrace
+          :app:testDebugUnitTest
+          :app:testReleaseUnitTest
+          :app:lintDebug
+          :app:assembleDebug
+          :app:assembleRelease
+
+      - name: Upload Debug APK and reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Tianji-debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          name: Tianji-CI-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
           retention-days: 14
