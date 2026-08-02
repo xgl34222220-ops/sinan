@@ -7,20 +7,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
-import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.ai.AiAnalysisMode
+import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.ai.AiConnectionState
-import com.tianji.probabilitylab.nativev4.ai.AiForecast
-import com.tianji.probabilitylab.nativev4.ai.AiForecastRecord
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusAudit
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusEngine
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusRecord
+import com.tianji.probabilitylab.nativev4.ai.AiForecast
+import com.tianji.probabilitylab.nativev4.ai.AiForecastRecord
 import com.tianji.probabilitylab.nativev4.ai.AiLiveAudit
 import com.tianji.probabilitylab.nativev4.ai.AiProfileAudit
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningEngine
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningMode
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningState
 import com.tianji.probabilitylab.nativev4.ai.AiRunStatus
+import com.tianji.probabilitylab.nativev4.ai.AiTaskRegistry
 import com.tianji.probabilitylab.nativev4.ai.NativeEnsemblePredictor
 import com.tianji.probabilitylab.nativev4.ai.RemoteAiAnalyzer
 import com.tianji.probabilitylab.nativev4.ai.SecureAiConfigStore
@@ -28,25 +29,27 @@ import com.tianji.probabilitylab.nativev4.data.AppDatabase
 import com.tianji.probabilitylab.nativev4.data.ArchiveIntegrity
 import com.tianji.probabilitylab.nativev4.data.HistoryIntegrity
 import com.tianji.probabilitylab.nativev4.data.LotteryApi
+import com.tianji.probabilitylab.nativev4.data.hasAiForecast
+import com.tianji.probabilitylab.nativev4.domain.HistoryFingerprint
+import com.tianji.probabilitylab.nativev4.model.ApiTimeParser
 import com.tianji.probabilitylab.nativev4.model.DrawSnapshot
 import com.tianji.probabilitylab.nativev4.model.EvidenceMode
-import com.tianji.probabilitylab.nativev4.model.ForecastReport
 import com.tianji.probabilitylab.nativev4.model.ForecastDeadlineResolver
-import com.tianji.probabilitylab.nativev4.model.ApiTimeParser
+import com.tianji.probabilitylab.nativev4.model.ForecastReport
 import com.tianji.probabilitylab.nativev4.model.LiveAudit
 import com.tianji.probabilitylab.nativev4.model.LockedForecast
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.model.SourceHealth
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.UUID
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 data class AppUiState(
     val lottery: LotteryType = LotteryType.AZXY10,
@@ -82,13 +85,18 @@ class AppController(context: Context) {
     private val preferences = appContext.getSharedPreferences("tianji-native-v5", Context.MODE_PRIVATE)
     private val initialAiConcurrency = preferences.getInt("ai_concurrency", 3).coerceIn(1, 3)
     private val aiExecutor = ThreadPoolExecutor(
-        initialAiConcurrency, initialAiConcurrency, 60L, TimeUnit.SECONDS, LinkedBlockingQueue(),
+        initialAiConcurrency,
+        initialAiConcurrency,
+        60L,
+        TimeUnit.SECONDS,
+        LinkedBlockingQueue(),
     )
+    private val aiTasks = AiTaskRegistry(aiExecutor)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val generation = AtomicInteger(0)
     private val aiGeneration = AtomicInteger(0)
     private val verifiedHistoryReady = mutableSetOf<LotteryType>()
-    private val reportCache = mutableMapOf<LotteryType, ForecastReport>()
+    private val reportCache = mutableMapOf<LotteryType, CachedForecast>()
     private val aiConfigStore = SecureAiConfigStore(appContext)
     private val remoteAiAnalyzer = RemoteAiAnalyzer()
 
@@ -117,6 +125,7 @@ class AppController(context: Context) {
     }
 
     fun refresh() {
+        aiTasks.cancel()
         api.cancelActiveRequests()
         remoteAiAnalyzer.cancelActiveRequests()
         aiGeneration.incrementAndGet()
@@ -129,7 +138,9 @@ class AppController(context: Context) {
             aiStatuses = state.aiStatuses.mapValues { (_, status) ->
                 if (status.state == AiConnectionState.ANALYZING || status.state == AiConnectionState.TESTING) {
                     status.copy(state = AiConnectionState.UNTESTED, message = "数据刷新，任务已取消")
-                } else status
+                } else {
+                    status
+                }
             },
         )
         executor.execute {
@@ -140,7 +151,9 @@ class AppController(context: Context) {
                     onSuccess = { loaded ->
                         val preservedAi = if (state.report?.targetPeriod == loaded.report?.targetPeriod) {
                             state.aiForecasts
-                        } else emptyList()
+                        } else {
+                            emptyList()
+                        }
                         loaded.copy(
                             aiForecasts = (preservedAi + loaded.aiForecasts).distinctBy { it.profileId },
                             aiStatuses = state.aiStatuses,
@@ -169,7 +182,9 @@ class AppController(context: Context) {
         )
         aiConfigs = if (aiConfigs.any { it.id == normalized.id }) {
             aiConfigs.map { if (it.id == normalized.id) normalized else it }
-        } else aiConfigs + normalized
+        } else {
+            aiConfigs + normalized
+        }
         aiConfigStore.saveAll(aiConfigs)
         state = state.copy(
             aiError = null,
@@ -183,12 +198,12 @@ class AppController(context: Context) {
     }
 
     fun deleteAiConfig(profileId: String) {
+        aiTasks.cancel(profileId)
+        remoteAiAnalyzer.cancelActiveRequests(profileId)
         aiConfigs = aiConfigs.filterNot { it.id == profileId }
         aiAvailableModels = aiAvailableModels - profileId
         aiConfigStore.saveAll(aiConfigs)
-        state = state.copy(
-            aiStatuses = state.aiStatuses - profileId,
-        )
+        state = state.copy(aiStatuses = state.aiStatuses - profileId)
     }
 
     fun loadAiModels(profileId: String) {
@@ -198,7 +213,7 @@ class AppController(context: Context) {
                 profileId to AiRunStatus(profileId, AiConnectionState.TESTING, "正在读取真实模型列表…")
             ),
         )
-        aiExecutor.execute {
+        aiTasks.submit(profileId) {
             val result = runCatching { remoteAiAnalyzer.listModels(config) }
             mainHandler.post {
                 if (aiConfigs.none { it.id == profileId }) return@post
@@ -267,6 +282,7 @@ class AppController(context: Context) {
     }
 
     fun cancelAi(profileId: String) {
+        aiTasks.cancel(profileId)
         remoteAiAnalyzer.cancelActiveRequests(profileId)
         state = state.copy(
             aiStatuses = state.aiStatuses + (
@@ -295,15 +311,15 @@ class AppController(context: Context) {
                 profileId to AiRunStatus(profileId, AiConnectionState.TESTING, "正在测试真实接口…")
             ),
         )
-        aiExecutor.execute {
+        aiTasks.submit(profileId) {
             val result = runCatching { remoteAiAnalyzer.testConnection(config) }
             mainHandler.post {
                 if (aiConfigs.none { it.id == profileId }) return@post
                 if (state.aiStatuses[profileId]?.state != AiConnectionState.TESTING) return@post
                 val status = result.fold(
                     onSuccess = {
-                        aiConfigs = aiConfigs.map { config ->
-                            if (config.id == profileId) config.copy(capability = it.capability) else config
+                        aiConfigs = aiConfigs.map { current ->
+                            if (current.id == profileId) current.copy(capability = it.capability) else current
                         }
                         aiConfigStore.saveAll(aiConfigs)
                         AiRunStatus(
@@ -382,8 +398,6 @@ class AppController(context: Context) {
                 val verifiedSnapshot = loadedState.snapshot
                     ?: error("接口历史同步后未生成有效快照")
                 AnalysisPreparation(
-                    // load() merges the freshly fetched tail with the API-backed
-                    // historical store and performs a full continuity check.
                     apiSnapshot = verifiedSnapshot,
                     loadedState = loadedState,
                 )
@@ -397,17 +411,30 @@ class AppController(context: Context) {
                             markAiPreparationFailed(configs, "本地模型未完成，未调用 AI")
                             return@fold
                         }
-                        val runningStatuses = configs.associate { config ->
+                        val eligibleConfigs = configs.filterNot { config ->
+                            database.hasAiForecast(lottery, config.id, report.targetPeriod)
+                        }
+                        val skippedConfigs = configs - eligibleConfigs.toSet()
+                        val skippedStatuses = skippedConfigs.associate { config ->
+                            config.id to AiRunStatus(
+                                config.id,
+                                AiConnectionState.CONNECTED,
+                                "同步后发现本目标期已有冻结结果，未调用计费接口",
+                            )
+                        }
+                        val runningStatuses = eligibleConfigs.associate { config ->
                             val reasoning = AiReasoningEngine.resolve(config).displayLabel
                             val message = "接口历史已同步，正在${config.analysisMode.label} · $reasoning…"
                             config.id to AiRunStatus(config.id, AiConnectionState.ANALYZING, message)
                         }
                         state = preparation.loadedState.copy(
                             aiError = null,
-                            aiStatuses = state.aiStatuses + runningStatuses,
+                            aiStatuses = state.aiStatuses + skippedStatuses + runningStatuses,
                             aiForecasts = state.aiForecasts,
                         )
-                        launchAiRequests(configs, preparation.apiSnapshot, report, token)
+                        if (eligibleConfigs.isNotEmpty()) {
+                            launchAiRequests(eligibleConfigs, preparation.apiSnapshot, report, token)
+                        }
                     },
                     onFailure = {
                         markAiPreparationFailed(
@@ -428,13 +455,23 @@ class AppController(context: Context) {
     ) {
         val remaining = AtomicInteger(configs.size)
         configs.forEach { config ->
-            aiExecutor.execute {
+            aiTasks.submit(config.id) {
                 val result = runCatching {
+                    require(aiGeneration.get() == token && !Thread.currentThread().isInterrupted) {
+                        "请求已在发送前取消"
+                    }
                     require(state.aiStatuses[config.id]?.state != AiConnectionState.CANCELLED) {
                         "请求已在发送前取消"
                     }
+                    require(!database.hasAiForecast(snapshot.lottery, config.id, report.targetPeriod)) {
+                        "本目标期已有冻结结果，未重复调用计费接口"
+                    }
                     val forecast = remoteAiAnalyzer.analyze(config, snapshot, report)
-                    require(aiGeneration.get() == token) { "数据已经刷新，本次 AI 结果已作废" }
+                    require(aiGeneration.get() == token && !Thread.currentThread().isInterrupted) {
+                        "数据已经刷新，本次 AI 结果已作废"
+                    }
+                    val targetCheck = api.verifyTargetPeriodOpen(snapshot.lottery, report.targetPeriod)
+                    require(targetCheck.open) { targetCheck.message }
                     require(!database.hasDraw(snapshot.lottery, report.targetPeriod)) {
                         "目标期已经开奖，AI 结果未写入前向档案"
                     }
@@ -458,8 +495,13 @@ class AppController(context: Context) {
                             current,
                             database.loadAiProfileAudits(snapshot.lottery),
                         )
+                        val targetCheck = api.verifyTargetPeriodOpen(
+                            snapshot.lottery,
+                            report.targetPeriod,
+                        )
                         if (
                             consensus != null &&
+                            targetCheck.open &&
                             !database.hasDraw(snapshot.lottery, report.targetPeriod) &&
                             isBeforeForecastDeadline(snapshot)
                         ) {
@@ -471,7 +513,9 @@ class AppController(context: Context) {
                             archiveIntegrity = database.verifyArchiveIntegrity(snapshot.lottery),
                         )
                     }.getOrNull()
-                } else null
+                } else {
+                    null
+                }
                 mainHandler.post {
                     if (aiGeneration.get() != token || state.report?.targetPeriod != report.targetPeriod) {
                         return@post
@@ -483,8 +527,11 @@ class AppController(context: Context) {
                             }
                             val forecast = completed.forecast
                             state = state.copy(
-                                aiForecasts = (state.aiForecasts.filterNot { it.profileId == config.id } + forecast)
-                                    .sortedBy { item -> aiConfigs.indexOfFirst { it.id == item.profileId } },
+                                aiForecasts = (
+                                    state.aiForecasts.filterNot { it.profileId == config.id } + forecast
+                                    ).sortedBy { item ->
+                                    aiConfigs.indexOfFirst { it.id == item.profileId }
+                                },
                                 aiRecords = completed.records,
                                 aiLiveAudit = completed.audit,
                                 aiProfileAudits = completed.profileAudits,
@@ -554,7 +601,7 @@ class AppController(context: Context) {
         api.cancelActiveRequests()
         remoteAiAnalyzer.cancelActiveRequests()
         executor.shutdownNow()
-        aiExecutor.shutdownNow()
+        aiTasks.close()
         database.close()
     }
 
@@ -576,9 +623,9 @@ class AppController(context: Context) {
         }
 
         var modelHistory = when {
-            online == null -> database.loadDraws(lottery, 3000)
+            online == null -> database.loadDraws(lottery, lottery.historyTarget)
             onlineOverride == null && !shortRefresh -> online!!.history
-            else -> database.loadDraws(lottery, 3000)
+            else -> database.loadDraws(lottery, lottery.historyTarget)
         }
         var integrity = HistoryIntegrity.inspect(
             lottery = lottery,
@@ -603,7 +650,11 @@ class AppController(context: Context) {
             )
         }
         if (!integrity.valid) {
-            error(networkFailure?.let { "网络同步失败且历史校验未通过：${it.message}；${integrity.message}" } ?: integrity.message)
+            error(
+                networkFailure?.let {
+                    "网络同步失败且历史校验未通过：${it.message}；${integrity.message}"
+                } ?: integrity.message,
+            )
         }
         if (online != null && modelHistory.size >= desiredHistoryTarget(lottery)) {
             verifiedHistoryReady += lottery
@@ -666,15 +717,18 @@ class AppController(context: Context) {
         database.settleForecasts(lottery, settlementHistory)
         database.settleAiForecasts(lottery, settlementHistory)
         database.settleAiConsensus(lottery, settlementHistory)
+
+        val historyFingerprint = HistoryFingerprint.of(modelHistory)
         val computed = reportCache[lottery]
-            ?.takeIf {
-                it.trainedThroughPeriod == modelHistory.last().period &&
-                    it.historySize == modelHistory.size
-            }
+            ?.takeIf { cached -> cached.historyFingerprint == historyFingerprint }
+            ?.report
             ?.copy(targetPeriod = snapshot.nextPeriod)
-            ?: NativeEnsemblePredictor.predict(modelHistory)
+            ?: NativeEnsemblePredictor.predict(
+                historyInput = modelHistory,
+                historyTarget = lottery.historyTarget,
+            )
                 .copy(targetPeriod = snapshot.nextPeriod)
-                .also { reportCache[lottery] = it }
+                .also { reportCache[lottery] = CachedForecast(historyFingerprint, it) }
         val sourceBlocks = buildList {
             if (!snapshot.sourceHealth.isFresh) add("实时数据不可用，保持观察模式")
             if (snapshot.sourceHealth.independentSources < 2) add("独立数据源不足 2 个")
@@ -682,7 +736,9 @@ class AppController(context: Context) {
         val report = computed.copy(
             mode = if (computed.mode == EvidenceMode.CERTIFIED && sourceBlocks.isEmpty()) {
                 EvidenceMode.CERTIFIED
-            } else EvidenceMode.OBSERVE,
+            } else {
+                EvidenceMode.OBSERVE
+            },
             blockedReasons = (computed.blockedReasons + sourceBlocks).distinct(),
         )
         if (
@@ -718,10 +774,7 @@ class AppController(context: Context) {
         return LotteryType.entries.firstOrNull { it.apiKey == key } ?: LotteryType.AZXY10
     }
 
-    private fun desiredHistoryTarget(lottery: LotteryType): Int = when (lottery) {
-        LotteryType.AZXY10 -> 3_000
-        LotteryType.XYFT -> 2_000
-    }
+    private fun desiredHistoryTarget(lottery: LotteryType): Int = lottery.historyTarget
 
     private fun isBeforeForecastDeadline(snapshot: DrawSnapshot): Boolean =
         ForecastDeadlineResolver.isBeforeDeadline(snapshot)
@@ -760,6 +813,11 @@ class AppController(context: Context) {
         responseId = responseId,
     )
 
+    private data class CachedForecast(
+        val historyFingerprint: String,
+        val report: ForecastReport,
+    )
+
     private data class AnalysisPreparation(
         val apiSnapshot: DrawSnapshot,
         val loadedState: AppUiState,
@@ -778,5 +836,4 @@ class AppController(context: Context) {
         val consensusAudit: AiConsensusAudit,
         val archiveIntegrity: ArchiveIntegrity,
     )
-
 }
