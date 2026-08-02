@@ -1,7 +1,0 @@
-success
-run_id=30751712797
-release_url=https://github.com/xgl34222220-ops/sinan/releases/tag/v5.4.6
-apk_sha256=fc33b353d11f1b68149284622bdd38407ee68fa226a78979f476bee27ae8ddd5
-v5.4.6_tag_exists=true
-v5.4.5_release_exists=false
-v5.4.5_tag_exists=false
