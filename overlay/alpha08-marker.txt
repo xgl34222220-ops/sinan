@@ -1,3 +1,0 @@
-Sinan 0.5.0-alpha08 full multi-core refactor
-Cores: mihomo, sing-box, xray, v2fly, hysteria
-Modes: tproxy, redirect, tun, mixed, enhance
