@@ -1,0 +1,75 @@
+name: Apply Tianji v5.5.0 refactor
+
+on:
+  push:
+    branches: [feature/tianji-v5.5.0-stability]
+    paths:
+      - '.github/workflows/tianji-v5.5-bootstrap.yml'
+      - 'scripts/apply_v5_5_0.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/tianji-v5.5.0-stability
+          fetch-depth: 0
+
+      - name: Apply refactor
+        run: python3 scripts/apply_v5_5_0.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Test, lint and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:assembleDebug
+
+      - name: Commit verified refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/tianji-v5.5-bootstrap.yml scripts/apply_v5_5_0.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- README.md RELEASE_NOTES_v5.5.0.md app/build.gradle.kts \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/AppController.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiTaskRegistry.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/NativeEnsemblePredictor.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/data/AppDatabase.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/data/DrawMergePolicy.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/data/LotteryApi.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/data/TargetPeriodGuard.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/domain/HistoryFingerprint.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/model/Models.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/Screens.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/TianjiApp.kt \
+            app/src/test/java/com/tianji/probabilitylab/nativev4/data/DrawMergePolicyTest.kt \
+            app/src/test/java/com/tianji/probabilitylab/nativev4/data/TargetPeriodGuardTest.kt \
+            app/src/test/java/com/tianji/probabilitylab/nativev4/domain/HistoryFingerprintTest.kt \
+            .github/workflows/android-ci.yml .github/workflows/release.yml
+          git add -u -- .github/workflows scripts
+          git commit -m '天机 v5.5.0：稳定性修复与核心架构重构'
+          git push origin HEAD:feature/tianji-v5.5.0-stability
