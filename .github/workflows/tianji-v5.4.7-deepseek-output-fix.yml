@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/tianji-v5.4.7-deepseek-output-fix.yml'
+      - 'scripts/apply_v5_4_7_fix.py'
   workflow_dispatch:
 
 permissions:
