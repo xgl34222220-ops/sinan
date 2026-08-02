@@ -1,4 +1,4 @@
-name: Fix DeepSeek output limit and build Tianji v5.4.7
+name: Build Tianji v5.4.7 DeepSeek fix
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 jobs:
-  patch-test-build:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -22,144 +22,13 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Apply v5.4.7 DeepSeek fix
+      - name: Apply source fix
+        run: python3 scripts/apply_v5_4_7_fix.py
+
+      - name: Verify patch
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          ai = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt')
-          reasoning = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiReasoning.kt')
-          gradle = Path('app/build.gradle.kts')
-          readme = Path('README.md')
-
-          a = ai.read_text()
-          r = reasoning.read_text()
-          g = gradle.read_text()
-          rd = readme.read_text()
-
-          old_primary = '''                maxTokens = if (primaryDecision.expectsReasoning) 4_096 else 640,
-                readTimeoutMs = if (primaryDecision.expectsReasoning) 60_000 else 30_000,'''
-          new_primary = '''                maxTokens = when {
-                    primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 32_768
-                    primaryDecision.expectsReasoning -> 8_192
-                    else -> 1_024
-                },
-                readTimeoutMs = when {
-                    primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 180_000
-                    primaryDecision.expectsReasoning -> 90_000
-                    else -> 30_000
-                },'''
-          assert old_primary in a
-          a = a.replace(old_primary, new_primary, 1)
-
-          old_retry_decision = '''            val retryDecision = if (reasoningFallback) {
-                AiReasoningEngine.resolve(config, AiReasoningMode.AUTO)
-            } else primaryDecision'''
-          new_retry_decision = '''            val retryDecision = if (reasoningFallback) {
-                AiReasoningEngine.fallback(config)
-            } else primaryDecision'''
-          assert old_retry_decision in a
-          a = a.replace(old_retry_decision, new_retry_decision, 1)
-
-          old_retry_limits = '''                maxTokens = 640,
-                readTimeoutMs = 20_000,'''
-          new_retry_limits = '''                maxTokens = 1_024,
-                readTimeoutMs = 45_000,'''
-          assert old_retry_limits in a
-          a = a.replace(old_retry_limits, new_retry_limits, 1)
-
-          old_reason = '''                    val reason = if (reasoningControlFailure) "推理参数被接口拒绝" else "推理无最终答案"
-                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}重试"'''
-          new_reason = '''                    val reason = when {
-                        reasoningControlFailure -> "推理参数被接口拒绝"
-                        firstFailure.message.orEmpty().contains("输出上限") -> "高推理达到输出上限"
-                        else -> "推理无最终答案"
-                    }
-                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}"'''
-          assert old_reason in a
-          a = a.replace(old_reason, new_reason, 1)
-
-          marker = '''    private fun JSONObject.requireCompletedResponse() {
-        val status = optString("status")
-        if (status == "incomplete") {
-            val reason = optJSONObject("incomplete_details")?.optString("reason").orEmpty()
-            error("模型输出不完整：${reason.ifBlank { "达到输出上限" }}")
-        }
-        val choice = optJSONArray("choices")?.optJSONObject(0)
-        when (choice?.optString("finish_reason")) {
-            "length" -> error("模型达到输出上限，没有生成完整 JSON")
-            "content_filter" -> error("模型输出被内容过滤器中断")
-        }'''
-          replacement = '''    private fun JSONObject.hasCompleteForecastContent(): Boolean {
-        val content = extractContent()
-        if (content.isBlank()) return false
-        return runCatching {
-            val json = JSONObject(stripCodeFence(content))
-            val position = json.optInt("position", 0)
-            val scores = json.optJSONArray("scores") ?: return@runCatching false
-            position in 1..10 && scores.length() == 10 && (0 until scores.length()).all { index ->
-                val score = scores.optDouble(index, Double.NaN)
-                score.isFinite() && score >= 0.0
-            }
-        }.getOrDefault(false)
-    }
-
-    private fun JSONObject.requireCompletedResponse() {
-        val completeForecastContent = hasCompleteForecastContent()
-        val status = optString("status")
-        if (status == "incomplete" && !completeForecastContent) {
-            val reason = optJSONObject("incomplete_details")?.optString("reason").orEmpty()
-            error("模型输出不完整：${reason.ifBlank { "达到输出上限" }}")
-        }
-        val choice = optJSONArray("choices")?.optJSONObject(0)
-        when (choice?.optString("finish_reason")) {
-            "length" -> if (!completeForecastContent) error("模型达到输出上限，没有生成完整 JSON")
-            "content_filter" -> error("模型输出被内容过滤器中断")
-        }'''
-          assert marker in a
-          a = a.replace(marker, replacement, 1)
-
-          fallback_marker = '''    fun stateFor(
-        decision: AiReasoningDecision,'''
-          fallback_code = '''    fun fallback(config: AiConfig): AiReasoningDecision {
-        val low = resolve(config, AiReasoningMode.LOW)
-        return when (low.protocol) {
-            AiReasoningProtocol.DEEPSEEK,
-            AiReasoningProtocol.OPENROUTER,
-            AiReasoningProtocol.ENABLE_THINKING -> low.copy(
-                sendControl = true,
-                enableThinking = false,
-                effort = null,
-                displayLabel = "${low.protocol.label} · 已强制关闭推理重试",
-            )
-            else -> low.copy(displayLabel = "${low.displayLabel} · 重试")
-        }
-    }
-
-    fun stateFor(
-        decision: AiReasoningDecision,'''
-          assert fallback_marker in r
-          r = r.replace(fallback_marker, fallback_code, 1)
-
-          assert 'versionCode = 23' in g and 'versionName = "5.4.6"' in g
-          g = g.replace('versionCode = 23', 'versionCode = 24', 1)
-          g = g.replace('versionName = "5.4.6"', 'versionName = "5.4.7"', 1)
-          rd = rd.replace('- 版本：5.4.6', '- 版本：5.4.7', 1)
-
-          ai.write_text(a)
-          reasoning.write_text(r)
-          gradle.write_text(g)
-          readme.write_text(rd)
-
-          Path('RELEASE_NOTES_v5.4.7.md').write_text('''# 天机 v5.4.7 测试版\n\n- 修复 DeepSeek 高推理达到输出上限后，重试仍默认开启思考导致再次截断的问题。\n- DeepSeek 高推理输出预算由 4096 提升到 32768，最长等待调整为 180 秒。\n- 高推理失败后明确发送 thinking=disabled，再用 1024 token 生成最终 JSON。\n- 即使接口返回 length，只要 position 与 10 项 scores 已完整有效，仍可安全接收。\n- 保留 60/120 期窗口、独立名次选择、六码/七码客户端排序和真实开奖验证。\n''')
-
-          test = Path('app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiReasoningFallbackTest.kt')
-          test.parent.mkdir(parents=True, exist_ok=True)
-          test.write_text('''package com.tianji.probabilitylab.nativev4.ai\n\nimport org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\nimport org.junit.Assert.assertTrue\nimport org.junit.Test\n\nclass AiReasoningFallbackTest {\n    @Test\n    fun deepSeekFallbackExplicitlyDisablesThinking() {\n        val config = AiConfig(\n            provider = AiProvider.DEEPSEEK,\n            endpoint = AiProvider.DEEPSEEK.defaultEndpoint,\n            model = AiProvider.DEEPSEEK.defaultModel,\n            reasoningMode = AiReasoningMode.HIGH,\n        )\n        val fallback = AiReasoningEngine.fallback(config)\n        assertEquals(AiReasoningProtocol.DEEPSEEK, fallback.protocol)\n        assertTrue(fallback.sendControl)\n        assertFalse(fallback.enableThinking)\n        assertFalse(fallback.expectsReasoning)\n    }\n}\n''')
-          PY
-
           grep -q 'versionCode = 24' app/build.gradle.kts
           grep -q 'versionName = "5.4.7"' app/build.gradle.kts
           grep -q 'AiReasoningEngine.fallback(config)' app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt
@@ -188,7 +57,7 @@ jobs:
           enableCrossOsArchive: false
           fail-on-cache-miss: true
 
-      - name: Test and build signed v5.4.7 APK
+      - name: Test and build signed APK
         shell: bash
         run: |
           set -euo pipefail
