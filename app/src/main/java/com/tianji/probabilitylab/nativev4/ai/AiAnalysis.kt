@@ -462,14 +462,15 @@ class RemoteAiAnalyzer {
 
     fun testConnection(config: AiConfig): AiConnectionProbe {
         require(config.isComplete) { "AI 配置不完整" }
+        val baseDecision = AiReasoningEngine.resolve(config, config.reasoningMode)
         val baseResponse = post(
             config = config,
             temperature = 0.0,
-            systemPrompt = "你正在执行结构化输出能力测试。只输出请求的JSON。",
-            userPrompt = "能力测试：请原样返回position=7，并为号码1至10各输出一个非负scores原始评分；每项至少保留6位小数，不要四舍五入成并列。",
-            reasoningDecision = AiReasoningEngine.resolve(config, AiReasoningMode.AUTO),
-            maxTokens = 256,
-            readTimeoutMs = 20_000,
+            systemPrompt = "你正在执行结构化输出与真实思考能力测试。完成思考后只输出请求的JSON。",
+            userPrompt = "能力测试：先完成思考，再返回position=7与号码1至10的非负scores；每项至少保留6位小数。",
+            reasoningDecision = baseDecision,
+            maxTokens = if (baseDecision.expectsReasoning) 8_192 else 1_024,
+            readTimeoutMs = if (baseDecision.expectsReasoning) 90_000 else 30_000,
             jsonOutput = true,
         )
         baseResponse.json.requireCompletedResponse()
@@ -486,8 +487,8 @@ class RemoteAiAnalyzer {
                 systemPrompt = "你正在执行推理与结构化输出能力测试。只输出请求的JSON。",
                 userPrompt = "能力测试：请原样返回position=7，并为号码1至10各输出一个非负scores原始评分；每项至少保留6位小数，不要四舍五入成并列。",
                 reasoningDecision = highDecision,
-                maxTokens = 1_024,
-                readTimeoutMs = 45_000,
+                maxTokens = if (highDecision.protocol == AiReasoningProtocol.DEEPSEEK) 32_768 else 8_192,
+                readTimeoutMs = if (highDecision.protocol == AiReasoningProtocol.DEEPSEEK) 180_000 else 90_000,
                 jsonOutput = true,
             ).also { response ->
                 response.json.requireCompletedResponse()
@@ -497,12 +498,11 @@ class RemoteAiAnalyzer {
         }.getOrNull() else null
         val evidenceResponse = reasoningResponse ?: baseResponse
         val usage = evidenceResponse.json.extractUsage()
-        val reasoningVerified = reasoningResponse?.let { response ->
-            response.json.extractReasoningContent().isNotBlank() || (usage.reasoningTokens ?: 0) > 0
-        } == true
+        val reasoningVerified = evidenceResponse.json.extractReasoningContent().isNotBlank() ||
+            (usage.reasoningTokens ?: 0) > 0
         val capability = AiCapabilitySnapshot(
             structuredOutput = true,
-            reasoningControl = reasoningResponse != null,
+            reasoningControl = baseDecision.sendControl || reasoningResponse != null,
             reasoningVerified = reasoningVerified,
             usageReturned = usage.inputTokens != null || usage.outputTokens != null,
             protocol = highDecision.protocol,
@@ -512,8 +512,9 @@ class RemoteAiAnalyzer {
                 append("结构化输出通过")
                 when {
                     !highDecision.supported -> append(" · 未检测到可控推理")
-                    reasoningResponse == null -> append(" · 推理参数未通过")
-                    reasoningVerified -> append(" · 推理用量已验证")
+                    reasoningVerified -> append(" · 真实思考已验证")
+                    reasoningResponse == null && !baseDecision.sendControl -> append(" · 使用模型默认思考")
+                    reasoningResponse == null -> append(" · 当前思考请求可用")
                     else -> append(" · 推理请求通过但无用量证明")
                 }
             },
@@ -589,14 +590,18 @@ class RemoteAiAnalyzer {
             execute(
                 reasoningDecision = primaryDecision,
                 maxTokens = when {
+                    primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK &&
+                        config.reasoningMode == AiReasoningMode.HIGH -> 65_536
                     primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 32_768
-                    primaryDecision.expectsReasoning -> 8_192
-                    else -> 1_024
+                    primaryDecision.expectsReasoning -> 16_384
+                    else -> 2_048
                 },
                 readTimeoutMs = when {
+                    primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK &&
+                        config.reasoningMode == AiReasoningMode.HIGH -> 240_000
                     primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 180_000
-                    primaryDecision.expectsReasoning -> 90_000
-                    else -> 30_000
+                    primaryDecision.expectsReasoning -> 120_000
+                    else -> 45_000
                 },
                 executionNote = "${config.analysisMode.label} · ${primaryDecision.displayLabel}",
             )
@@ -613,23 +618,28 @@ class RemoteAiAnalyzer {
             } else primaryDecision
             execute(
                 reasoningDecision = retryDecision,
-                maxTokens = 1_024,
-                readTimeoutMs = 45_000,
+                maxTokens = when {
+                    retryDecision.expectsReasoning && retryDecision.protocol == AiReasoningProtocol.DEEPSEEK &&
+                        config.reasoningMode == AiReasoningMode.HIGH -> 96_000
+                    retryDecision.expectsReasoning && retryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 65_536
+                    retryDecision.expectsReasoning -> 32_768
+                    else -> 4_096
+                },
+                readTimeoutMs = when {
+                    retryDecision.expectsReasoning && retryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 300_000
+                    retryDecision.expectsReasoning -> 180_000
+                    else -> 60_000
+                },
                 executionNote = if (reasoningFallback) {
-                    val reason = when {
-                        reasoningControlFailure -> "推理参数被接口拒绝"
-                        firstFailure.message.orEmpty().contains("输出上限") -> "高推理达到输出上限"
-                        else -> "推理无最终答案"
-                    }
-                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}"
+                    "${config.analysisMode.label} · 保留真实思考重试"
                 } else {
-                    "${config.analysisMode.label} · 输出格式自动重试"
+                    "${config.analysisMode.label} · 保留思考并重试输出格式"
                 },
                 fallback = reasoningFallback,
             )
         }.getOrElse { retryFailure ->
             error(
-                "模型两次均未返回有效结果：${firstFailure.message.orEmpty().take(80)}；" +
+                "模型保留思考重试后仍未返回完整预测数据：${firstFailure.message.orEmpty().take(80)}；" +
                     "重试：${retryFailure.message.orEmpty().take(80)}",
             )
         }
