@@ -466,7 +466,7 @@ class RemoteAiAnalyzer {
             config = config,
             temperature = 0.0,
             systemPrompt = "你正在执行结构化输出能力测试。只输出请求的JSON。",
-            userPrompt = "选择position=1，为号码1至10各输出一个非负scores原始评分；每项至少保留6位小数，不要四舍五入成并列。",
+            userPrompt = "能力测试：请原样返回position=7，并为号码1至10各输出一个非负scores原始评分；每项至少保留6位小数，不要四舍五入成并列。",
             reasoningDecision = AiReasoningEngine.resolve(config, AiReasoningMode.AUTO),
             maxTokens = 256,
             readTimeoutMs = 20_000,
@@ -484,7 +484,7 @@ class RemoteAiAnalyzer {
                 config = config,
                 temperature = 0.0,
                 systemPrompt = "你正在执行推理与结构化输出能力测试。只输出请求的JSON。",
-                userPrompt = "选择position=1，为号码1至10各输出一个非负scores原始评分；每项至少保留6位小数，不要四舍五入成并列。",
+                userPrompt = "能力测试：请原样返回position=7，并为号码1至10各输出一个非负scores原始评分；每项至少保留6位小数，不要四舍五入成并列。",
                 reasoningDecision = highDecision,
                 maxTokens = 1_024,
                 readTimeoutMs = 45_000,
@@ -792,25 +792,18 @@ class RemoteAiAnalyzer {
             .put("items", JSONObject().put("type", "number").put("minimum", 0))
             .put("minItems", 10)
             .put("maxItems", 10)
-        val rankingArray = JSONObject()
-            .put("type", "array")
-            .put(
-                "items",
-                JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 10),
-            )
-            .put("minItems", 10)
-            .put("maxItems", 10)
-            .put("uniqueItems", true)
         val schema = JSONObject()
             .put("type", "object")
             .put(
                 "properties",
                 JSONObject()
-                    .put("position", JSONObject().put("type", "integer"))
-                    .put("scores", scoreArray)
-                    .put("ranking", rankingArray),
+                    .put(
+                        "position",
+                        JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 10),
+                    )
+                    .put("scores", scoreArray),
             )
-            .put("required", JSONArray(listOf("position", "scores", "ranking")))
+            .put("required", JSONArray(listOf("position", "scores")))
             .put("additionalProperties", false)
         return if (responsesApi) {
             JSONObject()
@@ -949,6 +942,10 @@ class RemoteAiAnalyzer {
             put("latest_period", snapshot.latest.period)
             put("latest_numbers", JSONArray(snapshot.latest.numbers))
             put(
+                "position_selection_rule",
+                "必须先横向比较position 1至10的全部已核验统计，再选择证据最充分的一个名次。不得默认、照抄或偏向position=1；名次选择必须由本次数据决定。",
+            )
+            put(
                 "verified_position_statistics",
                 JSONArray(
                     AiFactEngine.calculate(snapshot.history).map { facts ->
@@ -988,12 +985,6 @@ class RemoteAiAnalyzer {
                 JSONObject()
                     .put("position", "integer 1..10")
                     .put("scores", "array of exactly 10 non-negative raw scores for numbers 1..10; keep at least 6 decimal places; do not round values into ties"),
-            )
-            put(
-                "example_json_output",
-                JSONObject()
-                    .put("position", 1)
-                    .put("scores", JSONArray(listOf(0.112381, 0.091247, 0.132905, 0.081634, 0.121978, 0.101526, 0.071183, 0.089761, 0.098442, 0.109943))),
             )
         }
 
@@ -1088,6 +1079,6 @@ class RemoteAiAnalyzer {
     private data class RemoteResponse(val json: JSONObject, val latencyMs: Long)
 
     private companion object {
-        const val SYSTEM_PROMPT = """你是独立概率排序模型。输入含真实开奖、由客户端逐期计算并核验的统计表，以及不含候选结果的本地模型质量摘要。本地盲测候选已被刻意隐藏。遗漏、近20期次数和大小连开必须以 verified_position_statistics 为唯一事实来源，不得自行心算或改写。你只负责选择一个名次，按号码1至10顺序输出10个非负相对评分，并输出包含1至10且不重复的完整 ranking（从最优到最弱）；当评分四舍五入后相同时，ranking 必须明确打破并列。六码、七码和所有事实说明均由客户端确定。只输出 required_json_schema 指定的 JSON 字段，不要解释、不要 Markdown，不承诺准确率、盈利或必中。"""
+        const val SYSTEM_PROMPT = """你是独立概率排序模型。输入含真实开奖、由客户端逐期计算并核验的统计表，以及不含候选结果的本地模型质量摘要。本地盲测候选已被刻意隐藏。遗漏、近20期次数和大小连开必须以 verified_position_statistics 为唯一事实来源，不得自行心算或改写。你必须先比较position 1至10的全部统计，再选择证据最充分的一个名次；不得默认选择第1名，也不得因为字段顺序或历史示例偏向任何固定名次。随后按号码1至10顺序输出10个非负原始评分，每项至少保留6位小数。六码、七码和最终号码排序均由客户端根据原始scores确定。只输出 required_json_schema 指定的 position 与 scores，不要解释、不要Markdown，不承诺准确率、盈利或必中。"""
     }
 }

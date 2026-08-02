@@ -5,10 +5,17 @@
 
 ## 当前版本
 
-- 版本：5.4.3
+- 版本：5.4.4
 - Android：原生 Kotlin + Jetpack Compose
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 签名：正式版使用稳定 Release 证书
+
+## v5.4.4 重点修复
+
+- 移除会诱导模型固定输出第一名的 `position: 1` 示例。
+- AI 必须先比较 10 个名次，再根据本次接口历史选择名次。
+- 结构化输出只保留 `position` 与高精度 `scores`，删除已不参与计算的 `ranking`。
+- 保留 v5.4.3 的高精度同分保护。
 
 ## v5.4.3 重点修复
 
