@@ -1,0 +1,52 @@
+name: Apply Tianji v5.4.6 hotfix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/apply-tianji-v5.4.6-hotfix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-hotfix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply source hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          AI_FILE=app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt
+          git checkout b78d191f30e9df78dd537e3798dfcf1a76737b01 -- "$AI_FILE"
+          sed -i 's/maxTokens = if (primaryDecision.expectsReasoning) 8_192 else 640/maxTokens = if (primaryDecision.expectsReasoning) 4_096 else 640/' "$AI_FILE"
+          sed -i 's/readTimeoutMs = if (primaryDecision.expectsReasoning) 90_000 else 35_000/readTimeoutMs = if (primaryDecision.expectsReasoning) 60_000 else 30_000/' "$AI_FILE"
+          sed -i 's/maxTokens = 800,/maxTokens = 640,/' "$AI_FILE"
+          sed -i 's/readTimeoutMs = 40_000,/readTimeoutMs = 20_000,/' "$AI_FILE"
+          sed -i 's/versionCode = 22/versionCode = 23/' app/build.gradle.kts
+          sed -i 's/versionName = "5.4.5"/versionName = "5.4.6"/' app/build.gradle.kts
+          sed -i '0,/- 版本：5.4.5/s//- 版本：5.4.6/' README.md
+          cat > RELEASE_NOTES_v5.4.6.md <<'EOF'
+          # 天机 v5.4.6
+
+          - 修复 v5.4.5 更换 AI 角色后预测耗时过长、重复重试并最终失败的回归。
+          - 删除与第6、第7候选边界校验冲突的重型多窗口提示词。
+          - 恢复 v5.4.4 稳定、独立且不固定第一名的历史数据概率排序流程。
+          - 深度请求最长60秒，普通请求30秒，格式纠错最多一次且最长20秒。
+          - 保留60/120期历史、六码/七码客户端排序、真实目标期验证和迟到结果不计分保护。
+          EOF
+          grep -q 'versionCode = 23' app/build.gradle.kts
+          grep -q 'versionName = "5.4.6"' app/build.gradle.kts
+          ! grep -q 'analysis_method_rule' "$AI_FILE"
+          ! grep -q '证据接近时应保持scores接近' "$AI_FILE"
+          git config user.name github-actions-bot
+          git config user.email github-actions-bot@users.noreply.github.com
+          git add "$AI_FILE" app/build.gradle.kts README.md RELEASE_NOTES_v5.4.6.md
+          git commit -m '天机 v5.4.6：修复 AI 超时与提示词冲突'
+          git push origin HEAD:main
