@@ -15,27 +15,26 @@ class AiPromptCompactorTest {
     @Test
     fun compactHistoryKeepsRequestedWindow() {
         val history = (1..120).map { draw(it.toString(), it % 10) }
-        val compact = AiPromptCompactor.compactDraws(history, 120)
+        val compact = AiPromptCompactor.compactRows(history, 120)
 
-        assertEquals(120, compact.length())
-        assertEquals("1", compact.getJSONArray(0).getString(0))
-        assertEquals("120", compact.getJSONArray(119).getString(0))
-        assertEquals(10, compact.getJSONArray(119).getString(1).split(',').size)
+        assertEquals(120, compact.size)
+        assertEquals("1", compact.first().period)
+        assertEquals("120", compact.last().period)
+        assertEquals(10, compact.last().numbers.split(',').size)
     }
 
     @Test
     fun statisticsCoverAllPositionsAndNumbers() {
         val history = (1..80).map { draw(it.toString(), it % 10) }
-        val stats = AiPromptCompactor.verifiedPositionStatistics(history)
+        val stats = AiPromptCompactor.positionFacts(history)
 
-        assertEquals(10, stats.length())
-        repeat(10) { index ->
-            val item = stats.getJSONObject(index)
-            assertEquals(index + 1, item.getInt("position"))
-            assertEquals(10, item.getJSONArray("recent20_counts_1_to_10").length())
-            assertEquals(10, item.getJSONArray("recent60_counts_1_to_10").length())
-            assertEquals(10, item.getJSONArray("current_omissions_1_to_10").length())
-            assertEquals(10, item.getJSONArray("next_after_current_counts_1_to_10").length())
+        assertEquals(10, stats.size)
+        stats.forEachIndexed { index, item ->
+            assertEquals(index + 1, item.position)
+            assertEquals(10, item.recent20Counts.size)
+            assertEquals(10, item.recent60Counts.size)
+            assertEquals(10, item.omissions.size)
+            assertEquals(10, item.transitionsAfterLatest.size)
         }
     }
 
