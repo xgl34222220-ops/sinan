@@ -37,10 +37,10 @@ import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Wifi
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -65,13 +65,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tianji.probabilitylab.nativev4.AppUiState
 import com.tianji.probabilitylab.nativev4.BuildConfig
-import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.ai.AiAnalysisMode
+import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.ai.AiConnectionState
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusEngine
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusRecord
-import com.tianji.probabilitylab.nativev4.ai.AiProfileAudit
 import com.tianji.probabilitylab.nativev4.ai.AiForecastRecord
+import com.tianji.probabilitylab.nativev4.ai.AiProfileAudit
 import com.tianji.probabilitylab.nativev4.ai.AiProvider
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningEngine
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningMode
@@ -79,19 +79,19 @@ import com.tianji.probabilitylab.nativev4.ai.AiReasoningProtocol
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningState
 import com.tianji.probabilitylab.nativev4.model.Draw
 import com.tianji.probabilitylab.nativev4.model.EvidenceMode
-import com.tianji.probabilitylab.nativev4.model.ForecastReport
 import com.tianji.probabilitylab.nativev4.model.ForecastDeadline
 import com.tianji.probabilitylab.nativev4.model.ForecastDeadlineResolver
+import com.tianji.probabilitylab.nativev4.model.ForecastReport
 import com.tianji.probabilitylab.nativev4.model.LockedForecast
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.model.ModelPerformance
 import com.tianji.probabilitylab.nativev4.model.ServerCountdown
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import com.tianji.probabilitylab.nativev4.ui.theme.PaletteMode
-import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlin.math.min
 
 @Composable
@@ -107,7 +107,10 @@ fun ForecastScreen(
     LazyColumn(
         modifier = modifier,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 12.dp, end = 12.dp, top = 14.dp, bottom = 124.dp,
+            start = 12.dp,
+            end = 12.dp,
+            top = 14.dp,
+            bottom = 124.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -124,12 +127,22 @@ fun ForecastScreen(
                     )
                 }
                 item(key = "native-forecast") { ForecastHero(state.report) }
-                item(key = "ai-analysis") { AiAnalysisPanel(state, aiConfigs, onAnalyzeAllAi, onCancelAi) }
+                item(key = "ai-analysis") {
+                    AiAnalysisPanel(state, aiConfigs, onAnalyzeAllAi, onCancelAi)
+                }
                 item(key = "probability-matrix") { ProbabilityPanel(state.report) }
                 item(key = "model-panel") { CompactModelPanel(state.report.models) }
             }
-            state.isLoading -> item { EmptyState("正在同步真实开奖", "同步完成后在本机训练 11 模型并执行冻结盲测", true) }
-            else -> item { EmptyState("暂时无法生成预测", state.error ?: "没有足够的真实历史数据") }
+            state.isLoading -> item {
+                EmptyState(
+                    "正在同步真实开奖",
+                    "同步完成后在本机训练 11 模型并执行时间切分验证",
+                    true,
+                )
+            }
+            else -> item {
+                EmptyState("暂时无法生成预测", state.error ?: "没有足够的真实历史数据")
+            }
         }
     }
 }
@@ -165,9 +178,7 @@ private fun LiveDrawCard(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(6.dp).clip(CircleShape).background(sourceTint),
-                        )
+                        Box(Modifier.size(6.dp).clip(CircleShape).background(sourceTint))
                         Spacer(Modifier.width(7.dp))
                         Text(
                             "LIVE DRAW",
@@ -193,9 +204,19 @@ private fun LiveDrawCard(
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Rounded.Wifi, null, tint = sourceTint, modifier = Modifier.size(14.dp))
+                    Icon(
+                        Icons.Rounded.Wifi,
+                        null,
+                        tint = sourceTint,
+                        modifier = Modifier.size(14.dp),
+                    )
                     Spacer(Modifier.width(5.dp))
-                    Text(sourceLabel, color = sourceTint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        sourceLabel,
+                        color = sourceTint,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
             Row(
@@ -211,7 +232,12 @@ private fun LiveDrawCard(
                 Column(Modifier.weight(1f)) {
                     Text("最新期号", color = colors.textDim, fontSize = 8.sp)
                     Spacer(Modifier.height(4.dp))
-                    Text(snapshot.latest.period, color = colors.textSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        snapshot.latest.period,
+                        color = colors.textSoft,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
                 Box(Modifier.width(1.dp).height(24.dp).background(colors.line))
                 NextDrawCountdown(
@@ -272,12 +298,23 @@ private fun NextDrawCountdown(
         while (true) {
             remaining = ServerCountdown.remainingSeconds(
                 nextDrawAtEpochMs = target,
-                serverTimeAtSyncEpochMs = snapshot.serverTimeEpochMs ?: snapshot.sourceHealth.syncedAtEpochMs,
+                serverTimeAtSyncEpochMs = snapshot.serverTimeEpochMs
+                    ?: snapshot.sourceHealth.syncedAtEpochMs,
                 localSyncedAtEpochMs = snapshot.sourceHealth.syncedAtEpochMs,
                 localNowEpochMs = System.currentTimeMillis(),
             )
             if (remaining <= 0) {
-                val delays = listOf(1_500L, 2_500L, 4_000L, 6_000L, 10_000L, 15_000L)
+                val delays = listOf(
+                    2_000L,
+                    3_000L,
+                    5_000L,
+                    8_000L,
+                    13_000L,
+                    20_000L,
+                    30_000L,
+                    45_000L,
+                    60_000L,
+                )
                 if (!isRefreshing && postDrawPollAttempt < delays.size) {
                     delay(delays[postDrawPollAttempt])
                     postDrawPollAttempt++
@@ -285,15 +322,17 @@ private fun NextDrawCountdown(
                 }
                 break
             }
-            // Keep the original v5.3 refresh cadence, but confine recomposition to this small block.
-            delay(250)
+            delay(1_000L)
         }
     }
     Column(modifier, horizontalAlignment = Alignment.End) {
         Text("下期开奖", color = colors.textDim, fontSize = 8.sp)
         Spacer(Modifier.height(4.dp))
         Text(
-            if (remaining < 0) "--:--" else "%02d:%02d".format(remaining / 60, remaining % 60),
+            if (remaining < 0) "--:--" else "%02d:%02d".format(
+                remaining / 60,
+                remaining % 60,
+            ),
             color = colors.accent,
             fontSize = 12.sp,
             fontWeight = FontWeight.ExtraBold,
@@ -314,7 +353,13 @@ private fun NextDrawCountdown(
         if (remaining == 0 && postDrawPollAttempt > 0) {
             Spacer(Modifier.height(2.dp))
             Text(
-                if (isRefreshing) "正在核验开奖…" else "等待接口更新 · 第${postDrawPollAttempt}次",
+                if (isRefreshing) {
+                    "正在核验开奖…"
+                } else if (postDrawPollAttempt >= 9) {
+                    "接口仍未更新 · 可手动刷新"
+                } else {
+                    "等待接口更新 · 第${postDrawPollAttempt}次"
+                },
                 color = colors.amber,
                 fontSize = 6.5.sp,
             )
@@ -351,7 +396,12 @@ private fun DrawBallGrid(numbers: List<Int>) {
                 repeat(5) { column ->
                     val index = row * 5 + column
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(labels[index], color = colors.textDim, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            labels[index],
+                            color = colors.textDim,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         Spacer(Modifier.height(7.dp))
                         LotteryBall(numbers[index], size = 42.dp)
                     }
@@ -364,7 +414,9 @@ private fun DrawBallGrid(numbers: List<Int>) {
 @Composable
 private fun ForecastHero(report: ForecastReport) {
     val colors = LocalTianjiColors.current
-    var selectedPosition by remember(report.targetPeriod) { mutableIntStateOf(report.selectedPosition) }
+    var selectedPosition by remember(report.targetPeriod) {
+        mutableIntStateOf(report.selectedPosition)
+    }
     val prediction = report.positions[selectedPosition]
     SurfaceCard {
         Column(
@@ -411,7 +463,10 @@ private fun ForecastHero(report: ForecastReport) {
                         modifier = Modifier
                             .size(width = 48.dp, height = 54.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(if (active) colors.accentSoft else Color.White.copy(alpha = 0.025f))
+                            .background(
+                                if (active) colors.accentSoft
+                                else Color.White.copy(alpha = 0.025f),
+                            )
                             .border(
                                 1.dp,
                                 if (active) colors.accent.copy(alpha = 0.35f) else colors.line,
@@ -421,9 +476,18 @@ private fun ForecastHero(report: ForecastReport) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Text((position + 1).toString(), color = if (active) colors.text else colors.textSoft, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            (position + 1).toString(),
+                            color = if (active) colors.text else colors.textSoft,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
                         Spacer(Modifier.height(4.dp))
-                        Text("第${positionName(position)}", color = if (active) colors.accent else colors.textDim, fontSize = 7.sp)
+                        Text(
+                            "第${positionName(position)}",
+                            color = if (active) colors.accent else colors.textDim,
+                            fontSize = 7.sp,
+                        )
                     }
                 }
             }
@@ -438,7 +502,11 @@ private fun ForecastHero(report: ForecastReport) {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    if (report.displayUsesShadow) "影子集成六码" else "认证集成六码",
+                    when {
+                        report.mode == EvidenceMode.CERTIFIED -> "认证集成六码"
+                        report.displayUsesShadow -> "影子实验六码"
+                        else -> "观察实验六码"
+                    },
                     color = colors.accent,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
@@ -454,9 +522,22 @@ private fun ForecastHero(report: ForecastReport) {
                     fontSize = 8.sp,
                 )
             }
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MetricTile("训练历史", report.historySize.toString(), "真实开奖记录", Modifier.weight(1f))
-                MetricTile("冻结盲测", report.validationDraws.toString(), "不参与调权", Modifier.weight(1f))
+            Row(
+                Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MetricTile(
+                    "训练历史",
+                    report.historySize.toString(),
+                    "真实开奖记录",
+                    Modifier.weight(1f),
+                )
+                MetricTile(
+                    "时间留出",
+                    report.validationDraws.toString(),
+                    "不参与调权",
+                    Modifier.weight(1f),
+                )
                 MetricTile("模型数量", "11", "竞争集成", Modifier.weight(1f))
             }
         }
@@ -486,7 +567,9 @@ private fun AiAnalysisPanel(
                 Text("还没有 AI 配置，请先到数据页添加", color = colors.amber, fontSize = 9.sp)
             } else {
                 val distinctModels = completeConfigs.map { it.model.trim().lowercase() }
-                    .filter(String::isNotBlank).distinct().size
+                    .filter(String::isNotBlank)
+                    .distinct()
+                    .size
                 if (distinctModels < completeConfigs.size) {
                     Text(
                         "${completeConfigs.size} 个配置中有 $distinctModels 个独立模型；重复模型不重复计入共识。",
@@ -522,7 +605,11 @@ private fun AiAnalysisPanel(
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(
-                    if (state.isAiAnalyzing) "多个 AI 正在独立分析…" else "全部 AI 同时独立分析",
+                    if (state.isAiAnalyzing) {
+                        "多个 AI 正在独立分析…"
+                    } else {
+                        "全部 AI 同时独立分析"
+                    },
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                 )
@@ -564,7 +651,11 @@ private fun AiAnalysisPanel(
 }
 
 @Composable
-private fun AiStatusRow(config: AiConfig, state: AppUiState, onCancelAi: (String) -> Unit) {
+private fun AiStatusRow(
+    config: AiConfig,
+    state: AppUiState,
+    onCancelAi: (String) -> Unit,
+) {
     val colors = LocalTianjiColors.current
     val status = state.aiStatuses[config.id]
     val currentState = status?.state ?: AiConnectionState.UNTESTED
@@ -588,7 +679,11 @@ private fun AiStatusRow(config: AiConfig, state: AppUiState, onCancelAi: (String
             CircularProgressIndicator(Modifier.size(14.dp), color = tint, strokeWidth = 1.8.dp)
         } else {
             Icon(
-                if (currentState == AiConnectionState.CONNECTED) Icons.Rounded.CheckCircle else Icons.Rounded.Info,
+                if (currentState == AiConnectionState.CONNECTED) {
+                    Icons.Rounded.CheckCircle
+                } else {
+                    Icons.Rounded.Info
+                },
                 null,
                 tint = tint,
                 modifier = Modifier.size(14.dp),
@@ -596,7 +691,12 @@ private fun AiStatusRow(config: AiConfig, state: AppUiState, onCancelAi: (String
         }
         Spacer(Modifier.width(7.dp))
         Column(Modifier.weight(1f)) {
-            Text(config.displayName, color = colors.textSoft, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+            Text(
+                config.displayName,
+                color = colors.textSoft,
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+            )
             Text(
                 "${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}",
                 color = colors.textDim,
@@ -613,7 +713,9 @@ private fun AiStatusRow(config: AiConfig, state: AppUiState, onCancelAi: (String
             )
         }
         if (currentState == AiConnectionState.ANALYZING || currentState == AiConnectionState.TESTING) {
-            MiniActionButton("取消", Modifier.width(48.dp), tint = colors.amber) { onCancelAi(config.id) }
+            MiniActionButton("取消", Modifier.width(48.dp), tint = colors.amber) {
+                onCancelAi(config.id)
+            }
         } else {
             status?.latencyMs?.let { Text("${it}ms", color = tint, fontSize = 8.sp) }
         }
@@ -671,19 +773,28 @@ private fun AiConsensusCard(
 }
 
 @Composable
-private fun AiProbabilityComparison(results: List<com.tianji.probabilitylab.nativev4.ai.AiForecast>) {
+private fun AiProbabilityComparison(
+    results: List<com.tianji.probabilitylab.nativev4.ai.AiForecast>,
+) {
     val colors = LocalTianjiColors.current
+    val horizontalScrollState = rememberScrollState()
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
             .background(Color.Black.copy(alpha = 0.14f))
             .border(1.dp, colors.line, RoundedCornerShape(18.dp))
             .padding(13.dp),
     ) {
         Text("10号码概率矩阵", color = colors.text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
-        Text("每列独立归一化；六码和七码由本机按矩阵排序生成", color = colors.textDim, fontSize = 8.sp)
+        Text(
+            "每列独立归一化；进度条按真实 0–100% 比例显示",
+            color = colors.textDim,
+            fontSize = 8.sp,
+        )
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(horizontalScrollState)) {
             Spacer(Modifier.width(38.dp))
             results.forEach { result ->
                 Text(
@@ -700,7 +811,10 @@ private fun AiProbabilityComparison(results: List<com.tianji.probabilitylab.nati
         Spacer(Modifier.height(7.dp))
         (1..10).forEach { number ->
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 3.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(horizontalScrollState)
+                    .padding(vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 LotteryBall(number, size = 28.dp)
@@ -712,10 +826,14 @@ private fun AiProbabilityComparison(results: List<com.tianji.probabilitylab.nati
                             "${(probability * 100).format1()}%",
                             color = if (number in result.top6) colors.text else colors.textDim,
                             fontSize = 8.sp,
-                            fontWeight = if (number in result.top6) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (number in result.top6) {
+                                FontWeight.Bold
+                            } else {
+                                FontWeight.Normal
+                            },
                         )
                         LinearProgressIndicator(
-                            progress = { (probability * 5.0).toFloat().coerceIn(0f, 1f) },
+                            progress = { probability.toFloat().coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
                             color = if (number in result.top6) colors.accent else colors.textDim,
                             trackColor = colors.line,
@@ -738,7 +856,12 @@ private fun AiForecastCard(result: com.tianji.probabilitylab.nativev4.ai.AiForec
             .border(1.dp, colors.accent.copy(alpha = 0.2f), RoundedCornerShape(18.dp))
             .padding(14.dp),
     ) {
-        Text(result.profileName, color = colors.accent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text(
+            result.profileName,
+            color = colors.accent,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+        )
         Spacer(Modifier.height(5.dp))
         Text(
             "第 ${result.targetPeriod} 期 · 第${positionName(result.position)}",
@@ -748,7 +871,9 @@ private fun AiForecastCard(result: com.tianji.probabilitylab.nativev4.ai.AiForec
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "${result.executionNote} · 已接入 · ${result.latencyMs}ms · ${result.responseId.takeLast(10).ifBlank { "无响应ID" }} · ${formatTime(result.createdAtEpochMs)}",
+            "${result.executionNote} · 已接入 · ${result.latencyMs}ms · " +
+                "${result.responseId.takeLast(10).ifBlank { "无响应ID" }} · " +
+                formatTime(result.createdAtEpochMs),
             color = colors.green,
             fontSize = 7.sp,
             maxLines = 1,
@@ -762,16 +887,28 @@ private fun AiForecastCard(result: com.tianji.probabilitylab.nativev4.ai.AiForec
         }
         result.top7.firstOrNull { it !in result.top6 }?.let { supplement ->
             Spacer(Modifier.height(10.dp))
-            Text("七码补充：$supplement", color = colors.accent, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "七码补充：$supplement",
+                color = colors.accent,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
         Spacer(Modifier.height(12.dp))
         Text(result.analysis, color = colors.textSoft, fontSize = 9.sp, lineHeight = 15.sp)
         Spacer(Modifier.height(8.dp))
-        Text("风险提示：${result.riskNote}", color = colors.amber, fontSize = 8.sp, lineHeight = 13.sp)
+        Text(
+            "风险提示：${result.riskNote}",
+            color = colors.amber,
+            fontSize = 8.sp,
+            lineHeight = 13.sp,
+        )
         Spacer(Modifier.height(8.dp))
         Text(
             "矩阵集中度 ${(result.selfRating * 100).format1()}%（不是命中概率）" +
-                result.estimatedCost?.let { " · 本次约 \$${"%.6f".format(Locale.US, it)}" }.orEmpty(),
+                result.estimatedCost?.let {
+                    " · 本次约 \$${"%.6f".format(Locale.US, it)}"
+                }.orEmpty(),
             color = colors.textDim,
             fontSize = 8.sp,
         )
@@ -816,28 +953,43 @@ private fun ProbabilityPanel(report: ForecastReport) {
                 title = "第${positionName(report.selectedPosition)}概率",
                 icon = Icons.Rounded.Analytics,
                 detail = if (report.displayUsesShadow) {
-                    "观察模式使用影子模型排序，仅用于前向记录，不代表已验证优势"
-                } else "完整概率矩阵经排列约束投影，十个名次不会重复占用同一号码",
+                    "观察模式使用影子模型排序；条形图按真实概率显示，不代表已验证优势"
+                } else {
+                    "完整概率矩阵经排列约束投影；条形图按真实 0–100% 比例显示"
+                },
             )
             Spacer(Modifier.height(17.dp))
-            prediction.probabilities.mapIndexed { index, value -> index + 1 to value }
+            prediction.probabilities
+                .mapIndexed { index, value -> index + 1 to value }
                 .sortedByDescending { it.second }
                 .forEachIndexed { rank, (number, value) ->
                     Row(
                         modifier = Modifier.fillMaxWidth().height(38.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("${rank + 1}", color = colors.textDim, fontSize = 8.sp, modifier = Modifier.width(20.dp), textAlign = TextAlign.Center)
+                        Text(
+                            "${rank + 1}",
+                            color = colors.textDim,
+                            fontSize = 8.sp,
+                            modifier = Modifier.width(20.dp),
+                            textAlign = TextAlign.Center,
+                        )
                         LotteryBall(number, size = 29.dp, muted = rank >= 6)
                         Spacer(Modifier.width(9.dp))
                         LinearProgressIndicator(
-                            progress = { (value * 6.2).toFloat().coerceIn(0f, 1f) },
+                            progress = { value.toFloat().coerceIn(0f, 1f) },
                             modifier = Modifier.weight(1f).height(5.dp).clip(CircleShape),
                             color = colors.accent,
                             trackColor = Color.White.copy(alpha = 0.05f),
                         )
                         Spacer(Modifier.width(9.dp))
-                        Text("${(value * 100).format1()}%", color = colors.textSoft, fontSize = 8.sp, modifier = Modifier.width(42.dp), textAlign = TextAlign.End)
+                        Text(
+                            "${(value * 100).format1()}%",
+                            color = colors.textSoft,
+                            fontSize = 8.sp,
+                            modifier = Modifier.width(42.dp),
+                            textAlign = TextAlign.End,
+                        )
                     }
                 }
         }
@@ -853,7 +1005,7 @@ private fun CompactModelPanel(models: List<ModelPerformance>) {
                 eyebrow = "MODEL COMPETITION",
                 title = "11 模型前向竞赛",
                 icon = Icons.Rounded.Memory,
-                detail = "正式权重只来自时间冻结验证；无优势时回退均匀随机基线",
+                detail = "正式权重只来自时间切分验证；无优势时回退均匀随机基线",
             )
             Spacer(Modifier.height(15.dp))
             models.take(5).forEachIndexed { index, model ->
@@ -862,14 +1014,18 @@ private fun CompactModelPanel(models: List<ModelPerformance>) {
             }
             if (models.size > 5) {
                 Spacer(Modifier.height(10.dp))
-                Text("其余 6 个模型请在“盲测”页查看", color = colors.textDim, fontSize = 8.sp)
+                Text("其余 6 个模型请在“验证”页查看", color = colors.textDim, fontSize = 8.sp)
             }
         }
     }
 }
 
 @Composable
-fun RollingScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, modifier: Modifier = Modifier) {
+fun RollingScreen(
+    state: AppUiState,
+    onSelectLottery: (LotteryType) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val report = state.report
     val colors = LocalTianjiColors.current
     LazyColumn(
@@ -884,21 +1040,62 @@ fun RollingScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mod
             item {
                 SurfaceCard {
                     Column(Modifier.background(colors.accent.copy(alpha = 0.05f)).padding(18.dp)) {
-                        SectionTitle("ROLLING LAB", "七码三段观察", Icons.Rounded.AutoGraph, "只模拟证据闸门，不提供投注承诺")
+                        SectionTitle(
+                            "ROLLING LAB",
+                            "七码三段观察",
+                            Icons.Rounded.AutoGraph,
+                            "只模拟证据闸门，不提供投注承诺",
+                        )
                         Spacer(Modifier.height(13.dp))
-                        EvidencePill(report.mode, if (report.mode == EvidenceMode.CERTIFIED) "策略证据通过" else "观察模式 · 禁止正式滚动")
+                        EvidencePill(
+                            report.mode,
+                            if (report.mode == EvidenceMode.CERTIFIED) {
+                                "策略证据通过"
+                            } else {
+                                "观察模式 · 禁止正式滚动"
+                            },
+                        )
                         Spacer(Modifier.height(18.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            listOf("第一段" to "3 单位", "第二段" to "5 单位", "第三段" to "7 单位").forEachIndexed { index, stage ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
+                            listOf(
+                                "第一段" to "3 单位",
+                                "第二段" to "5 单位",
+                                "第三段" to "7 单位",
+                            ).forEachIndexed { index, stage ->
                                 Column(
-                                    Modifier.weight(1f).clip(RoundedCornerShape(15.dp))
-                                        .background(if (index == 0) colors.accentSoft else Color.White.copy(alpha = 0.025f))
-                                        .border(1.dp, if (index == 0) colors.accent.copy(alpha = 0.3f) else colors.line, RoundedCornerShape(15.dp))
+                                    Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(15.dp))
+                                        .background(
+                                            if (index == 0) colors.accentSoft
+                                            else Color.White.copy(alpha = 0.025f),
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (index == 0) {
+                                                colors.accent.copy(alpha = 0.3f)
+                                            } else {
+                                                colors.line
+                                            },
+                                            RoundedCornerShape(15.dp),
+                                        )
                                         .padding(11.dp),
                                 ) {
-                                    Text(stage.first, color = if (index == 0) colors.accent else colors.textDim, fontSize = 8.sp)
+                                    Text(
+                                        stage.first,
+                                        color = if (index == 0) colors.accent else colors.textDim,
+                                        fontSize = 8.sp,
+                                    )
                                     Spacer(Modifier.height(5.dp))
-                                    Text(stage.second, color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        stage.second,
+                                        color = colors.text,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
                                 }
                             }
                         }
@@ -908,7 +1105,12 @@ fun RollingScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mod
             item {
                 SurfaceCard {
                     Column(Modifier.padding(18.dp)) {
-                        SectionTitle("LOCKED TICKET", "第${positionName(report.selectedPosition)} · 七码", Icons.Rounded.LockClock, "目标期 ${report.targetPeriod}")
+                        SectionTitle(
+                            "LOCKED TICKET",
+                            "第${positionName(report.selectedPosition)} · 七码",
+                            Icons.Rounded.LockClock,
+                            "目标期 ${report.targetPeriod}",
+                        )
                         Spacer(Modifier.height(17.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             report.selected.top7.forEach { LotteryBall(it, size = 36.dp) }
@@ -931,10 +1133,28 @@ fun RollingScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mod
                     Column(Modifier.padding(18.dp)) {
                         SectionTitle("RISK GATE", "策略证据", Icons.Rounded.Security)
                         Spacer(Modifier.height(15.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            MetricTile("盲测七码", "${(report.top7HitRate * 100).format1()}%", "随机 70%", Modifier.weight(1f))
-                            MetricTile("盈亏门槛", "${(report.breakEvenTop7 * 100).format1()}%", "按 9.8 倍", Modifier.weight(1f))
-                            MetricTile("前向档案", state.liveAudit.settled.toString(), "已结算", Modifier.weight(1f))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            MetricTile(
+                                "留出七码",
+                                "${(report.top7HitRate * 100).format1()}%",
+                                "随机 70%",
+                                Modifier.weight(1f),
+                            )
+                            MetricTile(
+                                "盈亏门槛",
+                                "${(report.breakEvenTop7 * 100).format1()}%",
+                                "按 9.8 倍",
+                                Modifier.weight(1f),
+                            )
+                            MetricTile(
+                                "真实前向",
+                                state.liveAudit.settled.toString(),
+                                "已结算",
+                                Modifier.weight(1f),
+                            )
                         }
                     }
                 }
@@ -944,7 +1164,11 @@ fun RollingScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mod
 }
 
 @Composable
-fun EvidenceScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, modifier: Modifier = Modifier) {
+fun EvidenceScreen(
+    state: AppUiState,
+    onSelectLottery: (LotteryType) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val report = state.report
     val colors = LocalTianjiColors.current
     LazyColumn(
@@ -953,23 +1177,55 @@ fun EvidenceScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mo
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { GameSwitcher(state.lottery, onSelectLottery) }
-        if (report == null) item { EmptyState("盲测报告等待数据", state.error ?: "正在同步", state.isLoading) }
-        else {
+        if (report == null) {
+            item { EmptyState("验证报告等待数据", state.error ?: "正在同步", state.isLoading) }
+        } else {
             item {
                 SurfaceCard {
                     Column(Modifier.padding(18.dp)) {
-                        SectionTitle("FROZEN BLIND TEST", "最终冻结盲测", Icons.Rounded.QueryStats, "验证段完全不参与模型训练和权重拟合")
+                        SectionTitle(
+                            "TIME HOLDOUT TEST",
+                            "时间切分留出验证",
+                            Icons.Rounded.QueryStats,
+                            "历史尾段不参与训练和权重拟合；真实前向成绩请查看档案页",
+                        )
                         Spacer(Modifier.height(13.dp))
                         EvidencePill(report.mode)
                         Spacer(Modifier.height(15.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            MetricTile("六码命中", "${(report.top6HitRate * 100).format1()}%", "下界 ${(report.top6Interval.low * 100).format1()}%", Modifier.weight(1f))
-                            MetricTile("七码命中", "${(report.top7HitRate * 100).format1()}%", "下界 ${(report.top7Interval.low * 100).format1()}%", Modifier.weight(1f))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            MetricTile(
+                                "六码命中",
+                                "${(report.top6HitRate * 100).format1()}%",
+                                "下界 ${(report.top6Interval.low * 100).format1()}%",
+                                Modifier.weight(1f),
+                            )
+                            MetricTile(
+                                "七码命中",
+                                "${(report.top7HitRate * 100).format1()}%",
+                                "下界 ${(report.top7Interval.low * 100).format1()}%",
+                                Modifier.weight(1f),
+                            )
                         }
                         Spacer(Modifier.height(8.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            MetricTile("概率损失", report.averageLogLoss.format2(), "随机 ${report.randomLogLoss.format2()}", Modifier.weight(1f))
-                            MetricTile("盲测期数", report.validationDraws.toString(), "最低认证 96", Modifier.weight(1f))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            MetricTile(
+                                "概率损失",
+                                report.averageLogLoss.format2(),
+                                "随机 ${report.randomLogLoss.format2()}",
+                                Modifier.weight(1f),
+                            )
+                            MetricTile(
+                                "留出期数",
+                                report.validationDraws.toString(),
+                                "最低认证 96",
+                                Modifier.weight(1f),
+                            )
                         }
                     }
                 }
@@ -981,14 +1237,21 @@ fun EvidenceScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mo
                         Spacer(Modifier.height(13.dp))
                         if (report.blockedReasons.isEmpty()) {
                             GateRow("全部证据闸门已通过", true)
-                        } else report.blockedReasons.forEach { GateRow(it, false) }
+                        } else {
+                            report.blockedReasons.forEach { GateRow(it, false) }
+                        }
                     }
                 }
             }
             item {
                 SurfaceCard {
                     Column(Modifier.padding(18.dp)) {
-                        SectionTitle("ALL MODELS", "模型权重与成绩", Icons.Rounded.Memory, "正式权重为 0 表示该模型没有通过证据筛选")
+                        SectionTitle(
+                            "ALL MODELS",
+                            "模型权重与成绩",
+                            Icons.Rounded.Memory,
+                            "正式权重为 0 表示该模型没有通过证据筛选",
+                        )
                         Spacer(Modifier.height(15.dp))
                         report.models.forEachIndexed { index, model ->
                             ModelRow(index + 1, model)
@@ -1002,7 +1265,11 @@ fun EvidenceScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mo
 }
 
 @Composable
-fun ArchiveScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, modifier: Modifier = Modifier) {
+fun ArchiveScreen(
+    state: AppUiState,
+    onSelectLottery: (LotteryType) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = LocalTianjiColors.current
     LazyColumn(
         modifier = modifier,
@@ -1013,7 +1280,12 @@ fun ArchiveScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mod
         item {
             SurfaceCard {
                 Column(Modifier.padding(18.dp)) {
-                    SectionTitle("FORWARD ARCHIVE", "开奖前锁定档案", Icons.Rounded.Fingerprint, "SHA-256 链式记录，开奖后自动核验")
+                    SectionTitle(
+                        "FORWARD ARCHIVE",
+                        "真实前向冻结验证",
+                        Icons.Rounded.Fingerprint,
+                        "开奖前锁定，开奖后按目标期结算；SHA-256 链用于检测本机档案误改",
+                    )
                     Spacer(Modifier.height(10.dp))
                     val integrityTint = if (state.archiveIntegrity.isValid) colors.green else colors.red
                     Text(
@@ -1027,36 +1299,77 @@ fun ArchiveScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mod
                         fontWeight = FontWeight.Bold,
                     )
                     Spacer(Modifier.height(15.dp))
-                    Text("本地 11 模型", color = colors.textSoft, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "按开奖期统计 · 本地 11 模型",
+                        color = colors.textSoft,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MetricTile("已结算", state.liveAudit.settled.toString(), "只算前向档案", Modifier.weight(1f))
-                        MetricTile("六码命中", "${(state.liveAudit.top6Rate * 100).format1()}%", "${state.liveAudit.top6Hits} 次", Modifier.weight(1f))
-                        MetricTile("七码命中", "${(state.liveAudit.top7Rate * 100).format1()}%", "${state.liveAudit.top7Hits} 次", Modifier.weight(1f))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        MetricTile(
+                            "已结算期数",
+                            state.liveAudit.settled.toString(),
+                            "每目标期一次",
+                            Modifier.weight(1f),
+                        )
+                        MetricTile(
+                            "六码命中",
+                            "${(state.liveAudit.top6Rate * 100).format1()}%",
+                            "${state.liveAudit.top6Hits} 次",
+                            Modifier.weight(1f),
+                        )
+                        MetricTile(
+                            "七码命中",
+                            "${(state.liveAudit.top7Rate * 100).format1()}%",
+                            "${state.liveAudit.top7Hits} 次",
+                            Modifier.weight(1f),
+                        )
                     }
                     Spacer(Modifier.height(14.dp))
-                    Text("AI 独立预测汇总", color = colors.textSoft, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "按 AI 调用记录统计",
+                        color = colors.textSoft,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "每个配置在每个目标期只计一条；记录数不等于开奖期数。",
+                        "同一期多个独立 AI 会分别计为记录；记录数不等于开奖期数。",
                         color = colors.textDim,
                         fontSize = 7.sp,
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         MetricTile(
                             "已结算记录",
                             state.aiLiveAudit.settled.toString(),
                             "覆盖 ${state.aiLiveAudit.targetPeriods} 个目标期",
                             Modifier.weight(1f),
                         )
-                        MetricTile("六码命中", "${(state.aiLiveAudit.top6Rate * 100).format1()}%", "${state.aiLiveAudit.top6Hits} 次", Modifier.weight(1f))
-                        MetricTile("七码命中", "${(state.aiLiveAudit.top7Rate * 100).format1()}%", "${state.aiLiveAudit.top7Hits} 次", Modifier.weight(1f))
+                        MetricTile(
+                            "六码命中",
+                            "${(state.aiLiveAudit.top6Rate * 100).format1()}%",
+                            "${state.aiLiveAudit.top6Hits} 次",
+                            Modifier.weight(1f),
+                        )
+                        MetricTile(
+                            "七码命中",
+                            "${(state.aiLiveAudit.top7Rate * 100).format1()}%",
+                            "${state.aiLiveAudit.top7Hits} 次",
+                            Modifier.weight(1f),
+                        )
                     }
                     if (state.aiProfileAudits.isNotEmpty()) {
                         Spacer(Modifier.height(11.dp))
                         Text(
-                            "分组真实成绩（模型、历史窗口、推理强度和协议完全分开）",
+                            "按模型配置分组（模型、窗口、推理强度和协议分别统计）",
                             color = colors.textDim,
                             fontSize = 7.5.sp,
                         )
@@ -1067,31 +1380,77 @@ fun ArchiveScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mod
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text("AI 同名次共识", color = colors.textSoft, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "按目标期统计 · AI 同名次共识",
+                        color = colors.textSoft,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MetricTile("已结算", state.aiConsensusAudit.settled.toString(), "每目标期一次", Modifier.weight(1f))
-                        MetricTile("六码命中", "${(state.aiConsensusAudit.top6Rate * 100).format1()}%", "${state.aiConsensusAudit.top6Hits} 次", Modifier.weight(1f))
-                        MetricTile("七码命中", "${(state.aiConsensusAudit.top7Rate * 100).format1()}%", "${state.aiConsensusAudit.top7Hits} 次", Modifier.weight(1f))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        MetricTile(
+                            "已结算期数",
+                            state.aiConsensusAudit.settled.toString(),
+                            "每目标期最多一次",
+                            Modifier.weight(1f),
+                        )
+                        MetricTile(
+                            "六码命中",
+                            "${(state.aiConsensusAudit.top6Rate * 100).format1()}%",
+                            "${state.aiConsensusAudit.top6Hits} 次",
+                            Modifier.weight(1f),
+                        )
+                        MetricTile(
+                            "七码命中",
+                            "${(state.aiConsensusAudit.top7Rate * 100).format1()}%",
+                            "${state.aiConsensusAudit.top7Hits} 次",
+                            Modifier.weight(1f),
+                        )
                     }
                 }
             }
         }
         if (state.aiConsensusRecords.isNotEmpty()) {
-            item { ArchiveSectionLabel("AI 共识档案", "仅同一名次至少两个 AI 达成共识时冻结，每目标期一次") }
+            item {
+                ArchiveSectionLabel(
+                    "AI 共识档案",
+                    "仅同一名次至少两个 AI 达成共识时冻结，每目标期一次",
+                )
+            }
             items(state.aiConsensusRecords, key = { "consensus-${it.id}" }) { record ->
                 AiConsensusArchiveRecordCard(record)
             }
         }
         if (state.aiRecords.isNotEmpty()) {
-            item { ArchiveSectionLabel("AI 冻结预测", "首次有效返回入档，目标期开奖后自动验证") }
-            items(state.aiRecords, key = { "ai-${it.id}" }) { record -> AiArchiveRecordCard(record) }
+            item {
+                ArchiveSectionLabel(
+                    "AI 冻结预测",
+                    "首次有效返回入档，目标期开奖后自动验证",
+                )
+            }
+            items(state.aiRecords, key = { "ai-${it.id}" }) { record ->
+                AiArchiveRecordCard(record)
+            }
         }
         if (state.records.isNotEmpty()) {
-            item { ArchiveSectionLabel("本地模型预测", "每个目标期只锁定一次，不会用最新期替代结算") }
-            items(state.records, key = { "native-${it.id}" }) { record -> ArchiveRecordCard(record) }
+            item {
+                ArchiveSectionLabel(
+                    "本地模型预测",
+                    "每个目标期只锁定一次，不会用最新期替代结算",
+                )
+            }
+            items(state.records, key = { "native-${it.id}" }) { record ->
+                ArchiveRecordCard(record)
+            }
         }
-        if (state.records.isEmpty() && state.aiRecords.isEmpty() && state.aiConsensusRecords.isEmpty()) {
+        if (
+            state.records.isEmpty() &&
+            state.aiRecords.isEmpty() &&
+            state.aiConsensusRecords.isEmpty()
+        ) {
             item { EmptyState("还没有前向档案", "同步或 AI 分析成功后，会在开奖前自动冻结预测") }
         }
     }
@@ -1101,7 +1460,9 @@ fun ArchiveScreen(state: AppUiState, onSelectLottery: (LotteryType) -> Unit, mod
 private fun AiProfileAuditRow(audit: AiProfileAudit) {
     val colors = LocalTianjiColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(11.dp))
             .background(Color.White.copy(alpha = 0.025f))
             .border(1.dp, colors.line, RoundedCornerShape(11.dp))
             .padding(horizontal = 10.dp, vertical = 9.dp),
@@ -1162,10 +1523,16 @@ private fun AiConsensusArchiveRecordCard(record: AiConsensusRecord) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("目标期 ${record.targetPeriod}", color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "目标期 ${record.targetPeriod}",
+                        color = colors.text,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "第${positionName(record.position)} · 同名次 ${record.supportingProfiles}/${record.totalProfiles} 个 AI" +
+                        "第${positionName(record.position)} · 同名次 " +
+                            "${record.supportingProfiles}/${record.totalProfiles} 个 AI" +
                             (record.actualNumber?.let { " · 实际 $it" } ?: ""),
                         color = colors.textDim,
                         fontSize = 8.sp,
@@ -1181,7 +1548,9 @@ private fun AiConsensusArchiveRecordCard(record: AiConsensusRecord) {
                     color = tint,
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clip(CircleShape).background(tint.copy(alpha = 0.09f))
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(tint.copy(alpha = 0.09f))
                         .padding(horizontal = 9.dp, vertical = 7.dp),
                 )
             }
@@ -1192,14 +1561,18 @@ private fun AiConsensusArchiveRecordCard(record: AiConsensusRecord) {
             record.actualRank?.let { rank ->
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "实际号码矩阵排名：第${rank} · LogLoss ${record.logLoss?.format2() ?: "--"}",
+                    "实际号码矩阵排名：第$rank · LogLoss ${record.logLoss?.format2() ?: "--"}",
                     color = colors.textDim,
                     fontSize = 8.sp,
                 )
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("哈希 ${record.consensusHash.take(12)}…", color = colors.textDim, fontSize = 7.sp)
+                Text(
+                    "哈希 ${record.consensusHash.take(12)}…",
+                    color = colors.textDim,
+                    fontSize = 7.sp,
+                )
                 Text(formatTime(record.createdAtEpochMs), color = colors.textDim, fontSize = 7.sp)
             }
         }
@@ -1223,7 +1596,12 @@ private fun ArchiveRecordCard(record: LockedForecast) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("目标期 ${record.targetPeriod}", color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "目标期 ${record.targetPeriod}",
+                        color = colors.text,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "第${positionName(record.position)} · 训练至 ${record.trainedThroughPeriod}" +
@@ -1242,7 +1620,10 @@ private fun ArchiveRecordCard(record: LockedForecast) {
                     color = tint,
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clip(CircleShape).background(tint.copy(alpha = 0.09f)).padding(horizontal = 9.dp, vertical = 7.dp),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(tint.copy(alpha = 0.09f))
+                        .padding(horizontal = 9.dp, vertical = 7.dp),
                 )
             }
             Spacer(Modifier.height(13.dp))
@@ -1251,7 +1632,11 @@ private fun ArchiveRecordCard(record: LockedForecast) {
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("哈希 ${record.reportHash.take(12)}…", color = colors.textDim, fontSize = 7.sp)
+                Text(
+                    "哈希 ${record.reportHash.take(12)}…",
+                    color = colors.textDim,
+                    fontSize = 7.sp,
+                )
                 Text(formatTime(record.createdAtEpochMs), color = colors.textDim, fontSize = 7.sp)
             }
         }
@@ -1265,11 +1650,16 @@ private fun AiArchiveRecordCard(record: AiForecastRecord) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("目标期 ${record.targetPeriod}", color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "目标期 ${record.targetPeriod}",
+                        color = colors.text,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${record.profileName} · 第${positionName(record.position)} · ${record.analysisMode.label}" +
-                            " · ${record.reasoningState.label}" +
+                        "${record.profileName} · 第${positionName(record.position)} · " +
+                            "${record.analysisMode.label} · ${record.reasoningState.label}" +
                             (record.actualNumber?.let { " · 实际 $it" } ?: ""),
                         color = colors.textDim,
                         fontSize = 8.sp,
@@ -1287,7 +1677,9 @@ private fun AiArchiveRecordCard(record: AiForecastRecord) {
                     color = tint,
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clip(CircleShape).background(tint.copy(alpha = 0.09f))
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(tint.copy(alpha = 0.09f))
                         .padding(horizontal = 9.dp, vertical = 7.dp),
                 )
             }
@@ -1298,14 +1690,20 @@ private fun AiArchiveRecordCard(record: AiForecastRecord) {
             record.actualRank?.let { rank ->
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "实际号码矩阵排名：第${rank} · Brier ${record.brierScore?.format2() ?: "--"} · LogLoss ${record.logLoss?.format2() ?: "--"}",
+                    "实际号码矩阵排名：第$rank · Brier " +
+                        "${record.brierScore?.format2() ?: "--"} · LogLoss " +
+                        (record.logLoss?.format2() ?: "--"),
                     color = colors.textDim,
                     fontSize = 8.sp,
                 )
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("哈希 ${record.forecastHash.take(12)}…", color = colors.textDim, fontSize = 7.sp)
+                Text(
+                    "哈希 ${record.forecastHash.take(12)}…",
+                    color = colors.textDim,
+                    fontSize = 7.sp,
+                )
                 Text(formatTime(record.createdAtEpochMs), color = colors.textDim, fontSize = 7.sp)
             }
         }
@@ -1359,10 +1757,32 @@ fun DataScreen(
                         state.snapshot?.sourceHealth?.isFresh == true,
                     )
                     Spacer(Modifier.height(12.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MetricTile("接口历史", (state.snapshot?.history?.size ?: 0).toString(), "连续期已核验", Modifier.weight(1f))
-                        MetricTile("预测档案", (state.records.size + state.aiRecords.size + state.aiConsensusRecords.size).toString(), "本地＋AI＋共识", Modifier.weight(1f))
-                        MetricTile("正式版本", BuildConfig.VERSION_NAME, "矩阵审计", Modifier.weight(1f))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        MetricTile(
+                            "接口历史",
+                            (state.snapshot?.history?.size ?: 0).toString(),
+                            "连续期已核验",
+                            Modifier.weight(1f),
+                        )
+                        MetricTile(
+                            "预测档案",
+                            (
+                                state.records.size +
+                                    state.aiRecords.size +
+                                    state.aiConsensusRecords.size
+                                ).toString(),
+                            "本地＋AI＋共识",
+                            Modifier.weight(1f),
+                        )
+                        MetricTile(
+                            "正式版本",
+                            BuildConfig.VERSION_NAME,
+                            "矩阵审计",
+                            Modifier.weight(1f),
+                        )
                     }
                 }
             }
@@ -1390,36 +1810,52 @@ fun DataScreen(
                         "MIUIX APPEARANCE",
                         "动态取色",
                         Icons.Rounded.ColorLens,
-                        if (colors.monetSupported) "已直接连接 Android 系统 Monet 色板" else "当前 Android 版本不支持 Monet，使用稳定后备色",
+                        if (colors.monetSupported) {
+                            "已直接连接 Android 系统 Monet 色板"
+                        } else {
+                            "当前 Android 版本不支持 Monet，使用稳定后备色"
+                        },
                     )
                     Spacer(Modifier.height(13.dp))
+                    val monetTint = if (colors.monetSupported) colors.green else colors.amber
                     Row(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(if (colors.monetSupported) colors.green.copy(alpha = 0.08f) else colors.amber.copy(alpha = 0.08f))
-                            .border(1.dp, if (colors.monetSupported) colors.green.copy(alpha = 0.22f) else colors.amber.copy(alpha = 0.22f), CircleShape)
+                            .background(monetTint.copy(alpha = 0.08f))
+                            .border(1.dp, monetTint.copy(alpha = 0.22f), CircleShape)
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
-                            if (colors.monetSupported) Icons.Rounded.CheckCircle else Icons.Rounded.Info,
+                            if (colors.monetSupported) {
+                                Icons.Rounded.CheckCircle
+                            } else {
+                                Icons.Rounded.Info
+                            },
                             null,
-                            tint = if (colors.monetSupported) colors.green else colors.amber,
+                            tint = monetTint,
                             modifier = Modifier.size(14.dp),
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
                             if (colors.monetSupported) "系统 Monet 已连接" else "系统 Monet 不可用",
-                            color = if (colors.monetSupported) colors.green else colors.amber,
+                            color = monetTint,
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
                     Spacer(Modifier.height(14.dp))
                     PaletteMode.entries.chunked(2).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             row.forEach { mode ->
-                                PaletteButton(mode, paletteMode == mode, Modifier.weight(1f)) { onPaletteChanged(mode) }
+                                PaletteButton(
+                                    mode,
+                                    paletteMode == mode,
+                                    Modifier.weight(1f),
+                                ) { onPaletteChanged(mode) }
                             }
                             if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
@@ -1533,9 +1969,12 @@ private fun AiConfigPanel(
             )
             if (saved.isNotEmpty() && !editorOpen) {
                 Spacer(Modifier.height(14.dp))
-                val duplicateModelKeys = saved.filter { it.model.isNotBlank() }
+                val duplicateModelKeys = saved
+                    .filter { it.model.isNotBlank() }
                     .groupingBy { it.model.trim().lowercase() }
-                    .eachCount().filterValues { it > 1 }.keys
+                    .eachCount()
+                    .filterValues { it > 1 }
+                    .keys
                 if (duplicateModelKeys.isNotEmpty()) {
                     Text(
                         "检测到相同模型的重复配置：仍可分别分析，但只按 1 个独立模型计入共识。",
@@ -1566,7 +2005,12 @@ private fun AiConfigPanel(
                     ) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(config.displayName, color = colors.text, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    config.displayName,
+                                    color = colors.text,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
                                 Spacer(Modifier.height(3.dp))
                                 Text(
                                     "${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}",
@@ -1601,10 +2045,20 @@ private fun AiConfigPanel(
                                     )
                                 }
                             }
-                            status?.latencyMs?.let { Text("${it}ms", color = tint, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
+                            status?.latencyMs?.let {
+                                Text(
+                                    "${it}ms",
+                                    color = tint,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
                         Spacer(Modifier.height(9.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
                             AiAnalysisMode.entries.forEach { mode ->
                                 val active = config.analysisMode == mode
                                 MiniActionButton(
@@ -1615,7 +2069,10 @@ private fun AiConfigPanel(
                             }
                         }
                         Spacer(Modifier.height(7.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
                             AiReasoningMode.entries.forEach { mode ->
                                 val active = config.reasoningMode == mode
                                 MiniActionButton(
@@ -1632,10 +2089,25 @@ private fun AiConfigPanel(
                             fontSize = 6.8.sp,
                         )
                         Spacer(Modifier.height(10.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            MiniActionButton("能力", Modifier.weight(1f), statusState != AiConnectionState.TESTING) { onTest(config.id) }
-                            MiniActionButton("模型", Modifier.weight(1f), statusState != AiConnectionState.TESTING) { onLoadModels(config.id) }
-                            MiniActionButton("分析", Modifier.weight(1f), !state.isAiAnalyzing) { onAnalyze(config.id) }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            MiniActionButton(
+                                "能力",
+                                Modifier.weight(1f),
+                                statusState != AiConnectionState.TESTING,
+                            ) { onTest(config.id) }
+                            MiniActionButton(
+                                "模型",
+                                Modifier.weight(1f),
+                                statusState != AiConnectionState.TESTING,
+                            ) { onLoadModels(config.id) }
+                            MiniActionButton(
+                                "分析",
+                                Modifier.weight(1f),
+                                !state.isAiAnalyzing,
+                            ) { onAnalyze(config.id) }
                             MiniActionButton("编辑", Modifier.weight(1f)) {
                                 editingId = config.id
                                 name = config.name
@@ -1658,7 +2130,10 @@ private fun AiConfigPanel(
                                 }
                             }
                         }
-                        val choices = (config.provider.fallbackModels + availableModels[config.id].orEmpty()).distinct()
+                        val choices = (
+                            config.provider.fallbackModels +
+                                availableModels[config.id].orEmpty()
+                            ).distinct()
                         if (choices.isNotEmpty()) {
                             Spacer(Modifier.height(9.dp))
                             ModelChoiceRow(
@@ -1675,208 +2150,256 @@ private fun AiConfigPanel(
                 }
             }
             if (editorOpen) {
-            Spacer(Modifier.height(16.dp))
-            if (saved.isNotEmpty()) {
-                MiniActionButton("← 返回配置列表", Modifier.fillMaxWidth(), tint = colors.textSoft) {
-                    resetEditor()
-                    editorOpen = false
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-            Text(
-                if (editingId.isBlank()) "新增 AI 配置" else "编辑 AI 配置",
-                color = colors.text,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(11.dp))
-            AiProvider.entries.forEach { item ->
-                val selected = provider == item
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 7.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (selected) colors.accentSoft else Color.White.copy(alpha = 0.022f))
-                        .border(1.dp, if (selected) colors.accent.copy(alpha = 0.35f) else colors.line, RoundedCornerShape(14.dp))
-                        .clickable {
-                            provider = item
-                            endpoint = item.defaultEndpoint
-                            model = item.defaultModel
-                            reasoningProtocol = AiReasoningProtocol.AUTO
-                        }
-                        .padding(horizontal = 12.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(item.label, color = if (selected) colors.text else colors.textSoft, fontSize = 9.sp, modifier = Modifier.weight(1f))
-                    if (selected) SelectedCheck()
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-            Text("接口历史窗口", color = colors.textSoft, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(7.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AiAnalysisMode.entries.forEach { mode ->
+                Spacer(Modifier.height(16.dp))
+                if (saved.isNotEmpty()) {
                     MiniActionButton(
-                        text = mode.label,
-                        modifier = Modifier.weight(1f),
-                        tint = if (analysisMode == mode) colors.accent else colors.textDim,
-                    ) { analysisMode = mode }
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(analysisMode.detail, color = colors.textDim, fontSize = 7.sp)
-            Spacer(Modifier.height(12.dp))
-            Text("推理强度", color = colors.textSoft, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(7.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                AiReasoningMode.entries.forEach { mode ->
-                    MiniActionButton(
-                        text = mode.label,
-                        modifier = Modifier.weight(1f),
-                        tint = if (reasoningMode == mode) colors.accent else colors.textDim,
-                    ) { reasoningMode = mode }
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(reasoningMode.detail, color = colors.textDim, fontSize = 7.sp)
-            if (provider == AiProvider.COMPATIBLE) {
-                Spacer(Modifier.height(12.dp))
-                Text("兼容接口推理协议", color = colors.textSoft, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(7.dp))
-                AiReasoningProtocol.entries.chunked(2).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        row.forEach { protocol ->
-                            MiniActionButton(
-                                text = protocol.label,
-                                modifier = Modifier.weight(1f),
-                                tint = if (reasoningProtocol == protocol) colors.accent else colors.textDim,
-                            ) { reasoningProtocol = protocol }
-                        }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                        "← 返回配置列表",
+                        Modifier.fillMaxWidth(),
+                        tint = colors.textSoft,
+                    ) {
+                        resetEditor()
+                        editorOpen = false
                     }
-                    Spacer(Modifier.height(7.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                AiReasoningEngine.resolve(draft).displayLabel,
-                color = colors.accent,
-                fontSize = 7.2.sp,
-                lineHeight = 12.sp,
-            )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("配置名称（可选）", fontSize = 8.sp) },
-                placeholder = { Text("例如：DeepSeek 主力", fontSize = 8.sp) },
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
-                colors = fieldColors,
-                shape = RoundedCornerShape(14.dp),
-            )
-            Spacer(Modifier.height(9.dp))
-            OutlinedTextField(
-                value = endpoint,
-                onValueChange = { endpoint = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("完整 HTTPS Responses / Chat Completions 地址", fontSize = 8.sp) },
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
-                colors = fieldColors,
-                shape = RoundedCornerShape(14.dp),
-            )
-            Spacer(Modifier.height(9.dp))
-            OutlinedTextField(
-                value = model,
-                onValueChange = { model = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("模型名", fontSize = 8.sp) },
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
-                colors = fieldColors,
-                shape = RoundedCornerShape(14.dp),
-            )
-            val editorModels = (provider.fallbackModels + availableModels[editingId].orEmpty()).distinct()
-            if (editorModels.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                ModelChoiceRow(editorModels, model) { model = it }
-            }
-            Spacer(Modifier.height(9.dp))
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                label = { Text("API Key（Keystore 加密保存）", fontSize = 8.sp) },
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
-                colors = fieldColors,
-                shape = RoundedCornerShape(14.dp),
-            )
-            Spacer(Modifier.height(9.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = inputPrice,
-                    onValueChange = { inputPrice = it.filter { char -> char.isDigit() || char == '.' } },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    label = { Text("输入价/百万", fontSize = 7.sp) },
-                    placeholder = { Text("可选", fontSize = 7.sp) },
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
-                    colors = fieldColors,
-                    shape = RoundedCornerShape(14.dp),
-                )
-                OutlinedTextField(
-                    value = outputPrice,
-                    onValueChange = { outputPrice = it.filter { char -> char.isDigit() || char == '.' } },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    label = { Text("输出价/百万", fontSize = 7.sp) },
-                    placeholder = { Text("可选", fontSize = 7.sp) },
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
-                    colors = fieldColors,
-                    shape = RoundedCornerShape(14.dp),
-                )
-            }
-            Spacer(Modifier.height(5.dp))
-            Text("价格按供应商账单币种填写，仅用于本机估算单次调用成本。", color = colors.textDim, fontSize = 6.8.sp)
-            Spacer(Modifier.height(13.dp))
-            Button(
-                onClick = {
-                    onSave(draft)
-                    resetEditor()
-                    editorOpen = false
-                },
-                enabled = draft.canQueryModels,
-                modifier = Modifier.fillMaxWidth().height(46.dp),
-                shape = RoundedCornerShape(15.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colors.accent,
-                    contentColor = Color.White,
-                    disabledContainerColor = colors.accent.copy(alpha = 0.16f),
-                    disabledContentColor = colors.textDim,
-                ),
-            ) {
                 Text(
-                    when {
-                        editingId.isNotBlank() -> "保存修改"
-                        draft.model.isBlank() -> "保存并读取模型"
-                        else -> "保存并添加 AI"
-                    },
-                    fontSize = 10.sp,
+                    if (editingId.isBlank()) "新增 AI 配置" else "编辑 AI 配置",
+                    color = colors.text,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                 )
-            }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "模型列表来自当前供应商的真实 /models 接口；“配置已保存”不代表分析接口成功，仍需测试或完成一次分析。",
-                color = colors.textDim,
-                fontSize = 7.5.sp,
-                lineHeight = 12.sp,
-            )
+                Spacer(Modifier.height(11.dp))
+                AiProvider.entries.forEach { item ->
+                    val selected = provider == item
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 7.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (selected) colors.accentSoft
+                                else Color.White.copy(alpha = 0.022f),
+                            )
+                            .border(
+                                1.dp,
+                                if (selected) colors.accent.copy(alpha = 0.35f) else colors.line,
+                                RoundedCornerShape(14.dp),
+                            )
+                            .clickable {
+                                provider = item
+                                endpoint = item.defaultEndpoint
+                                model = item.defaultModel
+                                reasoningProtocol = AiReasoningProtocol.AUTO
+                            }
+                            .padding(horizontal = 12.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            item.label,
+                            color = if (selected) colors.text else colors.textSoft,
+                            fontSize = 9.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (selected) SelectedCheck()
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "接口历史窗口",
+                    color = colors.textSoft,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(7.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AiAnalysisMode.entries.forEach { mode ->
+                        MiniActionButton(
+                            text = mode.label,
+                            modifier = Modifier.weight(1f),
+                            tint = if (analysisMode == mode) colors.accent else colors.textDim,
+                        ) { analysisMode = mode }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(analysisMode.detail, color = colors.textDim, fontSize = 7.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "推理强度",
+                    color = colors.textSoft,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(7.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    AiReasoningMode.entries.forEach { mode ->
+                        MiniActionButton(
+                            text = mode.label,
+                            modifier = Modifier.weight(1f),
+                            tint = if (reasoningMode == mode) colors.accent else colors.textDim,
+                        ) { reasoningMode = mode }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(reasoningMode.detail, color = colors.textDim, fontSize = 7.sp)
+                if (provider == AiProvider.COMPATIBLE) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "兼容接口推理协议",
+                        color = colors.textSoft,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    AiReasoningProtocol.entries.chunked(2).forEach { row ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
+                            row.forEach { protocol ->
+                                MiniActionButton(
+                                    text = protocol.label,
+                                    modifier = Modifier.weight(1f),
+                                    tint = if (reasoningProtocol == protocol) {
+                                        colors.accent
+                                    } else {
+                                        colors.textDim
+                                    },
+                                ) { reasoningProtocol = protocol }
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(7.dp))
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    AiReasoningEngine.resolve(draft).displayLabel,
+                    color = colors.accent,
+                    fontSize = 7.2.sp,
+                    lineHeight = 12.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("配置名称（可选）", fontSize = 8.sp) },
+                    placeholder = { Text("例如：DeepSeek 主力", fontSize = 8.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
+                    colors = fieldColors,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                Spacer(Modifier.height(9.dp))
+                OutlinedTextField(
+                    value = endpoint,
+                    onValueChange = { endpoint = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("完整 HTTPS Responses / Chat Completions 地址", fontSize = 8.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
+                    colors = fieldColors,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                Spacer(Modifier.height(9.dp))
+                OutlinedTextField(
+                    value = model,
+                    onValueChange = { model = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("模型名", fontSize = 8.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
+                    colors = fieldColors,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                val editorModels = (
+                    provider.fallbackModels + availableModels[editingId].orEmpty()
+                    ).distinct()
+                if (editorModels.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    ModelChoiceRow(editorModels, model) { model = it }
+                }
+                Spacer(Modifier.height(9.dp))
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    label = { Text("API Key（Keystore 加密保存）", fontSize = 8.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
+                    colors = fieldColors,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                Spacer(Modifier.height(9.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = inputPrice,
+                        onValueChange = {
+                            inputPrice = it.filter { char -> char.isDigit() || char == '.' }
+                        },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        label = { Text("输入价/百万", fontSize = 7.sp) },
+                        placeholder = { Text("可选", fontSize = 7.sp) },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
+                        colors = fieldColors,
+                        shape = RoundedCornerShape(14.dp),
+                    )
+                    OutlinedTextField(
+                        value = outputPrice,
+                        onValueChange = {
+                            outputPrice = it.filter { char -> char.isDigit() || char == '.' }
+                        },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        label = { Text("输出价/百万", fontSize = 7.sp) },
+                        placeholder = { Text("可选", fontSize = 7.sp) },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp),
+                        colors = fieldColors,
+                        shape = RoundedCornerShape(14.dp),
+                    )
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "价格按供应商账单币种填写，仅用于本机估算单次调用成本。",
+                    color = colors.textDim,
+                    fontSize = 6.8.sp,
+                )
+                Spacer(Modifier.height(13.dp))
+                Button(
+                    onClick = {
+                        onSave(draft)
+                        resetEditor()
+                        editorOpen = false
+                    },
+                    enabled = draft.canQueryModels,
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    shape = RoundedCornerShape(15.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.accent,
+                        contentColor = Color.White,
+                        disabledContainerColor = colors.accent.copy(alpha = 0.16f),
+                        disabledContentColor = colors.textDim,
+                    ),
+                ) {
+                    Text(
+                        when {
+                            editingId.isNotBlank() -> "保存修改"
+                            draft.model.isBlank() -> "保存并读取模型"
+                            else -> "保存并添加 AI"
+                        },
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "模型列表来自当前供应商的真实 /models 接口；“配置已保存”不代表分析接口成功，仍需测试或完成一次分析。",
+                    color = colors.textDim,
+                    fontSize = 7.5.sp,
+                    lineHeight = 12.sp,
+                )
             }
         }
     }
@@ -1902,8 +2425,14 @@ private fun ModelChoiceRow(
                 fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(if (active) colors.accentSoft else Color.White.copy(alpha = 0.025f))
-                    .border(1.dp, if (active) colors.accent.copy(alpha = 0.4f) else colors.line, CircleShape)
+                    .background(
+                        if (active) colors.accentSoft else Color.White.copy(alpha = 0.025f),
+                    )
+                    .border(
+                        1.dp,
+                        if (active) colors.accent.copy(alpha = 0.4f) else colors.line,
+                        CircleShape,
+                    )
                     .clickable { onSelected(item) }
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             )
@@ -1925,30 +2454,61 @@ private fun MiniActionButton(
             .height(34.dp)
             .clip(RoundedCornerShape(11.dp))
             .background(tint.copy(alpha = if (enabled) 0.1f else 0.035f))
-            .border(1.dp, tint.copy(alpha = if (enabled) 0.24f else 0.08f), RoundedCornerShape(11.dp))
+            .border(
+                1.dp,
+                tint.copy(alpha = if (enabled) 0.24f else 0.08f),
+                RoundedCornerShape(11.dp),
+            )
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (enabled) tint else colors.textDim, fontSize = 7.5.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text,
+            color = if (enabled) tint else colors.textDim,
+            fontSize = 7.5.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
 @Composable
-private fun PaletteButton(mode: PaletteMode, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun PaletteButton(
+    mode: PaletteMode,
+    selected: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     val colors = LocalTianjiColors.current
     Row(
         modifier = modifier
             .height(45.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) colors.accentSoft else Color.White.copy(alpha = 0.025f))
-            .border(1.dp, if (selected) colors.accent.copy(alpha = 0.34f) else colors.line, RoundedCornerShape(14.dp))
+            .background(
+                if (selected) colors.accentSoft else Color.White.copy(alpha = 0.025f),
+            )
+            .border(
+                1.dp,
+                if (selected) colors.accent.copy(alpha = 0.34f) else colors.line,
+                RoundedCornerShape(14.dp),
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(17.dp).clip(CircleShape).background(mode.preview).border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape))
+        Box(
+            Modifier
+                .size(17.dp)
+                .clip(CircleShape)
+                .background(mode.preview)
+                .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape),
+        )
         Spacer(Modifier.width(9.dp))
-        Text(mode.label, color = if (selected) colors.text else colors.textSoft, fontSize = 9.sp, modifier = Modifier.weight(1f))
+        Text(
+            mode.label,
+            color = if (selected) colors.text else colors.textSoft,
+            fontSize = 9.sp,
+            modifier = Modifier.weight(1f),
+        )
         if (selected) SelectedCheck()
     }
 }
@@ -1957,10 +2517,20 @@ private fun PaletteButton(mode: PaletteMode, selected: Boolean, modifier: Modifi
 private fun HistoryRow(draw: Draw) {
     val colors = LocalTianjiColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().height(44.dp).border(width = 0.dp, color = Color.Transparent),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .border(width = 0.dp, color = Color.Transparent),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(draw.period.takeLast(7), color = colors.textDim, fontSize = 8.sp, modifier = Modifier.width(58.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            draw.period.takeLast(7),
+            color = colors.textDim,
+            fontSize = 8.sp,
+            modifier = Modifier.width(58.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             draw.numbers.forEach { LotteryBall(it, size = 24.dp) }
         }
@@ -2001,11 +2571,23 @@ private fun ModelRow(rank: Int, model: ModelPerformance) {
             Modifier.size(26.dp).clip(RoundedCornerShape(9.dp)).background(colors.accentSoft),
             contentAlignment = Alignment.Center,
         ) {
-            Text(rank.toString(), color = colors.accent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text(
+                rank.toString(),
+                color = colors.accent,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
         Spacer(Modifier.width(9.dp))
         Column(Modifier.weight(1f)) {
-            Text(model.name, color = colors.textSoft, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                model.name,
+                color = colors.textSoft,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Spacer(Modifier.height(5.dp))
             LinearProgressIndicator(
                 progress = { model.weight.toFloat().coerceIn(0f, 1f) },
@@ -2016,9 +2598,18 @@ private fun ModelRow(rank: Int, model: ModelPerformance) {
         }
         Spacer(Modifier.width(9.dp))
         Column(horizontalAlignment = Alignment.End) {
-            Text("${(model.weight * 100).format1()}%", color = if (model.weight > 0.005) colors.accent else colors.textDim, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "${(model.weight * 100).format1()}%",
+                color = if (model.weight > 0.005) colors.accent else colors.textDim,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+            )
             Spacer(Modifier.height(4.dp))
-            Text("命中 ${(model.hitRate * 100).format1()}%", color = colors.textDim, fontSize = 7.sp)
+            Text(
+                "命中 ${(model.hitRate * 100).format1()}%",
+                color = colors.textDim,
+                fontSize = 7.sp,
+            )
         }
     }
 }
@@ -2038,7 +2629,9 @@ private fun positionName(position: Int): String = when (position) {
 
 private fun Double.format1() = String.format(Locale.US, "%.1f", this)
 private fun Double.format2() = String.format(Locale.US, "%.2f", this)
-private fun formatTime(epoch: Long) = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(epoch))
+private fun formatTime(epoch: Long) =
+    SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(epoch))
+
 private fun formatApiTime(epoch: Long): String =
     SimpleDateFormat("HH:mm:ss", Locale.US).apply {
         timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")

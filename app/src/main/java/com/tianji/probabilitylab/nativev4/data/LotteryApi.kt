@@ -1,8 +1,8 @@
 package com.tianji.probabilitylab.nativev4.data
 
+import com.tianji.probabilitylab.nativev4.model.ApiTimeParser
 import com.tianji.probabilitylab.nativev4.model.Draw
 import com.tianji.probabilitylab.nativev4.model.DrawSnapshot
-import com.tianji.probabilitylab.nativev4.model.ApiTimeParser
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.model.SourceHealth
 import org.json.JSONArray
@@ -12,8 +12,8 @@ import java.net.URL
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.Executors
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
@@ -42,12 +42,10 @@ class LotteryApi {
         }
         val fetched = fetchDates(lottery, dates, requestToken)
         ensureActive(requestToken)
-        val latestPayload = fetchLatestWithRetry(lottery, requestToken) ?: error("最新开奖接口没有返回有效期号")
-        val merged = (fetched.draws + latestPayload.draw)
-            .associateBy { it.period }
-            .values
-            .sortedWith(compareBy<Draw>({ it.period.length }, { it.period }))
-            .takeLast(3000)
+        val latestPayload = fetchLatestWithRetry(lottery, requestToken)
+            ?: error("最新开奖接口没有返回有效期号")
+        val merged = DrawMergePolicy.merge(fetched.draws + latestPayload.draw)
+            .takeLast(lottery.historyTarget)
         val newest = merged.lastOrNull() ?: error("开奖接口没有返回有效数据")
         return DrawSnapshot(
             lottery = lottery,
@@ -75,6 +73,29 @@ class LotteryApi {
     fun fetchHistoricalDates(lottery: LotteryType, dates: Set<LocalDate>): HistoricalFetchResult =
         fetchDates(lottery, dates.sorted().take(MAX_BACKFILL_DATES), cancellationGeneration.get())
 
+    /**
+     * Re-reads the latest upstream payload immediately before an AI or consensus result is frozen.
+     * This prevents a result that crossed draw time from entering the forward archive.
+     */
+    fun verifyTargetPeriodOpen(
+        lottery: LotteryType,
+        targetPeriod: String,
+        safetyWindowMs: Long = 5_000L,
+    ): TargetPeriodCheck {
+        val requestToken = cancellationGeneration.get()
+        val latest = fetchLatestWithRetry(lottery, requestToken)
+            ?: error("最新开奖接口没有返回有效期号")
+        ensureActive(requestToken)
+        return TargetPeriodGuard.evaluate(
+            expectedTargetPeriod = targetPeriod,
+            latestPeriod = latest.draw.period,
+            nextPeriod = latest.nextPeriod,
+            serverTimeEpochMs = latest.serverTimeEpochMs,
+            nextDrawAtEpochMs = latest.nextDrawAtEpochMs,
+            safetyWindowMs = safetyWindowMs,
+        )
+    }
+
     private fun fetchDates(
         lottery: LotteryType,
         dates: List<LocalDate>,
@@ -99,10 +120,7 @@ class LotteryApi {
             pool.shutdownNow()
         }
         return HistoricalFetchResult(
-            draws = draws
-                .associateBy(Draw::period)
-                .values
-                .sortedWith(compareBy<Draw>({ it.period.length }, { it.period })),
+            draws = DrawMergePolicy.merge(draws),
             failedDates = failed.sorted(),
         )
     }
@@ -239,7 +257,6 @@ class LotteryApi {
                 .toString().padStart(digits.length, '0')
         }.getOrDefault("待同步")
     }
-
 
     private data class LatestPayload(
         val draw: Draw,
