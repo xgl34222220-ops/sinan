@@ -480,7 +480,7 @@ class RemoteAiAnalyzer {
         AiProbabilityVector.requireForecastable(baseJson.doubleList("scores"))
 
         val highDecision = AiReasoningEngine.resolve(config, AiReasoningMode.HIGH)
-        val reasoningResponse = if (highDecision.supported) runCatching {
+        val reasoningResponse = if (highDecision.supported && !baseDecision.expectsReasoning) runCatching {
             post(
                 config = config,
                 temperature = 0.0,
@@ -534,6 +534,12 @@ class RemoteAiAnalyzer {
         require(config.isComplete) { "请先在数据页填写 HTTPS 接口、模型名和 API Key" }
         val historyLimit = config.analysisMode.historyLimit
         val userPrompt = analysisPayload(snapshot, report, historyLimit).toString()
+        val retryPrompt = JSONObject(userPrompt).apply {
+            put(
+                "retry_rule",
+                "上一轮没有生成完整JSON。本轮继续真实思考，但禁止重新逐期复述；直接利用已核验统计完成比较并尽快输出position与10项scores。",
+            )
+        }.toString()
         val started = System.currentTimeMillis()
         val primaryDecision = AiReasoningEngine.resolve(config)
 
@@ -543,12 +549,13 @@ class RemoteAiAnalyzer {
             readTimeoutMs: Int,
             executionNote: String,
             fallback: Boolean = false,
+            prompt: String = userPrompt,
         ): AiForecast {
             val response = post(
                 config = config,
                 temperature = if (reasoningDecision.expectsReasoning) 0.1 else 0.2,
                 systemPrompt = SYSTEM_PROMPT,
-                userPrompt = userPrompt,
+                userPrompt = prompt,
                 reasoningDecision = reasoningDecision,
                 maxTokens = maxTokens,
                 readTimeoutMs = readTimeoutMs,
@@ -636,6 +643,7 @@ class RemoteAiAnalyzer {
                     "${config.analysisMode.label} · 保留思考并重试输出格式"
                 },
                 fallback = reasoningFallback,
+                prompt = retryPrompt,
             )
         }.getOrElse { retryFailure ->
             error(
@@ -976,6 +984,8 @@ class RemoteAiAnalyzer {
             put("verified_fact_history_size", snapshot.history.size)
             put("data_source", "fresh lottery API history fetched immediately before this analysis")
             put("history_order", "oldest_to_newest; the final item is the latest verified draw")
+            put("reasoning_efficiency_rule", AiPromptCompactor.REASONING_RULE)
+            put("compact_draw_format", AiPromptCompactor.FORMAT)
             put("latest_period", snapshot.latest.period)
             put("latest_numbers", JSONArray(snapshot.latest.numbers))
             put(
@@ -984,38 +994,11 @@ class RemoteAiAnalyzer {
             )
             put(
                 "verified_position_statistics",
-                JSONArray(
-                    AiFactEngine.calculate(snapshot.history).map { facts ->
-                        JSONObject()
-                            .put("position", facts.position + 1)
-                            .put("latest_number", facts.latestNumber)
-                            .put("recent20_counts_for_numbers_1_to_10", JSONArray(facts.recent20Counts))
-                            .put("current_omissions_for_numbers_1_to_10", JSONArray(facts.omissions))
-                            .put("latest_size_side", facts.sizeSide)
-                            .put("latest_size_streak", facts.sizeStreak)
-                    },
-                ),
-            )
-            put(
-                "local_model_quality_only_no_predictions",
-                JSONArray(
-                    report.models.map {
-                        JSONObject()
-                            .put("name", it.name)
-                            .put("formal_weight", it.weight)
-                            .put("shadow_weight", it.shadowWeight)
-                            .put("forward_hit_rate", it.hitRate)
-                            .put("log_loss", it.logLoss)
-                    },
-                ),
+                AiPromptCompactor.verifiedPositionStatistics(snapshot.history),
             )
             put(
                 "verified_draws_oldest_to_newest",
-                JSONArray(
-                    snapshot.history.takeLast(historyLimit).map { draw ->
-                        JSONObject().put("period", draw.period).put("numbers", JSONArray(draw.numbers))
-                    },
-                ),
+                AiPromptCompactor.compactDraws(snapshot.history, historyLimit),
             )
             put(
                 "required_json_schema",
