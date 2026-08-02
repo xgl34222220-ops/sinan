@@ -23,8 +23,8 @@ android {
         applicationId = "com.tianji.probabilitylab.nativev4"
         minSdk = 26
         targetSdk = 36
-        versionCode = 26
-        versionName = "5.5.1"
+        versionCode = 27
+        versionName = "5.5.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
