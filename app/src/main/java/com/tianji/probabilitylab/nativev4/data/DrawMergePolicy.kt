@@ -14,7 +14,7 @@ object DrawMergePolicy {
             "上游同一期 $period 返回了不同开奖号码，已停止预测并等待重新核验"
         }
         return grouped.values
-            .map(List<Draw>::last)
+            .map { records -> records.last() }
             .sortedWith(compareBy<Draw>({ it.period.length }, Draw::period))
     }
 }
