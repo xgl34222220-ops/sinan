@@ -1,0 +1,71 @@
+name: Apply Tianji v5.5.2 prompt speed
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout hotfix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/v5.5.2-adaptive-reasoning
+          fetch-depth: 0
+
+      - name: Apply v5.5.2 patch
+        run: python3 scripts/apply_v5_5_2_prompt_speed.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Unit tests, lint and builds
+        run: >-
+          gradle --no-daemon --stacktrace
+          :app:testDebugUnitTest
+          :app:testReleaseUnitTest
+          :app:lintDebug
+          :app:assembleDebug
+          :app:assembleRelease
+
+      - name: Commit verified source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-v5.5.2-prompt-speed.yml scripts/apply_v5_5_2_prompt_speed.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            README.md \
+            RELEASE_NOTES_v5.5.2.md \
+            app/build.gradle.kts \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiPromptCompactor.kt \
+            app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiPromptCompactorTest.kt
+          git add -u -- .github/workflows scripts
+          git commit -m '天机 v5.5.2：保留真实思考并减少无效推理'
+          git push origin HEAD:fix/v5.5.2-adaptive-reasoning
