@@ -22,7 +22,7 @@ enum class AiReasoningState(val label: String) {
     DISABLED("已关闭可控推理"),
     REQUESTED("已请求推理，供应商未返回用量"),
     VERIFIED("已验证推理"),
-    FALLBACK("推理失败后关闭重试"),
+    FALLBACK("推理重试成功"),
     UNSUPPORTED("未检测到可控推理"),
 }
 
@@ -66,12 +66,22 @@ object AiReasoningEngine {
             )
         }
         return when (preference) {
-            AiReasoningMode.AUTO -> AiReasoningDecision(
-                protocol, preference, true, false, false, null,
-                "${protocol.label} · 模型默认",
-            )
+            AiReasoningMode.AUTO -> when (protocol) {
+                AiReasoningProtocol.DEEPSEEK -> AiReasoningDecision(
+                    protocol, preference, true, true, true, "high",
+                    "${protocol.label} · 自动思考",
+                )
+                else -> AiReasoningDecision(
+                    protocol, preference, true, false, false, null,
+                    "${protocol.label} · 模型默认",
+                )
+            }
             AiReasoningMode.LOW -> when (protocol) {
-                AiReasoningProtocol.DEEPSEEK, AiReasoningProtocol.ENABLE_THINKING -> AiReasoningDecision(
+                AiReasoningProtocol.DEEPSEEK -> AiReasoningDecision(
+                    protocol, preference, true, true, true, "high",
+                    "${protocol.label} · 省时思考",
+                )
+                AiReasoningProtocol.ENABLE_THINKING -> AiReasoningDecision(
                     protocol, preference, true, true, false, null,
                     "${protocol.label} · 已关闭推理",
                 )
@@ -81,25 +91,27 @@ object AiReasoningEngine {
                 )
             }
             AiReasoningMode.HIGH -> AiReasoningDecision(
-                protocol, preference, true, true, true, "high",
+                protocol, preference, true, true, true,
+                if (protocol == AiReasoningProtocol.DEEPSEEK) "max" else "high",
                 "${protocol.label} · 高推理",
             )
         }
     }
 
     fun fallback(config: AiConfig): AiReasoningDecision {
-        val low = resolve(config, AiReasoningMode.LOW)
-        return when (low.protocol) {
-            AiReasoningProtocol.DEEPSEEK,
-            AiReasoningProtocol.OPENROUTER,
-            AiReasoningProtocol.ENABLE_THINKING -> low.copy(
-                sendControl = true,
-                enableThinking = false,
-                effort = null,
-                displayLabel = "${low.protocol.label} · 已强制关闭推理重试",
-            )
-            else -> low.copy(displayLabel = "${low.displayLabel} · 重试")
-        }
+        val current = resolve(config)
+        if (!current.supported) return current.copy(displayLabel = "${current.displayLabel} · 重试")
+        return current.copy(
+            sendControl = true,
+            enableThinking = true,
+            effort = when {
+                current.protocol == AiReasoningProtocol.DEEPSEEK &&
+                    config.reasoningMode == AiReasoningMode.HIGH -> "max"
+                current.effort.isNullOrBlank() -> "high"
+                else -> current.effort
+            },
+            displayLabel = "${current.protocol.label} · 保留思考重试",
+        )
     }
 
     fun stateFor(

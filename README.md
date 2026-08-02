@@ -5,7 +5,7 @@
 
 ## 当前版本
 
-- 版本：5.5.0
+- 版本：5.5.1
 - Android：原生 Kotlin + Jetpack Compose
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 签名：正式版使用稳定 Release 证书
