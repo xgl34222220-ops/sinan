@@ -48,23 +48,6 @@ jobs:
           test "$actual" = 'fc33b353d11f1b68149284622bdd38407ee68fa226a78979f476bee27ae8ddd5'
           unzip -t "$APK" >/dev/null
 
-      - name: Create verified v5.4.6 tag first
-        env:
-          GH_TOKEN: ${{ env.RELEASE_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'xgl34222220-ops'
-          git config user.email 'xgl34222220-ops@users.noreply.github.com'
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if git ls-remote --exit-code --tags origin refs/tags/v5.4.6 >/dev/null 2>&1; then
-            remote_sha="$(git ls-remote --tags origin refs/tags/v5.4.6 | awk '{print $1}')"
-            test "$remote_sha" = '5c5239d0e93593d19a0317c908bd39c6a1066996'
-          else
-            git tag v5.4.6 5c5239d0e93593d19a0317c908bd39c6a1066996
-            git push origin refs/tags/v5.4.6
-          fi
-
       - name: Publish v5.4.6 formal release
         env:
           GH_TOKEN: ${{ env.RELEASE_TOKEN }}
@@ -77,11 +60,12 @@ jobs:
               release-assets/Tianji-v5.4.6-release-SHA256.txt \
               --clobber
             gh release edit v5.4.6 \
+              --target main \
               --title '天机 v5.4.6 正式版' \
               --notes-file RELEASE_NOTES_v5.4.6.md
           else
             gh release create v5.4.6 \
-              --verify-tag \
+              --target main \
               --title '天机 v5.4.6 正式版' \
               --notes-file RELEASE_NOTES_v5.4.6.md \
               release-assets/Tianji-v5.4.6-release.apk \
