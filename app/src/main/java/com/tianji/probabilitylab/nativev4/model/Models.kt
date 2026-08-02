@@ -6,9 +6,10 @@ enum class LotteryType(
     val subtitle: String,
     val lotCode: Int,
     val drawIntervalMinutes: Int,
+    val historyTarget: Int,
 ) {
-    XYFT("xyft", "幸运飞艇", "约 5 分钟一期", 10057, 5),
-    AZXY10("azxy10", "澳洲幸运10", "约 5 分钟一期", 10012, 5),
+    XYFT("xyft", "幸运飞艇", "约 5 分钟一期", 10057, 5, 2_000),
+    AZXY10("azxy10", "澳洲幸运10", "约 5 分钟一期", 10012, 5, 3_000),
 }
 
 data class Draw(
