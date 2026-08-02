@@ -588,8 +588,16 @@ class RemoteAiAnalyzer {
         val primary = runCatching {
             execute(
                 reasoningDecision = primaryDecision,
-                maxTokens = if (primaryDecision.expectsReasoning) 4_096 else 640,
-                readTimeoutMs = if (primaryDecision.expectsReasoning) 60_000 else 30_000,
+                maxTokens = when {
+                    primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 32_768
+                    primaryDecision.expectsReasoning -> 8_192
+                    else -> 1_024
+                },
+                readTimeoutMs = when {
+                    primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 180_000
+                    primaryDecision.expectsReasoning -> 90_000
+                    else -> 30_000
+                },
                 executionNote = "${config.analysisMode.label} · ${primaryDecision.displayLabel}",
             )
         }
@@ -601,15 +609,19 @@ class RemoteAiAnalyzer {
         return runCatching {
             val reasoningFallback = primaryDecision.expectsReasoning || reasoningControlFailure
             val retryDecision = if (reasoningFallback) {
-                AiReasoningEngine.resolve(config, AiReasoningMode.AUTO)
+                AiReasoningEngine.fallback(config)
             } else primaryDecision
             execute(
                 reasoningDecision = retryDecision,
-                maxTokens = 640,
-                readTimeoutMs = 20_000,
+                maxTokens = 1_024,
+                readTimeoutMs = 45_000,
                 executionNote = if (reasoningFallback) {
-                    val reason = if (reasoningControlFailure) "推理参数被接口拒绝" else "推理无最终答案"
-                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}重试"
+                    val reason = when {
+                        reasoningControlFailure -> "推理参数被接口拒绝"
+                        firstFailure.message.orEmpty().contains("输出上限") -> "高推理达到输出上限"
+                        else -> "推理无最终答案"
+                    }
+                    "${config.analysisMode.label} · $reason → ${retryDecision.displayLabel}"
                 } else {
                     "${config.analysisMode.label} · 输出格式自动重试"
                 },
@@ -824,15 +836,30 @@ class RemoteAiAnalyzer {
         }
     }
 
+    private fun JSONObject.hasCompleteForecastContent(): Boolean {
+        val content = extractContent()
+        if (content.isBlank()) return false
+        return runCatching {
+            val json = JSONObject(stripCodeFence(content))
+            val position = json.optInt("position", 0)
+            val scores = json.optJSONArray("scores") ?: return@runCatching false
+            position in 1..10 && scores.length() == 10 && (0 until scores.length()).all { index ->
+                val score = scores.optDouble(index, Double.NaN)
+                score.isFinite() && score >= 0.0
+            }
+        }.getOrDefault(false)
+    }
+
     private fun JSONObject.requireCompletedResponse() {
+        val completeForecastContent = hasCompleteForecastContent()
         val status = optString("status")
-        if (status == "incomplete") {
+        if (status == "incomplete" && !completeForecastContent) {
             val reason = optJSONObject("incomplete_details")?.optString("reason").orEmpty()
             error("模型输出不完整：${reason.ifBlank { "达到输出上限" }}")
         }
         val choice = optJSONArray("choices")?.optJSONObject(0)
         when (choice?.optString("finish_reason")) {
-            "length" -> error("模型达到输出上限，没有生成完整 JSON")
+            "length" -> if (!completeForecastContent) error("模型达到输出上限，没有生成完整 JSON")
             "content_filter" -> error("模型输出被内容过滤器中断")
         }
         val refusal = choice?.optJSONObject("message")?.optString("refusal").orEmpty()

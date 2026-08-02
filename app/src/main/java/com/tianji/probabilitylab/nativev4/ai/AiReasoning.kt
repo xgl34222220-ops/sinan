@@ -87,6 +87,21 @@ object AiReasoningEngine {
         }
     }
 
+    fun fallback(config: AiConfig): AiReasoningDecision {
+        val low = resolve(config, AiReasoningMode.LOW)
+        return when (low.protocol) {
+            AiReasoningProtocol.DEEPSEEK,
+            AiReasoningProtocol.OPENROUTER,
+            AiReasoningProtocol.ENABLE_THINKING -> low.copy(
+                sendControl = true,
+                enableThinking = false,
+                effort = null,
+                displayLabel = "${low.protocol.label} · 已强制关闭推理重试",
+            )
+            else -> low.copy(displayLabel = "${low.displayLabel} · 重试")
+        }
+    }
+
     fun stateFor(
         decision: AiReasoningDecision,
         usage: AiTokenUsage,
