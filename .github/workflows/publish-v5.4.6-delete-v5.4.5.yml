@@ -1,0 +1,125 @@
+name: Publish Tianji v5.4.6 and delete v5.4.5
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-v5.4.6-delete-v5.4.5.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-and-clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download and verify v5.4.6 APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/8834408570/zip" > /tmp/tianji-v5.4.6.zip
+          unzip -q /tmp/tianji-v5.4.6.zip -d release-assets
+
+          APK='release-assets/Tianji-v5.4.6-release.apk'
+          SHA_FILE='release-assets/Tianji-v5.4.6-release-SHA256.txt'
+          test -s "$APK"
+          test -s "$SHA_FILE"
+
+          expected="$(awk 'NR==1 {print $1}' "$SHA_FILE")"
+          actual="$(sha256sum "$APK" | awk '{print $1}')"
+          echo "Expected: $expected"
+          echo "Actual:   $actual"
+          test "$expected" = "$actual"
+          test "$actual" = 'fc33b353d11f1b68149284622bdd38407ee68fa226a78979f476bee27ae8ddd5'
+          unzip -t "$APK" >/dev/null
+
+      - name: Publish v5.4.6 formal release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view v5.4.6 >/dev/null 2>&1; then
+            gh release upload v5.4.6 \
+              release-assets/Tianji-v5.4.6-release.apk \
+              release-assets/Tianji-v5.4.6-release-SHA256.txt \
+              --clobber
+            gh release edit v5.4.6 \
+              --target 5c5239d0e93593d19a0317c908bd39c6a1066996 \
+              --title '天机 v5.4.6 正式版' \
+              --notes-file RELEASE_NOTES_v5.4.6.md
+          else
+            gh release create v5.4.6 \
+              --target 5c5239d0e93593d19a0317c908bd39c6a1066996 \
+              --title '天机 v5.4.6 正式版' \
+              --notes-file RELEASE_NOTES_v5.4.6.md \
+              release-assets/Tianji-v5.4.6-release.apk \
+              release-assets/Tianji-v5.4.6-release-SHA256.txt
+          fi
+
+          gh release view v5.4.6 --json tagName,name,isDraft,isPrerelease,url,assets \
+            --jq '{tagName,name,isDraft,isPrerelease,url,assets:[.assets[].name]}'
+          test "$(gh release view v5.4.6 --json isDraft --jq '.isDraft')" = 'false'
+          test "$(gh release view v5.4.6 --json isPrerelease --jq '.isPrerelease')" = 'false'
+          gh release view v5.4.6 --json assets --jq '.assets[].name' | grep -Fxq 'Tianji-v5.4.6-release.apk'
+          gh release view v5.4.6 --json assets --jq '.assets[].name' | grep -Fxq 'Tianji-v5.4.6-release-SHA256.txt'
+
+      - name: Delete previous v5.4.5 release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view v5.4.5 >/dev/null 2>&1; then
+            gh release delete v5.4.5 --cleanup-tag --yes
+          elif gh api "/repos/$GITHUB_REPOSITORY/git/ref/tags/v5.4.5" >/dev/null 2>&1; then
+            gh api --method DELETE "/repos/$GITHUB_REPOSITORY/git/refs/tags/v5.4.5"
+          fi
+
+          if gh release view v5.4.5 >/dev/null 2>&1; then
+            echo 'v5.4.5 release still exists.' >&2
+            exit 1
+          fi
+          if gh api "/repos/$GITHUB_REPOSITORY/git/ref/tags/v5.4.5" >/dev/null 2>&1; then
+            echo 'v5.4.5 tag still exists.' >&2
+            exit 1
+          fi
+          gh release view v5.4.6 --json url --jq '.url'
+
+      - name: Record publication result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -u
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main || true
+          mkdir -p release-v5.4.6-status
+          release_url="$(gh release view v5.4.6 --json url --jq '.url' 2>/dev/null || true)"
+          old_release_exists='false'
+          old_tag_exists='false'
+          gh release view v5.4.5 >/dev/null 2>&1 && old_release_exists='true'
+          gh api "/repos/$GITHUB_REPOSITORY/git/ref/tags/v5.4.5" >/dev/null 2>&1 && old_tag_exists='true'
+          printf '%s\nrun_id=%s\nrelease_url=%s\napk_sha256=%s\nv5.4.5_release_exists=%s\nv5.4.5_tag_exists=%s\n' \
+            "$JOB_STATUS" "$GITHUB_RUN_ID" "$release_url" \
+            'fc33b353d11f1b68149284622bdd38407ee68fa226a78979f476bee27ae8ddd5' \
+            "$old_release_exists" "$old_tag_exists" \
+            > release-v5.4.6-status/STATUS.txt
+          git add release-v5.4.6-status/STATUS.txt
+          git commit -m 'release: record Tianji v5.4.6 publication result' || true
+          git push origin HEAD:main || true
