@@ -24,6 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           VERIFIED_COMMIT=0d7cc5456dda20054c3e65b065cc60d78fcfc56b
+          git fetch origin "$VERIFIED_COMMIT"
           git checkout "$VERIFIED_COMMIT" -- \
             README.md \
             RELEASE_NOTES_v5.5.1.md \
