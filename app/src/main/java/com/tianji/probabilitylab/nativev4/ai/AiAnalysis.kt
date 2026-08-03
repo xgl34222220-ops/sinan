@@ -421,7 +421,8 @@ class SecureAiConfigStore(context: Context) {
     }
 }
 
-class RemoteAiAnalyzer {
+class RemoteAiAnalyzer(context: Context) {
+    private val learningStore = AiAdaptiveLearningStore(context.applicationContext)
     private val activeConnections = ConcurrentHashMap.newKeySet<HttpURLConnection>()
     private val profileConnections = ConcurrentHashMap<String, MutableSet<HttpURLConnection>>()
 
@@ -546,7 +547,15 @@ class RemoteAiAnalyzer {
     ): AiForecast {
         require(config.isComplete) { "请先在数据页填写 HTTPS 接口、模型名和 API Key" }
         val historyLimit = config.analysisMode.historyLimit
-        val userPrompt = analysisPayload(snapshot, report, historyLimit).toString()
+        val learningContext = learningStore.snapshotAll(
+            snapshot.history,
+            snapshot.lottery.apiKey,
+            config.id,
+            config.model.trim(),
+        )
+        val userPrompt = analysisPayload(snapshot, report, historyLimit)
+            .put("adaptive_learning", learningContext)
+            .toString()
         val started = System.currentTimeMillis()
         val primaryDecision = AiReasoningEngine.resolveForecast(config)
 
@@ -577,36 +586,53 @@ class RemoteAiAnalyzer {
                     response.json.extractReasoningContent().isNotBlank())
             ) {
                 continuedConversation = true
+                val finalizationDecision = when (reasoningDecision.protocol) {
+                    AiReasoningProtocol.DEEPSEEK,
+                    AiReasoningProtocol.OPENROUTER,
+                    AiReasoningProtocol.ENABLE_THINKING,
+                    -> reasoningDecision.copy(
+                        sendControl = true,
+                        enableThinking = false,
+                        effort = null,
+                        displayLabel = "${reasoningDecision.protocol.label} · 关闭额外思考后结构化收口",
+                    )
+                    AiReasoningProtocol.OPENAI,
+                    AiReasoningProtocol.AUTO,
+                    AiReasoningProtocol.NONE,
+                    -> reasoningDecision.copy(
+                        sendControl = false,
+                        enableThinking = false,
+                        effort = null,
+                        displayLabel = "同模型结构化收口",
+                    )
+                }
                 onProgress(
-                    "首次推理已完成，正在沿用同一对话补全最终 JSON",
+                    "已保留首次思考证据；正在使用同一模型关闭额外思考并重新提交精简统计任务",
                     System.currentTimeMillis() - started,
                 )
                 response = runCatching {
                     post(
                         config = config,
-                        temperature = if (reasoningDecision.expectsReasoning) 0.1 else 0.2,
+                        temperature = 0.15,
                         systemPrompt = SYSTEM_PROMPT,
                         userPrompt = prompt,
-                        reasoningDecision = reasoningDecision,
-                        readTimeoutMs = 8_000,
+                        reasoningDecision = finalizationDecision,
+                        readTimeoutMs = 20_000,
                         jsonOutput = true,
                         explainOutput = false,
                         streamResponse = true,
                         onProgress = onProgress,
-                        previousAssistantContent = response.json.extractContent(),
-                        previousReasoningContent = response.json.extractReasoningContent(),
-                        followUpPrompt = FINALIZE_JSON_PROMPT,
                     )
                 }.getOrElse { cause ->
                     throw AiConversationFinalizationException(
-                        "首次推理已完成，但继续对话补全结果失败：${cause.message.orEmpty().take(100)}",
+                        "首次思考没有产出完整预测；同模型无思考收口仍失败：${cause.message.orEmpty().take(100)}",
                         cause,
                     )
                 }
                 payload = response.json.extractCompleteForecastPayload()
                 if (payload == null) {
                     throw AiConversationFinalizationException(
-                        "首次推理与继续对话均未返回完整的 position 和 10 项 scores",
+                        "首次思考和同模型无思考收口均未返回完整的 position 与 10 项 scores",
                     )
                 }
             }
@@ -653,11 +679,16 @@ class RemoteAiAnalyzer {
             )
         }
 
+        val primaryDeadlineMs = when (config.reasoningMode) {
+            AiReasoningMode.LOW -> if (config.analysisMode == AiAnalysisMode.DEEP) 55_000 else 45_000
+            AiReasoningMode.AUTO -> if (config.analysisMode == AiAnalysisMode.DEEP) 90_000 else 75_000
+            AiReasoningMode.HIGH -> if (config.analysisMode == AiAnalysisMode.DEEP) 140_000 else 110_000
+        }
         val primary = runCatching {
             execute(
                 reasoningDecision = primaryDecision,
-                readTimeoutMs = if (config.analysisMode == AiAnalysisMode.DEEP) 40_000 else 30_000,
-                executionNote = "${config.analysisMode.label} · ${primaryDecision.displayLabel} · 核心矩阵优先",
+                readTimeoutMs = primaryDeadlineMs,
+                executionNote = "${config.analysisMode.label} · ${primaryDecision.displayLabel} · ${primaryDeadlineMs / 1_000}秒墙钟上限 · 核心矩阵优先",
             )
         }
         primary.getOrNull()?.let { return it }
@@ -1495,6 +1526,6 @@ class RemoteAiAnalyzer {
     private companion object {
         const val FINALIZE_JSON_PROMPT =
             "不要重新分析或复述过程。立即只输出紧凑JSON：{\"position\":1至10整数,\"scores\":[号码1至10对应的10项非负评分]}。"
-        const val SYSTEM_PROMPT = """你是独立概率排序模型。客户端已经根据真实开奖历史计算并核验了position 1至10的频次、遗漏、后继转移和趋势统计，本地候选被刻意隐藏。请比较十个名次后选择证据最充分的一名，并按号码1至10顺序给出10项非负评分。正式预测有严格时间预算：禁止输出隐藏思维链、解释、Markdown或逐期复述；只输出position与scores的紧凑JSON。不得承诺准确率、盈利或必中。"""
+        const val SYSTEM_PROMPT = """你是独立概率排序与持续学习模型。客户端已根据真实开奖历史核验position 1至10的频次、遗漏、收缩后继转移、状态变化和稳定性，本机最终候选被刻意隐藏。adaptive_learning 保存该AI配置此前真实前向结算后更新的因子权重、连续未中和策略变化；它是长期先验而不是答案。你必须先比较十个名次，连续未中时主动降低失效因子并改变策略，禁止机械复制上一期候选。随后按号码1至10顺序给出10项非负评分。正式预测有严格时间预算：禁止输出隐藏思维链、解释、Markdown或逐期复述；只输出position与scores的紧凑JSON。不得承诺准确率、盈利或必中。"""
     }
 }

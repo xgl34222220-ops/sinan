@@ -87,7 +87,7 @@ class AiConversationTimelineTest {
                 ),
             )
         }
-        assertEquals(24, events.size)
+        assertEquals(10, events.size)
         assertEquals("event-39", events.last().message)
     }
 }

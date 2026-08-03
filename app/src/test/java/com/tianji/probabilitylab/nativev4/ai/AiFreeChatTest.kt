@@ -39,7 +39,7 @@ class AiFreeChatTest {
 
     @Test
     fun builtInPersonasAreCompleteAndResolvable() {
-        assertEquals(6, AiChatPersona.values().size)
+        assertEquals(10, AiChatPersona.values().size)
         assertEquals(AiChatPersona.HISTORY, AiChatPersona.fromId("history"))
         assertEquals(AiChatPersona.COMPREHENSIVE, AiChatPersona.fromId("unknown"))
         AiChatPersona.values().forEach { persona ->

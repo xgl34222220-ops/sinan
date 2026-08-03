@@ -1,5 +1,6 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -1394,12 +1396,77 @@ fun ArchiveScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalTianjiColors.current
+    val context = LocalContext.current
+    val archivePreferences = remember {
+        context.getSharedPreferences("tianji-archive-display", Context.MODE_PRIVATE)
+    }
+    val displayKey = "mode_${state.lottery.apiKey}"
+    var archiveDisplayMode by remember(state.lottery) {
+        mutableIntStateOf(archivePreferences.getInt(displayKey, 1).coerceIn(0, 2))
+    }
+    fun setArchiveDisplayMode(mode: Int) {
+        archiveDisplayMode = mode.coerceIn(0, 2)
+        archivePreferences.edit().putInt(displayKey, archiveDisplayMode).apply()
+    }
+    val visibleConsensusRecords = when (archiveDisplayMode) {
+        0 -> emptyList()
+        1 -> state.aiConsensusRecords.take(10)
+        else -> state.aiConsensusRecords
+    }
+    val visibleAiRecords = when (archiveDisplayMode) {
+        0 -> emptyList()
+        1 -> state.aiRecords.take(10)
+        else -> state.aiRecords
+    }
+    val visibleNativeRecords = when (archiveDisplayMode) {
+        0 -> emptyList()
+        1 -> state.records.take(10)
+        else -> state.records
+    }
     LazyColumn(
         modifier = modifier,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp, 14.dp, 12.dp, 124.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { GameSwitcher(state.lottery, onSelectLottery) }
+        item {
+            SurfaceCard {
+                Column(Modifier.padding(14.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        Button(
+                            onClick = { setArchiveDisplayMode(0) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (archiveDisplayMode == 0) colors.accent else colors.accentSoft,
+                            ),
+                        ) { Text("清除显示", fontSize = 9.sp) }
+                        Button(
+                            onClick = { setArchiveDisplayMode(1) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (archiveDisplayMode == 1) colors.accent else colors.accentSoft,
+                            ),
+                        ) { Text("最近10条", fontSize = 9.sp) }
+                        Button(
+                            onClick = { setArchiveDisplayMode(2) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (archiveDisplayMode == 2) colors.accent else colors.accentSoft,
+                            ),
+                        ) { Text("显示全部", fontSize = 9.sp) }
+                    }
+                    Text(
+                        "清除显示只隐藏列表，不删除真实前向档案、统计或 SHA-256 完整性链。",
+                        color = colors.textDim,
+                        fontSize = 7.5.sp,
+                        modifier = Modifier.padding(top = 7.dp),
+                    )
+                }
+            }
+        }
         item {
             SurfaceCard {
                 Column(Modifier.padding(18.dp)) {
@@ -1536,45 +1603,51 @@ fun ArchiveScreen(
                 }
             }
         }
-        if (state.aiConsensusRecords.isNotEmpty()) {
+        if (visibleConsensusRecords.isNotEmpty()) {
             item {
                 ArchiveSectionLabel(
                     "AI 共识档案",
                     "仅同一名次至少两个 AI 达成共识时冻结，每目标期一次",
                 )
             }
-            items(state.aiConsensusRecords, key = { "consensus-${it.id}" }) { record ->
+            items(visibleConsensusRecords, key = { "consensus-${it.id}" }) { record ->
                 AiConsensusArchiveRecordCard(record)
             }
         }
-        if (state.aiRecords.isNotEmpty()) {
+        if (visibleAiRecords.isNotEmpty()) {
             item {
                 ArchiveSectionLabel(
                     "AI 冻结预测",
                     "首次有效返回入档，目标期开奖后自动验证",
                 )
             }
-            items(state.aiRecords, key = { "ai-${it.id}" }) { record ->
+            items(visibleAiRecords, key = { "ai-${it.id}" }) { record ->
                 AiArchiveRecordCard(record)
             }
         }
-        if (state.records.isNotEmpty()) {
+        if (visibleNativeRecords.isNotEmpty()) {
             item {
                 ArchiveSectionLabel(
                     "本地模型预测",
                     "每个目标期只锁定一次，不会用最新期替代结算",
                 )
             }
-            items(state.records, key = { "native-${it.id}" }) { record ->
+            items(visibleNativeRecords, key = { "native-${it.id}" }) { record ->
                 ArchiveRecordCard(record)
             }
         }
         if (
-            state.records.isEmpty() &&
-            state.aiRecords.isEmpty() &&
-            state.aiConsensusRecords.isEmpty()
+            visibleNativeRecords.isEmpty() &&
+            visibleAiRecords.isEmpty() &&
+            visibleConsensusRecords.isEmpty()
         ) {
-            item { EmptyState("还没有前向档案", "同步或 AI 分析成功后，会在开奖前自动冻结预测") }
+            item {
+                EmptyState(
+                    if (archiveDisplayMode == 0) "验证记录已清除显示" else "还没有前向档案",
+                    if (archiveDisplayMode == 0) "原始档案和成绩仍完整保留，点击“最近10条”或“显示全部”恢复"
+                    else "同步或 AI 分析成功后，会在开奖前自动冻结预测",
+                )
+            }
         }
     }
 }

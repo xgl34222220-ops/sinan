@@ -33,6 +33,7 @@ class AiChatController(context: Context) {
     private val generation = AtomicInteger(0)
     private val client = RemoteAiChatClient()
     private val archiveStore = AiChatArchiveStore(context.applicationContext)
+    private val learningStore = AiAdaptiveLearningStore(context.applicationContext)
     private var archiveData = archiveStore.loadAll()
 
     var session by mutableStateOf(AiChatSession(profileId = ""))
@@ -42,6 +43,25 @@ class AiChatController(context: Context) {
         private set
 
     fun settleCandidates(snapshot: DrawSnapshot) {
+        val drawsByPeriod = snapshot.history.associateBy(Draw::period)
+        archiveData.filter { it.lotteryKey == snapshot.lottery.apiKey }.forEach { archive ->
+            archive.candidates.filter { it.actualNumber == null }.forEach { record ->
+                val draw = drawsByPeriod[record.targetPeriod] ?: return@forEach
+                val position = record.prediction.position
+                if (position !in draw.numbers.indices) return@forEach
+                learningStore.learnChatCandidate(
+                    outcomeId = record.id,
+                    lotteryKey = archive.lotteryKey,
+                    profileId = archive.profileId,
+                    model = archive.model,
+                    position = position,
+                    top6 = record.prediction.top6,
+                    targetPeriod = record.targetPeriod,
+                    actualNumber = draw.numbers[position],
+                    draws = snapshot.history,
+                )
+            }
+        }
         val updated = archiveStore.settleCandidates(snapshot.lottery.apiKey, snapshot.history)
         archiveData = updated
         val current = updated.firstOrNull { it.id == session.archiveId }
@@ -78,6 +98,7 @@ class AiChatController(context: Context) {
                 lotteryKey = normalizedLottery,
                 targetPeriod = normalizedTarget.ifBlank { null },
                 personaId = session.personaId,
+                judgementMode = session.judgementMode,
             )
             return
         }
@@ -165,6 +186,16 @@ class AiChatController(context: Context) {
         }
     }
 
+    fun selectJudgementMode(mode: AiJudgementMode) {
+        if (session.isRunning || session.judgementMode == mode) return
+        session = session.copy(
+            judgementMode = mode,
+            error = null,
+            updatedAtEpochMs = System.currentTimeMillis(),
+        )
+        persistCurrent()
+    }
+
     fun send(
         config: AiConfig,
         snapshot: DrawSnapshot,
@@ -199,6 +230,22 @@ class AiChatController(context: Context) {
             targetPeriod = report.targetPeriod,
         )
         val persona = AiChatPersona.fromId(session.personaId)
+        val judgementMode = session.judgementMode
+        val requestedPosition = AiAdaptiveSignalEngine.extractRequestedPosition(text)
+            ?: report.selectedPosition
+        val learningProfile = learningStore.profile(
+            snapshot.lottery.apiKey,
+            config.id,
+            activeModel,
+            requestedPosition,
+        )
+        val learningContext = learningStore.snapshot(
+            snapshot.history,
+            snapshot.lottery.apiKey,
+            config.id,
+            activeModel,
+            requestedPosition,
+        )
         val token = generation.incrementAndGet()
         val nextTitle = if (session.messages.none { it.role == AiChatRole.USER }) {
             AiChatProtocol.buildConversationTitle(text)
@@ -215,6 +262,7 @@ class AiChatController(context: Context) {
             streamingMessageId = assistantMessage.id,
             contextUsagePercent = plan.usagePercent,
             rolloverNotice = null,
+            learningProfile = learningProfile,
             updatedAtEpochMs = System.currentTimeMillis(),
         )
         persistCurrent()
@@ -228,6 +276,8 @@ class AiChatController(context: Context) {
                     memorySummary = session.memorySummary,
                     question = text,
                     persona = persona,
+                    judgementMode = judgementMode,
+                    learningContext = learningContext,
                     onProgress = { progress ->
                         mainHandler.post {
                             if (generation.get() == token && session.isRunning) {
@@ -258,6 +308,14 @@ class AiChatController(context: Context) {
                                 prediction = prediction,
                             )
                         } ?: session.candidates
+                        val resolvedLearning = reply.prediction?.let { prediction ->
+                            learningStore.profile(
+                                snapshot.lottery.apiKey,
+                                config.id,
+                                activeModel,
+                                prediction.position,
+                            )
+                        } ?: learningProfile
                         session = session.copy(
                             isRunning = false,
                             progress = if (reply.reasoningVerified) {
@@ -265,11 +323,12 @@ class AiChatController(context: Context) {
                                     ?: "回答完成 · 已验证模型思考"
                             } else {
                                 "回答完成"
-                            },
+                            } + " · 已学习 ${resolvedLearning.settled} 期",
                             error = null,
                             prediction = reply.prediction,
                             candidates = nextCandidates,
                             streamingMessageId = null,
+                            learningProfile = resolvedLearning,
                             contextUsagePercent = AiChatProtocol
                                 .planContext(session.messages, session.memorySummary).usagePercent,
                             updatedAtEpochMs = System.currentTimeMillis(),
@@ -386,6 +445,8 @@ class AiChatController(context: Context) {
         ).copy(
             title = "${old.title.take(17)} · 续",
             personaId = old.personaId,
+            judgementMode = old.judgementMode,
+            learningProfile = old.learningProfile,
             messages = listOf(
                 AiChatMessage(
                     role = AiChatRole.SYSTEM,
@@ -488,6 +549,7 @@ class AiChatController(context: Context) {
             title = session.title,
             targetPeriod = session.targetPeriod.orEmpty(),
             personaId = session.personaId,
+            judgementMode = session.judgementMode,
             memorySummary = session.memorySummary,
             continuationOf = session.continuationOf,
             messages = persistedMessages,
@@ -511,6 +573,7 @@ class AiChatController(context: Context) {
         model = model,
         title = title,
         personaId = personaId,
+        judgementMode = judgementMode,
         memorySummary = memorySummary,
         continuationOf = continuationOf,
         messages = messages,
@@ -544,7 +607,13 @@ internal data class AiPositionStatistics(
 
 /** Builds deterministic, locally verified facts for the conversation model. */
 object AiChatContextBuilder {
-    fun build(snapshot: DrawSnapshot, report: ForecastReport, question: String): JSONObject {
+    fun build(
+        snapshot: DrawSnapshot,
+        report: ForecastReport,
+        question: String,
+        judgementMode: AiJudgementMode,
+        learningContext: JSONObject,
+    ): JSONObject {
         val verifiedHistory = snapshot.history.takeLast(120)
         val wantsPrediction = AiChatProtocol.wantsPrediction(question)
         val requestedPosition = extractPosition(question)
@@ -582,16 +651,28 @@ object AiChatContextBuilder {
                     toJson(computePositionStatistics(verifiedHistory, position))
                 }),
             )
-            .put(
-                "native_model_reference",
-                JSONObject()
-                    .put("algorithm_version", report.algorithmVersion)
-                    .put("trained_through_period", report.trainedThroughPeriod)
-                    .put("selected_position", report.selectedPosition + 1)
-                    .put("top6", JSONArray(report.selected.top6))
-                    .put("evidence_mode", report.mode.name)
-                    .put("rule", "local reference only; do not copy without comparing verified facts"),
-            )
+            .put("adaptive_learning", learningContext)
+            .apply {
+                if (judgementMode != AiJudgementMode.INDEPENDENT) {
+                    put(
+                        "native_model_reference",
+                        JSONObject()
+                            .put("algorithm_version", report.algorithmVersion)
+                            .put("trained_through_period", report.trainedThroughPeriod)
+                            .put("selected_position", report.selectedPosition + 1)
+                            .put("top6", JSONArray(report.selected.top6))
+                            .put("evidence_mode", report.mode.name)
+                            .put(
+                                "rule",
+                                if (judgementMode == AiJudgementMode.CONTRARIAN) {
+                                    "contrarian audit only; actively search for weaknesses and alternatives"
+                                } else {
+                                    "reference only; independently calculate before accepting"
+                                },
+                            ),
+                    )
+                }
+            }
     }
 
     private fun extractPosition(question: String): Int? {
@@ -687,6 +768,8 @@ private class RemoteAiChatClient {
         memorySummary: String,
         question: String,
         persona: AiChatPersona,
+        judgementMode: AiJudgementMode,
+        learningContext: JSONObject,
         onProgress: (String) -> Unit,
         onStreamText: (String) -> Unit,
     ): AiChatReply {
@@ -695,7 +778,9 @@ private class RemoteAiChatClient {
         require(endpoint.protocol == "https") { "AI 接口必须使用 HTTPS" }
         val started = System.currentTimeMillis()
         val wantsPrediction = AiChatProtocol.wantsPrediction(question)
-        val context = AiChatContextBuilder.build(snapshot, report, question)
+        val context = AiChatContextBuilder.build(
+            snapshot, report, question, judgementMode, learningContext,
+        )
         val decision = AiReasoningEngine.resolve(config)
         val responsesApi = endpoint.path.trimEnd('/').endsWith("/responses")
         val messages = conversationMessages(
@@ -705,6 +790,7 @@ private class RemoteAiChatClient {
             question = question,
             wantsPrediction = wantsPrediction,
             persona = persona,
+            judgementMode = judgementMode,
         )
         val publisher = VisibleStreamPublisher(onStreamText)
 
@@ -788,11 +874,12 @@ private class RemoteAiChatClient {
         question: String,
         wantsPrediction: Boolean,
         persona: AiChatPersona,
+        judgementMode: AiJudgementMode,
     ): JSONArray = JSONArray().apply {
         put(
             JSONObject()
                 .put("role", "system")
-                .put("content", systemPrompt(wantsPrediction, persona)),
+                .put("content", systemPrompt(wantsPrediction, persona, judgementMode)),
         )
         put(
             JSONObject()
@@ -808,7 +895,7 @@ private class RemoteAiChatClient {
                     .put("role", "system")
                     .put(
                         "content",
-                        "以下是客户端从上一段长期对话压缩的策略记忆。它只代表用户曾明确提出的偏好、复盘和候选核验，不是新的开奖事实，也不代表模型参数已训练：\n$memorySummary",
+                        "以下是客户端保存的长期策略记忆。它包含用户明确反馈、前期候选和真实开奖核验；必须与adaptive_learning一起用于下一期纠偏，但不得伪称供应商模型已在后台训练：\n$memorySummary",
                     ),
             )
         }
@@ -823,23 +910,37 @@ private class RemoteAiChatClient {
         put(JSONObject().put("role", "user").put("content", question))
     }
 
-    private fun systemPrompt(wantsPrediction: Boolean, persona: AiChatPersona): String = buildString {
+    private fun systemPrompt(
+        wantsPrediction: Boolean,
+        persona: AiChatPersona,
+        judgementMode: AiJudgementMode,
+    ): String = buildString {
+        val judgementInstruction = when (judgementMode) {
+            AiJudgementMode.INDEPENDENT ->
+                "当前为独立学习模式：客户端没有向你提供本机最终候选。必须形成自己的判断，不得猜测或迎合本机答案。"
+            AiJudgementMode.NATIVE_REFERENCE ->
+                "当前为参考本机模式：native_model_reference只是一份可质疑参考，必须独立计算并在不同时坚持自己的结论。"
+            AiJudgementMode.CONTRARIAN ->
+                "当前为反向审计模式：优先寻找native_model_reference中的薄弱号码、样本偏差和替代方案，不得简单赞同。"
+        }
         append(
-            "你是天机内置的开奖记录分析助手，当前分析人设为【${persona.displayName}】。" +
-                "人设要求：${persona.instruction}" +
-                "使用简体中文直接、自然地回答，支持跨期开奖的连续追问和复盘。" +
-                "用户可以要求调整当前对话的分析侧重点；要明确这只影响后续对话研判，不会改写正式本机预测模型参数。" +
-                "只能引用客户端提供的当前开奖接口历史、逐期统计和本机模型参考；不得虚构期号、次数或数据来源。" +
-                "用户问某名次多少期、某号码出现多少次、遗漏多少期、当前号码之后常接哪些号时，必须从已核验字段计算并明确窗口。" +
+            "你是天机内置的持续学习开奖记录分析助手，当前分析人设为【${persona.displayName}】。" +
+                "人设要求：${persona.instruction}" + judgementInstruction +
+                "adaptive_learning由客户端根据此前真实前向开奖结果逐期更新，包含学习期数、命中率、连续未中、六类因子权重和最近策略变化。" +
+                "上一期未中或连续未中时，必须重新检查因子是否失效，并明确说明本期改变了什么；禁止机械复制旧候选。" +
+                "使用简体中文直接、自然地回答，支持跨期开奖持续追问和复盘。" +
+                "只能引用客户端提供的当前开奖接口历史、核验统计和持续学习档案，不得虚构期号、次数或数据来源。" +
+                "所有转移、遗漏和趋势结论必须同时说明样本强弱；1次与2次之类的小差异不得包装成强规律。" +
                 "用户说出现几率大时，应解释为历史样本中的相对频次或模型相对评分，不得称为真实中奖概率。" +
-                "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小。" +
-                "回答采用适合聊天阅读的短段落，先回应问题，再给依据，不要堆砌无关术语。",
+                "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小或没有强候选。" +
+                "回答先给结论，再给关键依据、策略变化和不确定性，不要堆砌无关术语。",
         )
         if (wantsPrediction) {
             append(
-                "用户本次要求候选或预测。正文先给简洁依据，随后追加且只追加一个" +
-                    "<tianji_forecast>{\"position\":1至10整数,\"scores\":[按号码1至10排列的10项非负评分]}</tianji_forecast>。" +
-                    "scores必须来自本次上下文比较，避免无依据并列。",
+                "用户本次要求候选或预测。正文先给简洁依据与本期策略变化，随后追加且只追加一个" +
+                    "<tianji_forecast>{\"position\":1至10整数,\"scores\":[按号码1至10排列的10项非负评分]," +
+                    "\"strategy_weights\":[与六类因子顺序一致的6项非负权重],\"strategy_note\":\"不超过60字的本期策略变化\"}</tianji_forecast>。" +
+                    "scores必须来自本次独立比较，避免无依据并列。",
             )
         }
     }

@@ -143,7 +143,7 @@ class AiChatArchiveStore(context: Context) {
 
 object AiChatArchiveCodec {
     fun encode(archives: List<AiChatArchive>): String = JSONObject()
-        .put("schema", 2)
+        .put("schema", 3)
         .put("archives", JSONArray(archives.map(::toJson)))
         .toString()
 
@@ -185,6 +185,7 @@ object AiChatArchiveCodec {
         .put("title", archive.title)
         .put("target_period", archive.targetPeriod)
         .put("persona_id", archive.personaId)
+        .put("judgement_mode", archive.judgementMode.name)
         .put("memory_summary", archive.memorySummary)
         .put("continuation_of", archive.continuationOf ?: JSONObject.NULL)
         .put("created_at", archive.createdAtEpochMs)
@@ -252,6 +253,7 @@ object AiChatArchiveCodec {
             },
             targetPeriod = targetPeriod,
             personaId = AiChatPersona.fromId(optString("persona_id")).id,
+            judgementMode = AiJudgementMode.fromId(optString("judgement_mode")),
             memorySummary = optString("memory_summary").takeUnless { it == "null" }.orEmpty(),
             continuationOf = optString("continuation_of").takeUnless { it.isBlank() || it == "null" },
             messages = messages,

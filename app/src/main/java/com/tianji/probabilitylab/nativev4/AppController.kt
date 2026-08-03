@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
+import com.tianji.probabilitylab.nativev4.ai.AiAdaptiveLearningStore
 import com.tianji.probabilitylab.nativev4.ai.AiAnalysisMode
 import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.ai.AiConnectionState
@@ -101,7 +102,8 @@ class AppController(context: Context) {
     private val verifiedHistoryReady = mutableSetOf<LotteryType>()
     private val reportCache = mutableMapOf<LotteryType, CachedForecast>()
     private val aiConfigStore = SecureAiConfigStore(appContext)
-    private val remoteAiAnalyzer = RemoteAiAnalyzer()
+    private val aiLearningStore = AiAdaptiveLearningStore(appContext)
+    private val remoteAiAnalyzer = RemoteAiAnalyzer(appContext)
 
     var state by mutableStateOf(
         AppUiState(lottery = savedLottery(), aiConcurrency = initialAiConcurrency),
@@ -820,6 +822,7 @@ class AppController(context: Context) {
             database.lockForecast(lottery, report)
         }
         val aiRecords = database.loadAiForecasts(lottery)
+        aiLearningStore.learnOfficialRecords(lottery.apiKey, settlementHistory, aiRecords)
         return AppUiState(
             lottery = lottery,
             snapshot = snapshot,
