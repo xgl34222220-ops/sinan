@@ -170,3 +170,5 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 30
+
+      # PR trigger marker
