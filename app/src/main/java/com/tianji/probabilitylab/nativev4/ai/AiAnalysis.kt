@@ -469,9 +469,9 @@ class RemoteAiAnalyzer {
             systemPrompt = "你正在执行结构化输出与真实思考能力测试。完成思考后只输出请求的JSON。",
             userPrompt = "能力测试：先完成思考，再返回position=7与号码1至10的非负scores；每项至少保留6位小数。",
             reasoningDecision = baseDecision,
-            maxTokens = if (baseDecision.expectsReasoning) 8_192 else 1_024,
             readTimeoutMs = if (baseDecision.expectsReasoning) 90_000 else 30_000,
             jsonOutput = true,
+            explainOutput = false,
         )
         baseResponse.json.requireCompletedResponse()
         val baseContent = baseResponse.json.extractContent()
@@ -487,9 +487,9 @@ class RemoteAiAnalyzer {
                 systemPrompt = "你正在执行推理与结构化输出能力测试。只输出请求的JSON。",
                 userPrompt = "能力测试：请原样返回position=7，并为号码1至10各输出一个非负scores原始评分；每项至少保留6位小数，不要四舍五入成并列。",
                 reasoningDecision = highDecision,
-                maxTokens = if (highDecision.protocol == AiReasoningProtocol.DEEPSEEK) 32_768 else 8_192,
                 readTimeoutMs = if (highDecision.protocol == AiReasoningProtocol.DEEPSEEK) 180_000 else 90_000,
                 jsonOutput = true,
+                explainOutput = false,
             ).also { response ->
                 response.json.requireCompletedResponse()
                 val json = JSONObject(stripCodeFence(response.json.extractContent()))
@@ -530,6 +530,7 @@ class RemoteAiAnalyzer {
         config: AiConfig,
         snapshot: DrawSnapshot,
         report: ForecastReport,
+        onProgress: (String, Long) -> Unit = { _, _ -> },
     ): AiForecast {
         require(config.isComplete) { "请先在数据页填写 HTTPS 接口、模型名和 API Key" }
         val historyLimit = config.analysisMode.historyLimit
@@ -545,7 +546,6 @@ class RemoteAiAnalyzer {
 
         fun execute(
             reasoningDecision: AiReasoningDecision,
-            maxTokens: Int,
             readTimeoutMs: Int,
             executionNote: String,
             fallback: Boolean = false,
@@ -557,9 +557,11 @@ class RemoteAiAnalyzer {
                 systemPrompt = SYSTEM_PROMPT,
                 userPrompt = prompt,
                 reasoningDecision = reasoningDecision,
-                maxTokens = maxTokens,
                 readTimeoutMs = readTimeoutMs,
                 jsonOutput = true,
+                explainOutput = true,
+                streamResponse = true,
+                onProgress = onProgress,
             )
             response.json.requireCompletedResponse()
             val usage = response.json.extractUsage()
@@ -586,7 +588,7 @@ class RemoteAiAnalyzer {
                 ),
                 tokenUsage = usage,
                 estimatedCost = estimateCost(config, usage),
-                executionNote = executionNote,
+                executionNote = "$executionNote · ${response.tokenBudgetLabel}",
                 history = snapshot.history,
                 latencyMs = System.currentTimeMillis() - started,
                 responseId = response.json.optString("id"),
@@ -596,13 +598,6 @@ class RemoteAiAnalyzer {
         val primary = runCatching {
             execute(
                 reasoningDecision = primaryDecision,
-                maxTokens = when {
-                    primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK &&
-                        config.reasoningMode == AiReasoningMode.HIGH -> 65_536
-                    primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 32_768
-                    primaryDecision.expectsReasoning -> 16_384
-                    else -> 2_048
-                },
                 readTimeoutMs = when {
                     primaryDecision.expectsReasoning && primaryDecision.protocol == AiReasoningProtocol.DEEPSEEK &&
                         config.reasoningMode == AiReasoningMode.HIGH -> 240_000
@@ -625,13 +620,6 @@ class RemoteAiAnalyzer {
             } else primaryDecision
             execute(
                 reasoningDecision = retryDecision,
-                maxTokens = when {
-                    retryDecision.expectsReasoning && retryDecision.protocol == AiReasoningProtocol.DEEPSEEK &&
-                        config.reasoningMode == AiReasoningMode.HIGH -> 96_000
-                    retryDecision.expectsReasoning && retryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 65_536
-                    retryDecision.expectsReasoning -> 32_768
-                    else -> 4_096
-                },
                 readTimeoutMs = when {
                     retryDecision.expectsReasoning && retryDecision.protocol == AiReasoningProtocol.DEEPSEEK -> 300_000
                     retryDecision.expectsReasoning -> 180_000
@@ -659,22 +647,29 @@ class RemoteAiAnalyzer {
         systemPrompt: String,
         userPrompt: String,
         reasoningDecision: AiReasoningDecision,
-        maxTokens: Int,
         readTimeoutMs: Int,
         jsonOutput: Boolean,
+        explainOutput: Boolean,
+        streamResponse: Boolean = false,
+        onProgress: (String, Long) -> Unit = { _, _ -> },
     ): RemoteResponse {
         val endpoint = URL(config.endpoint.trim())
         require(endpoint.protocol == "https") { "AI 接口必须使用 HTTPS" }
         val responsesApi = endpoint.path.trimEnd('/').endsWith("/responses")
+        var useStreaming = streamResponse && !responsesApi
+        val tokenBudget = AiTokenPolicy.resolve(config, responsesApi)
         val request = JSONObject().apply {
             put("model", config.model.trim())
-            put("stream", false)
+            put("stream", useStreaming)
+            if (useStreaming && config.provider != AiProvider.COMPATIBLE) {
+                put("stream_options", JSONObject().put("include_usage", true))
+            }
+            tokenBudget.parameter?.let { parameter -> put(parameter, tokenBudget.value) }
             if (
                 !reasoningDecision.expectsReasoning &&
                 reasoningDecision.protocol != AiReasoningProtocol.OPENAI
             ) put("temperature", temperature)
             if (responsesApi) {
-                put("max_output_tokens", maxTokens)
                 put("store", false)
                 put(
                     "input",
@@ -683,13 +678,20 @@ class RemoteAiAnalyzer {
                         .put(JSONObject().put("role", "user").put("content", userPrompt)),
                 )
                 if (jsonOutput) {
-                    put("text", JSONObject().put("format", forecastJsonSchema(responsesApi = true)))
+                    put(
+                        "text",
+                        JSONObject().put(
+                            "format",
+                            forecastJsonSchema(responsesApi = true, explainOutput = explainOutput),
+                        ),
+                    )
                 }
             } else {
-                if (config.provider == AiProvider.OPENAI) put("max_completion_tokens", maxTokens)
-                else put("max_tokens", maxTokens)
                 if (jsonOutput && config.provider == AiProvider.OPENAI) {
-                    put("response_format", forecastJsonSchema(responsesApi = false))
+                    put(
+                        "response_format",
+                        forecastJsonSchema(responsesApi = false, explainOutput = explainOutput),
+                    )
                 } else if (jsonOutput && config.provider != AiProvider.COMPATIBLE) {
                     put("response_format", JSONObject().put("type", "json_object"))
                 }
@@ -718,12 +720,36 @@ class RemoteAiAnalyzer {
                 connection.setRequestProperty("Authorization", "Bearer ${config.apiKey.trim()}")
                 connection.outputStream.use { it.write(request.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
-                val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
-                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 if (code in 200..299) {
-                    return RemoteResponse(JSONObject(body), System.currentTimeMillis() - started)
+                    onProgress("已连接模型，等待推理输出", System.currentTimeMillis() - started)
+                    val json = connection.inputStream
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { reader ->
+                            if (useStreaming) {
+                                readChatStream(reader, started, onProgress)
+                            } else {
+                                JSONObject(reader.readText())
+                            }
+                        } ?: error("AI 接口返回空响应")
+                    return RemoteResponse(
+                        json = json,
+                        latencyMs = System.currentTimeMillis() - started,
+                        tokenBudgetLabel = tokenBudget.label,
+                    )
                 }
-                if (attempt == 0 && code == 429) {
+                val body = connection.errorStream
+                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                if (
+                    attempt == 0 && useStreaming && code in listOf(400, 404, 405, 422) &&
+                    (body.contains("stream", ignoreCase = true) ||
+                        body.contains("stream_options", ignoreCase = true))
+                ) {
+                    useStreaming = false
+                    request.put("stream", false)
+                    request.remove("stream_options")
+                    retryDelayMs = 0L
+                    onProgress("接口不支持流式返回，已切换普通对话响应", System.currentTimeMillis() - started)
+                } else if (attempt == 0 && code == 429) {
                     val retrySeconds = connection.getHeaderField("Retry-After")?.trim()?.toLongOrNull()
                         ?.coerceIn(1L, 10L) ?: 2L
                     retryDelayMs = retrySeconds * 1_000L
@@ -742,6 +768,72 @@ class RemoteAiAnalyzer {
             retryDelayMs?.let(Thread::sleep)
         }
         error("AI 接口重试后仍未返回")
+    }
+
+
+    private fun readChatStream(
+        reader: java.io.BufferedReader,
+        startedAtMs: Long,
+        onProgress: (String, Long) -> Unit,
+    ): JSONObject {
+        val content = StringBuilder()
+        val reasoning = StringBuilder()
+        val plainBody = StringBuilder()
+        var responseId = ""
+        var finishReason = ""
+        var usage: JSONObject? = null
+        var lastProgressAt = 0L
+
+        fun report(message: String) {
+            val now = System.currentTimeMillis()
+            if (now - lastProgressAt >= 1_000L) {
+                lastProgressAt = now
+                onProgress(message, now - startedAtMs)
+            }
+        }
+
+        reader.forEachLine { rawLine ->
+            val line = rawLine.trim()
+            if (line.isBlank()) return@forEachLine
+            if (!line.startsWith("data:")) {
+                if (line.startsWith("{")) plainBody.append(line)
+                return@forEachLine
+            }
+            val payload = line.removePrefix("data:").trim()
+            if (payload == "[DONE]" || payload.isBlank()) return@forEachLine
+            val chunk = runCatching { JSONObject(payload) }.getOrNull() ?: return@forEachLine
+            responseId = chunk.optString("id").ifBlank { responseId }
+            chunk.optJSONObject("usage")?.let { usage = it }
+            val choice = chunk.optJSONArray("choices")?.optJSONObject(0) ?: return@forEachLine
+            finishReason = choice.optString("finish_reason").ifBlank { finishReason }
+            val delta = choice.optJSONObject("delta") ?: return@forEachLine
+            val reasoningPart = delta.optString("reasoning_content")
+            val contentPart = delta.optString("content")
+            if (reasoningPart.isNotEmpty()) {
+                reasoning.append(reasoningPart)
+                report("模型正在推理 · 已收到 ${reasoning.length} 个推理字符")
+            }
+            if (contentPart.isNotEmpty()) {
+                content.append(contentPart)
+                report("模型正在生成结构化预测 · 已收到 ${content.length} 个结果字符")
+            }
+        }
+
+        if (content.isEmpty() && plainBody.isNotEmpty()) return JSONObject(plainBody.toString())
+        val message = JSONObject().put("content", content.toString())
+        if (reasoning.isNotEmpty()) message.put("reasoning_content", reasoning.toString())
+        return JSONObject()
+            .put("id", responseId)
+            .put(
+                "choices",
+                JSONArray().put(
+                    JSONObject()
+                        .put("index", 0)
+                        .put("finish_reason", finishReason.ifBlank { "stop" })
+                        .put("message", message),
+                ),
+            )
+            .apply { usage?.let { put("usage", it) } }
     }
 
     private fun JSONObject.extractContent(): String = optJSONArray("choices")
@@ -816,24 +908,48 @@ class RemoteAiAnalyzer {
         }
     }
 
-    private fun forecastJsonSchema(responsesApi: Boolean): JSONObject {
+    private fun forecastJsonSchema(responsesApi: Boolean, explainOutput: Boolean): JSONObject {
         val scoreArray = JSONObject()
             .put("type", "array")
             .put("items", JSONObject().put("type", "number").put("minimum", 0))
             .put("minItems", 10)
             .put("maxItems", 10)
+        val properties = JSONObject()
+            .put(
+                "position",
+                JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 10),
+            )
+            .put("scores", scoreArray)
+        val required = mutableListOf("position", "scores")
+        if (explainOutput) {
+            properties
+                .put(
+                    "calculation_summary",
+                    JSONObject().put("type", "string").put("maxLength", 800),
+                )
+                .put(
+                    "position_reason",
+                    JSONObject().put("type", "string").put("maxLength", 500),
+                )
+                .put(
+                    "candidate_reason",
+                    JSONObject().put("type", "string").put("maxLength", 800),
+                )
+                .put(
+                    "uncertainty",
+                    JSONObject().put("type", "string").put("maxLength", 500),
+                )
+            required += listOf(
+                "calculation_summary",
+                "position_reason",
+                "candidate_reason",
+                "uncertainty",
+            )
+        }
         val schema = JSONObject()
             .put("type", "object")
-            .put(
-                "properties",
-                JSONObject()
-                    .put(
-                        "position",
-                        JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 10),
-                    )
-                    .put("scores", scoreArray),
-            )
-            .put("required", JSONArray(listOf("position", "scores")))
+            .put("properties", properties)
+            .put("required", JSONArray(required))
             .put("additionalProperties", false)
         return if (responsesApi) {
             JSONObject()
@@ -943,11 +1059,25 @@ class RemoteAiAnalyzer {
             top6 = top6,
             top7 = top7,
             probabilities = probabilities,
-            analysis = AiFactEngine.verifiedSummary(history, position - 1, top6).take(500),
+            analysis = buildString {
+                val calculation = json.optString("calculation_summary").trim()
+                val positionEvidence = json.optString("position_reason").trim()
+                val candidateEvidence = json.optString("candidate_reason").trim()
+                append("计算摘要：")
+                append(
+                    calculation.ifBlank {
+                        AiFactEngine.verifiedSummary(history, position - 1, top6)
+                    },
+                )
+                if (positionEvidence.isNotBlank()) append("\n名次依据：$positionEvidence")
+                if (candidateEvidence.isNotBlank()) append("\n候选依据：$candidateEvidence")
+            }.take(1_800),
             riskNote = buildString {
-                append("AI 仅参与候选排序；统计由本机对刚同步的开奖接口历史逐期复核。随机开奖无法保证准确率或盈利。")
+                val uncertainty = json.optString("uncertainty").trim()
+                if (uncertainty.isNotBlank()) append("AI 不确定性：$uncertainty ")
+                append("统计由本机对刚同步的开奖接口历史逐期复核；随机开奖无法保证准确率或盈利。")
                 if (lowBoundarySeparation) append(" 本次第6与第7候选差距较小，候选边界稳定性偏低。")
-            },
+            }.take(900),
             selfRating = matrixConcentration,
             model = modelLabel,
             analysisMode = analysisMode,
@@ -1004,7 +1134,11 @@ class RemoteAiAnalyzer {
                 "required_json_schema",
                 JSONObject()
                     .put("position", "integer 1..10")
-                    .put("scores", "array of exactly 10 non-negative raw scores for numbers 1..10; keep at least 6 decimal places; do not round values into ties"),
+                    .put("scores", "array of exactly 10 non-negative raw scores for numbers 1..10; keep at least 6 decimal places; do not round values into ties")
+                    .put("calculation_summary", "concise auditable description of statistical method; do not expose hidden chain of thought")
+                    .put("position_reason", "cite the verified facts that made this position stronger than the other nine")
+                    .put("candidate_reason", "cite verified frequency, omission, transition or drift evidence behind the score ordering")
+                    .put("uncertainty", "state weak evidence, conflicts and instability without claiming certainty"),
             )
         }
 
@@ -1096,9 +1230,13 @@ class RemoteAiAnalyzer {
         } else trimmed
     }
 
-    private data class RemoteResponse(val json: JSONObject, val latencyMs: Long)
+    private data class RemoteResponse(
+        val json: JSONObject,
+        val latencyMs: Long,
+        val tokenBudgetLabel: String,
+    )
 
     private companion object {
-        const val SYSTEM_PROMPT = """你是独立概率排序模型。输入含真实开奖、由客户端逐期计算并核验的统计表，以及不含候选结果的本地模型质量摘要。本地盲测候选已被刻意隐藏。遗漏、近20期次数和大小连开必须以 verified_position_statistics 为唯一事实来源，不得自行心算或改写。你必须先比较position 1至10的全部统计，再选择证据最充分的一个名次；不得默认选择第1名，也不得因为字段顺序或历史示例偏向任何固定名次。随后按号码1至10顺序输出10个非负原始评分，每项至少保留6位小数。六码、七码和最终号码排序均由客户端根据原始scores确定。只输出 required_json_schema 指定的 position 与 scores，不要解释、不要Markdown，不承诺准确率、盈利或必中。"""
+        const val SYSTEM_PROMPT = """你是独立概率排序模型。输入含真实开奖和由客户端逐期计算并核验的统计表，本地盲测候选已被刻意隐藏。遗漏、近20/60期次数、后继转移和大小连开必须以 verified_position_statistics 为事实来源，原始历史仅用于交叉核验。你必须先比较position 1至10，再选择证据最充分的名次；不得默认第1名或偏向固定名次。随后按号码1至10顺序输出10个非负原始评分，每项至少保留6位小数，六码、七码和最终排序由客户端从scores确定。除position与scores外，还必须返回calculation_summary、position_reason、candidate_reason和uncertainty，让用户看见可核验的计算依据；这些字段只写简洁结论和使用了哪些已核验统计，不得输出隐藏思维链、逐字内心推理或Markdown。只输出required_json_schema规定的JSON，不承诺准确率、盈利或必中。"""
     }
 }

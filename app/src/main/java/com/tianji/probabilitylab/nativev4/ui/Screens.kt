@@ -895,6 +895,13 @@ private fun AiForecastCard(result: com.tianji.probabilitylab.nativev4.ai.AiForec
             )
         }
         Spacer(Modifier.height(12.dp))
+        Text(
+            "AI 可核验计算依据",
+            color = colors.accent,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(5.dp))
         Text(result.analysis, color = colors.textSoft, fontSize = 9.sp, lineHeight = 15.sp)
         Spacer(Modifier.height(8.dp))
         Text(
@@ -924,7 +931,7 @@ private fun ReasoningBadge(state: AiReasoningState, reasoningTokens: Int?) {
         AiReasoningState.REQUESTED ->
             "已请求推理 · 供应商未返回可核验用量" to colors.amber
         AiReasoningState.FALLBACK ->
-            "推理未完成 · 当前为关闭推理后的重试结果（不代表本期好坏）" to colors.amber
+            "保留真实思考后的重试结果（不代表本期好坏）" to colors.amber
         AiReasoningState.DISABLED -> "可控推理已关闭" to colors.textDim
         AiReasoningState.DEFAULT -> "模型默认推理" to colors.textDim
         AiReasoningState.UNSUPPORTED -> "普通分析接口 · 未检测到可控推理" to colors.textDim
