@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChatBubble
@@ -56,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +66,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.tianji.probabilitylab.nativev4.ai.AiChatController
 import com.tianji.probabilitylab.nativev4.ai.AiChatMessage
+import com.tianji.probabilitylab.nativev4.ai.AiChatPersona
 import com.tianji.probabilitylab.nativev4.ai.AiChatPrediction
 import com.tianji.probabilitylab.nativev4.ai.AiChatRole
 import com.tianji.probabilitylab.nativev4.ai.AiConfig
@@ -102,13 +106,19 @@ fun AiChatDialog(
     val preferredConfig = completeConfigs.firstOrNull { it.id == controller.session.profileId }
         ?: completeConfigs.firstOrNull()
     val session = controller.session
+    val selectedPersona = AiChatPersona.fromId(session.personaId)
     var input by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
 
     LaunchedEffect(configIds, report?.targetPeriod) {
         controller.selectProfile(preferredConfig?.id.orEmpty(), report?.targetPeriod)
     }
-    LaunchedEffect(session.messages.size, session.isRunning, session.prediction) {
+    LaunchedEffect(
+        session.messages.size,
+        session.messages.lastOrNull()?.content?.length,
+        session.isRunning,
+        session.prediction,
+    ) {
         val extra = if (session.prediction != null) 1 else 0
         val lastIndex = session.messages.size + extra - 1
         if (lastIndex >= 0) listState.animateScrollToItem(lastIndex)
@@ -178,7 +188,7 @@ fun AiChatDialog(
                             fontWeight = FontWeight.ExtraBold,
                         )
                         Text(
-                            "读取当前接口历史 · 不写入正式成绩",
+                            "真实流式输出 · 读取接口历史 · 不写入正式成绩",
                             color = colors.textDim,
                             fontSize = 8.sp,
                         )
@@ -202,12 +212,13 @@ fun AiChatDialog(
                     }
                 }
 
+                SelectorLabel("模型")
                 if (completeConfigs.isNotEmpty()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState())
-                            .padding(bottom = 8.dp),
+                            .padding(bottom = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
                         completeConfigs.forEach { config ->
@@ -231,6 +242,42 @@ fun AiChatDialog(
                     }
                 }
 
+                SelectorLabel("分析人设")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    AiChatPersona.values().forEach { persona ->
+                        FilterChip(
+                            selected = session.personaId == persona.id,
+                            onClick = { controller.selectPersona(persona.id) },
+                            enabled = !session.isRunning,
+                            label = {
+                                Text(
+                                    persona.displayName,
+                                    maxLines = 1,
+                                    fontSize = 8.sp,
+                                )
+                            },
+                        )
+                    }
+                }
+                Text(
+                    "${selectedPersona.displayName} · ${selectedPersona.description}",
+                    color = colors.accent,
+                    fontSize = 7.5.sp,
+                    lineHeight = 11.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.accent.copy(alpha = 0.07f))
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                )
+                Spacer(Modifier.height(7.dp))
+
                 SourceNotice(
                     snapshot = snapshot,
                     report = report,
@@ -250,13 +297,17 @@ fun AiChatDialog(
                     if (session.messages.isEmpty()) {
                         item(key = "welcome") {
                             WelcomePanel(
+                                persona = selectedPersona,
                                 enabled = preferredConfig != null && snapshot != null && report != null,
                                 onPrompt = ::submit,
                             )
                         }
                     }
                     items(session.messages, key = AiChatMessage::id) { message ->
-                        ChatMessageBubble(message)
+                        ChatMessageBubble(
+                            message = message,
+                            isStreaming = message.id == session.streamingMessageId && session.isRunning,
+                        )
                     }
                     session.prediction?.let { prediction ->
                         item(key = "prediction-${session.messages.size}") {
@@ -267,40 +318,14 @@ fun AiChatDialog(
                         }
                     }
                     if (session.isRunning) {
-                        item(key = "running") {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(15.dp))
-                                    .background(colors.accent.copy(alpha = 0.07f))
-                                    .border(
-                                        1.dp,
-                                        colors.accent.copy(alpha = 0.18f),
-                                        RoundedCornerShape(15.dp),
-                                    )
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    color = colors.accent,
-                                    strokeWidth = 2.dp,
-                                )
-                                Spacer(Modifier.width(9.dp))
-                                Text(
-                                    session.progress.ifBlank { "正在分析…" },
-                                    color = colors.textSoft,
-                                    fontSize = 8.5.sp,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                IconButton(onClick = controller::cancel, modifier = Modifier.size(32.dp)) {
-                                    Icon(
-                                        Icons.Rounded.StopCircle,
-                                        contentDescription = "取消",
-                                        tint = colors.amber,
-                                    )
-                                }
-                            }
+                        item(key = "running-status") {
+                            StreamingStatus(
+                                progress = session.progress,
+                                hasVisibleText = session.messages
+                                    .firstOrNull { it.id == session.streamingMessageId }
+                                    ?.content?.isNotBlank() == true,
+                                onCancel = controller::cancel,
+                            )
                         }
                     }
                     session.error?.let { error ->
@@ -340,12 +365,15 @@ fun AiChatDialog(
                         shape = RoundedCornerShape(18.dp),
                         placeholder = {
                             Text(
-                                "例如：分析第一名最近60期，哪些号相对活跃？",
+                                selectedPersona.quickPrompts.firstOrNull()
+                                    ?: "输入你想分析的问题",
                                 fontSize = 8.5.sp,
                             )
                         },
                         minLines = 1,
                         maxLines = 4,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { submit(input) }),
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
@@ -363,6 +391,18 @@ fun AiChatDialog(
             }
         }
     }
+}
+
+@Composable
+private fun SelectorLabel(text: String) {
+    val colors = LocalTianjiColors.current
+    Text(
+        text,
+        color = colors.textDim,
+        fontSize = 7.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
+    )
 }
 
 @Composable
@@ -399,16 +439,11 @@ private fun SourceNotice(
 
 @Composable
 private fun WelcomePanel(
+    persona: AiChatPersona,
     enabled: Boolean,
     onPrompt: (String) -> Unit,
 ) {
     val colors = LocalTianjiColors.current
-    val prompts = listOf(
-        "分析第一名最近60期，哪些号码相对活跃？",
-        "第一名当前号码之后，历史上更常接哪些号？",
-        "比较十个名次最近20期和60期的稳定性",
-        "解释当前本机六码的边界和不确定性",
-    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -418,20 +453,20 @@ private fun WelcomePanel(
             .padding(15.dp),
     ) {
         Text(
-            "可以直接问开奖记录",
+            "${persona.displayName}可以这样问",
             color = colors.text,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(5.dp))
         Text(
-            "支持连续追问某个名次、统计窗口、遗漏、后继转移和下期相对候选。回答基于当前接口历史，不会冒充真实中奖概率。",
+            persona.description + "。回答只基于当前接口历史和本机模型参考，不会冒充真实中奖概率。",
             color = colors.textDim,
             fontSize = 8.sp,
             lineHeight = 13.sp,
         )
         Spacer(Modifier.height(12.dp))
-        prompts.forEach { prompt ->
+        persona.quickPrompts.forEach { prompt ->
             OutlinedButton(
                 onClick = { onPrompt(prompt) },
                 enabled = enabled,
@@ -450,7 +485,10 @@ private fun WelcomePanel(
 }
 
 @Composable
-private fun ChatMessageBubble(message: AiChatMessage) {
+private fun ChatMessageBubble(
+    message: AiChatMessage,
+    isStreaming: Boolean,
+) {
     val colors = LocalTianjiColors.current
     val user = message.role == AiChatRole.USER
     Box(
@@ -488,12 +526,20 @@ private fun ChatMessageBubble(message: AiChatMessage) {
                 )
                 Spacer(Modifier.height(5.dp))
             }
-            Text(
-                message.content,
-                color = colors.textSoft,
-                fontSize = 9.sp,
-                lineHeight = 15.sp,
-            )
+            val visibleContent = when {
+                message.content.isNotBlank() && isStreaming -> message.content + " ▍"
+                message.content.isNotBlank() -> message.content
+                isStreaming -> "正在思考并等待首段回答…"
+                else -> ""
+            }
+            if (visibleContent.isNotBlank()) {
+                Text(
+                    visibleContent,
+                    color = if (message.content.isBlank()) colors.textDim else colors.textSoft,
+                    fontSize = 9.sp,
+                    lineHeight = 15.sp,
+                )
+            }
             message.latencyMs?.let { latency ->
                 Spacer(Modifier.height(5.dp))
                 Text(
@@ -503,6 +549,46 @@ private fun ChatMessageBubble(message: AiChatMessage) {
                     modifier = Modifier.align(Alignment.End),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun StreamingStatus(
+    progress: String,
+    hasVisibleText: Boolean,
+    onCancel: () -> Unit,
+) {
+    val colors = LocalTianjiColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(13.dp))
+            .background(colors.accent.copy(alpha = 0.055f))
+            .border(1.dp, colors.accent.copy(alpha = 0.14f), RoundedCornerShape(13.dp))
+            .padding(horizontal = 11.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(14.dp),
+            color = colors.accent,
+            strokeWidth = 2.dp,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            progress.ifBlank {
+                if (hasVisibleText) "正在继续生成…" else "正在分析…"
+            },
+            color = colors.textDim,
+            fontSize = 7.5.sp,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onCancel, modifier = Modifier.size(30.dp)) {
+            Icon(
+                Icons.Rounded.StopCircle,
+                contentDescription = "停止生成",
+                tint = colors.amber,
+            )
         }
     }
 }
