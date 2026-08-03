@@ -19,8 +19,8 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: tianji-v5.5.8-stream-recovery
-  cancel-in-progress: false
+  group: tianji-v5.5.8-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apply-test-build:
@@ -78,7 +78,7 @@ jobs:
             :app:assembleRelease
 
       - name: Commit validated fix
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
