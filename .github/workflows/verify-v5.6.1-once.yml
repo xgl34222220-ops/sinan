@@ -1,0 +1,110 @@
+name: Verify Tianji v5.6.1 formal release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/verify-v5.6.1-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: verify-tianji-v5.6.1-release
+  cancel-in-progress: false
+
+env:
+  SOURCE_SHA: 468626cef8454a0556d45f8bda237b85d668cf43
+  RELEASE_TAG: v5.6.1
+  VERSION_NAME: 5.6.1
+  VERSION_CODE: '36'
+  EXPECTED_CERT_SHA256: 5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Wait for formal release and verify metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          found=0
+          for attempt in $(seq 1 36); do
+            if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --json tagName,name,isDraft,isPrerelease,publishedAt,url \
+              > "$RUNNER_TEMP/release.json" 2>/dev/null; then
+              found=1
+              break
+            fi
+            sleep 10
+          done
+          test "$found" = 1
+          jq -e --arg tag "$RELEASE_TAG" --arg name "天机 v5.6.1" \
+            '.tagName == $tag and .name == $name and .isDraft == false and .isPrerelease == false and (.publishedAt | length > 0)' \
+            "$RUNNER_TEMP/release.json" >/dev/null
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$SOURCE_SHA"
+
+      - name: Download and verify published assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-check
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir release-check
+          test -s release-check/Tianji-v5.6.1-release.apk
+          test -s release-check/Tianji-v5.6.1-release.aab
+          test -s release-check/Tianji-v5.6.1-SHA256.txt
+          test -s release-check/Tianji-v5.6.1-VERIFY.txt
+          cd release-check
+          sha256sum -c Tianji-v5.6.1-SHA256.txt
+          grep -F "Certificate SHA-256: $EXPECTED_CERT_SHA256" Tianji-v5.6.1-VERIFY.txt
+          grep -F "Version name: $VERSION_NAME" Tianji-v5.6.1-VERIFY.txt
+          grep -F "Version code: $VERSION_CODE" Tianji-v5.6.1-VERIFY.txt
+          grep -F "Source commit: $SOURCE_SHA" Tianji-v5.6.1-VERIFY.txt
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
+
+      - name: Verify published APK signature and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='release-check/Tianji-v5.6.1-release.apk'
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner-release.txt"
+          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner-release.txt" | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          test "$CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          test "$($APKANALYZER manifest version-name "$APK" | tr -d '\r\n')" = "$VERSION_NAME"
+          test "$($APKANALYZER manifest version-code "$APK" | tr -d '\r\n')" = "$VERSION_CODE"
+
+      - name: Remove one-time release workflows and record verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f \
+            .github/workflows/publish-v5.6.1-once.yml \
+            .github/workflows/verify-v5.6.1-once.yml
+          git commit -m "chore: record verified Tianji v5.6.1 formal release"
+          git push origin HEAD:main
