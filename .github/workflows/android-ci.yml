@@ -52,7 +52,7 @@ jobs:
           :app:assembleDebug
           :app:assembleRelease
 
-      - name: Upload Debug APK and reports
+      - name: Upload Debug APK, reports and chat sources
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -61,5 +61,10 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
+            app/src/main/java/com/tianji/probabilitylab/nativev4/AppController.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiFreeChat.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AiChatDialog.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/TianjiApp.kt
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 2
