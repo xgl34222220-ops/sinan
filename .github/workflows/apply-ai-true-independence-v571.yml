@@ -1,0 +1,100 @@
+name: Apply AI true-independence v5.7.1
+
+on:
+  push:
+    branches:
+      - fix/ai-true-independence-v5.7.1
+    paths:
+      - tools/patch_ai_true_independence_v571.py
+      - .github/workflows/apply-ai-true-independence-v571.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-ai-true-independence-v571
+  cancel-in-progress: false
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/ai-true-independence-v5.7.1
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Apply source patch
+        run: python tools/patch_ai_true_independence_v571.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Run tests lint and builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:testReleaseUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :app:assembleRelease
+
+      - name: Record verified result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-v571
+          cat > ci-v571/STATUS.txt <<EOF
+          status=success
+          checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          formal_ai_input=raw_history_only
+          independent_chat_native_position_leak=removed
+          independent_chat_native_statistics=removed
+          debug_release_tests=passed
+          lint_debug=passed
+          debug_apk=passed
+          r8_release_apk=passed
+          EOF
+
+      - name: Remove one-time patch machinery
+        run: |
+          rm -f tools/patch_ai_true_independence_v571.py
+          rm -f .github/workflows/apply-ai-true-independence-v571.yml
+
+      - name: Commit verified source fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "fix: v5.7.1 restore true AI independence"
+          git push origin HEAD:fix/ai-true-independence-v5.7.1
