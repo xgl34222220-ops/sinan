@@ -345,35 +345,53 @@ private class RemoteAiChatClient {
             persona = persona,
         )
         val publisher = VisibleStreamPublisher(onStreamText)
-        val primary = requestBody(config, responsesApi, messages, decision)
+
+        fun runRequest(activeDecision: AiReasoningDecision): JSONObject {
+            val streamingRequest = requestBody(
+                config = config,
+                responsesApi = responsesApi,
+                messages = messages,
+                decision = activeDecision,
+                stream = true,
+            )
+            return try {
+                execute(
+                    endpoint = endpoint,
+                    config = config,
+                    request = streamingRequest,
+                    timeoutMs = timeoutFor(activeDecision),
+                    onProgress = onProgress,
+                    publisher = publisher,
+                )
+            } catch (_: AiChatStreamingRejectedException) {
+                publisher.reset()
+                onProgress("当前接口不支持流式返回，已切换兼容输出…")
+                execute(
+                    endpoint = endpoint,
+                    config = config,
+                    request = requestBody(
+                        config = config,
+                        responsesApi = responsesApi,
+                        messages = messages,
+                        decision = activeDecision,
+                        stream = false,
+                    ),
+                    timeoutMs = timeoutFor(activeDecision),
+                    onProgress = onProgress,
+                    publisher = publisher,
+                )
+            }
+        }
 
         onProgress("正在连接 ${config.displayName} · ${persona.displayName}…")
         val response = try {
-            execute(
-                endpoint = endpoint,
-                config = config,
-                request = primary,
-                timeoutMs = timeoutFor(decision),
-                onProgress = onProgress,
-                publisher = publisher,
-            )
+            runRequest(decision)
         } catch (cause: AiChatProtocolRejectedException) {
             if (!decision.sendControl) throw cause
             publisher.reset()
             onProgress("接口拒绝显式思考参数，正在使用模型默认协议重发一次…")
-            val fallback = requestBody(
-                config = config,
-                responsesApi = responsesApi,
-                messages = messages,
-                decision = decision.copy(sendControl = false, enableThinking = false, effort = null),
-            )
-            execute(
-                endpoint = endpoint,
-                config = config,
-                request = fallback,
-                timeoutMs = timeoutFor(decision),
-                onProgress = onProgress,
-                publisher = publisher,
+            runRequest(
+                decision.copy(sendControl = false, enableThinking = false, effort = null),
             )
         }
         val rawContent = extractContent(response)
@@ -450,15 +468,15 @@ private class RemoteAiChatClient {
         responsesApi: Boolean,
         messages: JSONArray,
         decision: AiReasoningDecision,
+        stream: Boolean,
     ): JSONObject = JSONObject().apply {
         put("model", config.model.trim())
-        put("stream", true)
+        put("stream", stream)
         if (responsesApi) {
             put("store", false)
             put("input", messages)
         } else {
             put("messages", messages)
-            put("stream_options", JSONObject().put("include_usage", true))
         }
         if (!decision.expectsReasoning && decision.protocol != AiReasoningProtocol.OPENAI) {
             put("temperature", 0.2)
@@ -524,7 +542,13 @@ private class RemoteAiChatClient {
                 connection.outputStream.use { output ->
                     output.write(request.toString().toByteArray(Charsets.UTF_8))
                 }
-                onProgress("模型正在分析，回答开始后会实时显示…")
+                onProgress(
+                    if (request.optBoolean("stream", false)) {
+                        "模型正在分析，回答开始后会实时显示…"
+                    } else {
+                        "模型正在分析，完成后将分段显示…"
+                    },
+                )
                 val code = connection.responseCode
                 if (code in 200..299) {
                     val reader = connection.inputStream.bufferedReader(Charsets.UTF_8)
@@ -540,10 +564,17 @@ private class RemoteAiChatClient {
                     ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 if (
                     code in listOf(400, 404, 422) &&
-                    listOf("reasoning", "thinking", "enable_thinking", "reasoning_effort", "stream_options")
+                    listOf("reasoning", "thinking", "enable_thinking", "reasoning_effort")
                         .any { body.contains(it, ignoreCase = true) }
                 ) {
-                    throw AiChatProtocolRejectedException("AI 接口拒绝当前参数：${body.take(140)}")
+                    throw AiChatProtocolRejectedException("AI 接口拒绝当前思考参数：${body.take(140)}")
+                }
+                if (
+                    request.optBoolean("stream", false) &&
+                    code in listOf(400, 404, 405, 415, 422) &&
+                    body.contains("stream", ignoreCase = true)
+                ) {
+                    throw AiChatStreamingRejectedException()
                 }
                 if (attempt == 0 && (code == 429 || code in 500..599)) {
                     onProgress(if (code == 429) "供应商限流，正在重连一次…" else "供应商暂时异常，正在重连一次…")
@@ -842,4 +873,5 @@ private class RemoteAiChatClient {
     }
 
     private class AiChatProtocolRejectedException(message: String) : IllegalStateException(message)
+    private class AiChatStreamingRejectedException : IllegalStateException()
 }
