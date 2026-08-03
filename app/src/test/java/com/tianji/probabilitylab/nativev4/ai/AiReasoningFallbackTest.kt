@@ -2,6 +2,7 @@ package com.tianji.probabilitylab.nativev4.ai
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,14 +36,16 @@ class AiReasoningFallbackTest {
         assertFalse(value.expectsReasoning)
     }
 
-    @Test fun formalHighKeepsMaxEffort() {
+    @Test fun formalHighAlsoUsesHardLimitedCoreForecast() {
         val value = AiReasoningEngine.resolveForecast(config(AiReasoningMode.HIGH))
-        assertTrue(value.enableThinking)
-        assertTrue(value.expectsReasoning)
-        assertEquals("max", value.effort)
+        assertTrue(value.sendControl)
+        assertFalse(value.enableThinking)
+        assertFalse(value.expectsReasoning)
+        assertNull(value.effort)
+        assertTrue(value.displayLabel.contains("限时"))
     }
 
-    @Test fun retryNeverDisablesThinking() {
+    @Test fun chatRetryNeverDisablesThinking() {
         val value = AiReasoningEngine.fallback(config(AiReasoningMode.AUTO))
         assertTrue(value.sendControl)
         assertTrue(value.enableThinking)
