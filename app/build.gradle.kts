@@ -14,6 +14,8 @@ val releaseSigningAvailable = listOf(
     releaseKeyAlias,
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
+val cloudBaseUrl = providers.gradleProperty("TIANJI_CLOUD_BASE_URL")
+    .orElse("https://tianji-xgl.duckdns.org")
 
 android {
     namespace = "com.tianji.probabilitylab.nativev4"
@@ -23,9 +25,10 @@ android {
         applicationId = "com.tianji.probabilitylab.nativev4"
         minSdk = 26
         targetSdk = 36
-        versionCode = 36
-        versionName = "5.6.1"
+        versionCode = 37
+        versionName = "5.7.0"
 
+        buildConfigField("String", "TIANJI_CLOUD_BASE_URL", "\"${cloudBaseUrl.get()}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
