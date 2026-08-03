@@ -551,7 +551,7 @@ class RemoteAiAnalyzer(context: Context) {
             snapshot.history,
             snapshot.lottery.apiKey,
             config.id,
-            config.model.trim(),
+            AiLearningStrategy.official(config),
         )
         val userPrompt = analysisPayload(snapshot, report, historyLimit)
             .put("adaptive_learning", learningContext)

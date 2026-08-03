@@ -5,7 +5,7 @@
 
 ## 当前版本
 
-- 版本：5.6.0 持续学习正式候选
+- 版本：5.6.1 时效自适应学习正式候选
 - Android：原生 Kotlin + Jetpack Compose
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 正式预测：保留真实 thinking/reasoning，并通过墙钟截止和完整核心立即返回控制等待时间

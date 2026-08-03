@@ -498,6 +498,28 @@ class AppDatabase(context: Context) :
         }
     }
 
+    /**
+     * Learning must not inherit the archive screen's display limit. Records are returned
+     * from the oldest settled target to the newest for correct online updates.
+     */
+    fun loadSettledAiForecastsForLearning(lottery: LotteryType): List<AiForecastRecord> =
+        readableDatabase.rawQuery(
+            """SELECT id, profile_id, profile_name, target_period, trained_through_period,
+                position_index, top6, top7, probabilities, analysis, risk_note, self_rating, model,
+                analysis_mode, reasoning_mode, reasoning_protocol, reasoning_state,
+                reasoning_tokens, input_tokens, output_tokens, estimated_cost,
+                execution_note, created_at, latency_ms, response_id,
+                forecast_hash, previous_hash, actual_number, top6_hit, top7_hit,
+                brier_score, log_loss, actual_rank
+                FROM ai_forecast_records
+                WHERE lottery_type = ? AND settled_at IS NOT NULL
+                ORDER BY id ASC""".trimIndent(),
+            arrayOf(lottery.apiKey),
+        ).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.toAiRecord(lottery)) }
+        }
+
+
     fun loadAiLiveAudit(lottery: LotteryType): AiLiveAudit = readableDatabase.rawQuery(
         """SELECT COUNT(*), COUNT(DISTINCT target_period),
             COALESCE(SUM(top6_hit), 0), COALESCE(SUM(top7_hit), 0)
