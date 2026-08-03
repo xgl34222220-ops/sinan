@@ -238,30 +238,24 @@ jobs:
                   )
           """,
           )
-          replace_required(
-              "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt",
-              """                        val resolvedLearning = reply.prediction?.let { prediction ->
-                              learningStore.profile(
-                                  snapshot.lottery.apiKey,
-                                  config.id,
-                                  activeModel,
-                                  prediction.position,
-                              )
-                          } ?: learningProfile
-          """,
-              """                        val resolvedLearning = reply.prediction?.let { prediction ->
-                              learningStore.profile(
-                                  snapshot.lottery.apiKey,
-                                  config.id,
-                                  learningStrategy,
-                                  prediction.position,
-                              )
-                          } ?: learningProfile
-          """,
-          )
 
           chat = Path("app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt")
           chat_text = chat.read_text(encoding="utf-8")
+          resolved_needle = """                                config.id,
+                                      activeModel,
+                                      prediction.position,
+          """
+          if resolved_needle not in chat_text:
+              raise SystemExit("resolved learning model marker missing")
+          chat_text = chat_text.replace(
+              resolved_needle,
+              """                                config.id,
+                                      learningStrategy,
+                                      prediction.position,
+          """,
+              1,
+          )
+
           guard_marker = "\n\ninternal data class AiPositionStatistics("
           guard = '''
           internal object AiPredictionFreshnessGuard {
