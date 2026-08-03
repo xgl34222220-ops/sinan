@@ -24,7 +24,7 @@ class AiFormalForecastPolicyTest {
     }
 
     @Test
-    fun formalDeepReasoningBudgetIsLargeEnoughButStillBounded() {
+    fun formalDeepReasoningUsesTheModelMaximumOutputSpace() {
         val config = AiConfig(
             provider = AiProvider.DEEPSEEK,
             endpoint = "https://api.deepseek.com/chat/completions",
@@ -34,8 +34,7 @@ class AiFormalForecastPolicyTest {
         )
         val budget = AiTokenPolicy.resolve(config, responsesApi = false)
         assertEquals("max_tokens", budget.parameter)
-        assertEquals(AiTokenPolicy.HIGH_MAX_OUTPUT_TOKENS, budget.value)
-        assertTrue((budget.value ?: 0) >= 8_192)
-        assertTrue((budget.value ?: Int.MAX_VALUE) <= 16_384)
+        assertEquals(AiTokenPolicy.DEEPSEEK_V4_MAX_OUTPUT_TOKENS, budget.value)
+        assertEquals(384 * 1024, budget.value)
     }
 }

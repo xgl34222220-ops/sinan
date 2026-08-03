@@ -13,21 +13,14 @@ class AiTokenPolicyTest {
         reasoningMode = mode,
     )
 
-    @Test fun officialDeepSeekAutoUsesBoundedForecastBudget() {
-        val budget = AiTokenPolicy.resolve(deepSeek(AiReasoningMode.AUTO), responsesApi = false)
-        assertEquals("max_tokens", budget.parameter)
-        assertEquals(AiTokenPolicy.AUTO_MAX_OUTPUT_TOKENS, budget.value)
-        assertTrue(budget.label.contains("自动"))
-    }
-
-    @Test fun officialDeepSeekLowUsesSmallestForecastBudget() {
-        val budget = AiTokenPolicy.resolve(deepSeek(AiReasoningMode.LOW), responsesApi = false)
-        assertEquals(AiTokenPolicy.LOW_MAX_OUTPUT_TOKENS, budget.value)
-    }
-
-    @Test fun officialDeepSeekHighKeepsLargerBoundedBudget() {
-        val budget = AiTokenPolicy.resolve(deepSeek(AiReasoningMode.HIGH), responsesApi = false)
-        assertEquals(AiTokenPolicy.HIGH_MAX_OUTPUT_TOKENS, budget.value)
+    @Test fun officialDeepSeekUsesDocumentedMaximumInEveryReasoningMode() {
+        AiReasoningMode.entries.forEach { mode ->
+            val budget = AiTokenPolicy.resolve(deepSeek(mode), responsesApi = false)
+            assertEquals("max_tokens", budget.parameter)
+            assertEquals(AiTokenPolicy.DEEPSEEK_V4_MAX_OUTPUT_TOKENS, budget.value)
+            assertTrue(budget.label.contains("384K"))
+            assertTrue(budget.label.contains("完整结果到达即结束"))
+        }
     }
 
     @Test fun unknownCompatibleModelHasNoClientTokenCap() {
@@ -39,18 +32,19 @@ class AiTokenPolicyTest {
         val budget = AiTokenPolicy.resolve(config, responsesApi = false)
         assertNull(budget.parameter)
         assertNull(budget.value)
-        assertTrue(budget.label.contains("客户端不限"))
+        assertTrue(budget.label.contains("客户端不限制"))
     }
 
-    @Test fun openAiResponsesUsesBoundedFormalForecastOutput() {
+    @Test fun modelDependentOpenAiResponsesHasNoArtificialClientCap() {
         val config = AiConfig(
             provider = AiProvider.OPENAI,
             endpoint = "https://api.openai.com/v1/responses",
             model = "gpt-5",
-            reasoningMode = AiReasoningMode.LOW,
+            reasoningMode = AiReasoningMode.HIGH,
         )
         val budget = AiTokenPolicy.resolve(config, responsesApi = true)
-        assertEquals("max_output_tokens", budget.parameter)
-        assertEquals(AiTokenPolicy.LOW_MAX_OUTPUT_TOKENS, budget.value)
+        assertNull(budget.parameter)
+        assertNull(budget.value)
+        assertTrue(budget.label.contains("最大输出空间"))
     }
 }
