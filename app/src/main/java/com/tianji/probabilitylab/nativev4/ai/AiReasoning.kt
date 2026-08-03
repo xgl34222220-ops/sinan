@@ -3,8 +3,8 @@ package com.tianji.probabilitylab.nativev4.ai
 import java.net.URL
 
 enum class AiReasoningMode(val label: String, val detail: String) {
-    AUTO("自动", "不强制参数，由模型和供应商决定"),
-    LOW("省时", "降低或关闭可控推理，优先速度与费用"),
+    AUTO("自动", "对话沿用模型思考；正式预测自动压缩长思考"),
+    LOW("省时", "关闭可控长思考，优先速度与费用"),
     HIGH("深入", "请求供应商高强度推理，可能更慢且更贵"),
 }
 
@@ -78,8 +78,8 @@ object AiReasoningEngine {
             }
             AiReasoningMode.LOW -> when (protocol) {
                 AiReasoningProtocol.DEEPSEEK -> AiReasoningDecision(
-                    protocol, preference, true, true, true, "high",
-                    "${protocol.label} · 省时思考",
+                    protocol, preference, true, true, false, null,
+                    "${protocol.label} · 已关闭长思考",
                 )
                 AiReasoningProtocol.ENABLE_THINKING -> AiReasoningDecision(
                     protocol, preference, true, true, false, null,
@@ -94,6 +94,31 @@ object AiReasoningEngine {
                 protocol, preference, true, true, true,
                 if (protocol == AiReasoningProtocol.DEEPSEEK) "max" else "high",
                 "${protocol.label} · 高推理",
+            )
+        }
+    }
+
+    /**
+     * Formal forward forecasts already receive client-verified statistics and only need a compact
+     * score matrix. AUTO/LOW therefore stop unbounded DeepSeek thinking; HIGH deliberately keeps
+     * the full reasoning request. Free-form chat continues to use [resolve] and is unaffected.
+     */
+    fun resolveForecast(config: AiConfig): AiReasoningDecision {
+        val resolved = resolve(config)
+        if (resolved.protocol != AiReasoningProtocol.DEEPSEEK) return resolved
+        return when (config.reasoningMode) {
+            AiReasoningMode.HIGH -> resolved
+            AiReasoningMode.AUTO -> resolved.copy(
+                sendControl = true,
+                enableThinking = false,
+                effort = null,
+                displayLabel = "${resolved.protocol.label} · 自动省时",
+            )
+            AiReasoningMode.LOW -> resolved.copy(
+                sendControl = true,
+                enableThinking = false,
+                effort = null,
+                displayLabel = "${resolved.protocol.label} · 省时模式",
             )
         }
     }

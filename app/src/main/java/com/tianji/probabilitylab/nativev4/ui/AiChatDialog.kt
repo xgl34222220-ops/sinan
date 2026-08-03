@@ -186,7 +186,7 @@ fun AiChatDialog(
     }
 
     Dialog(
-        onDismissRequest = { controller.cancel(); onDismiss() },
+        onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         Surface(
@@ -200,7 +200,7 @@ fun AiChatDialog(
                     session = session,
                     onNew = { showNewConversation = true },
                     onHistory = { showHistory = true },
-                    onClose = { controller.cancel(); onDismiss() },
+                    onClose = onDismiss,
                     onMore = { moreExpanded = true },
                     moreExpanded = moreExpanded,
                     dismissMore = { moreExpanded = false },

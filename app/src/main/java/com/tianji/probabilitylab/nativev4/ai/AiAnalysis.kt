@@ -537,7 +537,7 @@ class RemoteAiAnalyzer {
         val historyLimit = config.analysisMode.historyLimit
         val userPrompt = analysisPayload(snapshot, report, historyLimit).toString()
         val started = System.currentTimeMillis()
-        val primaryDecision = AiReasoningEngine.resolve(config)
+        val primaryDecision = AiReasoningEngine.resolveForecast(config)
 
         fun execute(
             reasoningDecision: AiReasoningDecision,
