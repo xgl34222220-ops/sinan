@@ -550,7 +550,8 @@ class RemoteAiAnalyzer {
             fallback: Boolean = false,
             prompt: String = userPrompt,
         ): AiForecast {
-            val response = post(
+            var checkpointReasoning = ""
+            var response = post(
                 config = config,
                 temperature = if (reasoningDecision.expectsReasoning) 0.1 else 0.2,
                 systemPrompt = SYSTEM_PROMPT,
@@ -562,13 +563,45 @@ class RemoteAiAnalyzer {
                 streamResponse = true,
                 onProgress = onProgress,
             )
+            if (response.json.optBoolean("_tianji_reasoning_checkpoint", false)) {
+                checkpointReasoning = response.json.extractReasoningContent()
+                require(checkpointReasoning.isNotBlank()) {
+                    "模型进入思考收口阶段，但没有保留到可复用的推理上下文"
+                }
+                onProgress(
+                    "真实推理已达到收口点，正在同一对话整理 position 与 scores；不会重新分析120期",
+                    System.currentTimeMillis() - started,
+                )
+                val finalizationDecision = reasoningDecision.copy(
+                    sendControl = reasoningDecision.protocol == AiReasoningProtocol.DEEPSEEK,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "${reasoningDecision.protocol.label} · 已完成思考，整理结果",
+                )
+                response = post(
+                    config = config,
+                    temperature = 0.0,
+                    systemPrompt = SYSTEM_PROMPT,
+                    userPrompt = prompt,
+                    reasoningDecision = finalizationDecision,
+                    readTimeoutMs = 45_000,
+                    jsonOutput = true,
+                    explainOutput = false,
+                    streamResponse = true,
+                    onProgress = onProgress,
+                    previousAssistantContent = "",
+                    previousReasoningContent = checkpointReasoning,
+                    followUpPrompt = "基于上面已经完成的真实推理，不要重新分析历史，也不要继续展开思考。现在立即只输出一个JSON对象：position为1至10整数，scores为按号码1至10排列的10项非负原始评分。",
+                )
+            }
             val payload = response.json.extractCompleteForecastPayload()
                 ?: throw AiConversationFinalizationException(
                     "模型未返回完整的 position 和 10 项 scores；本次请求已停止，未自动再次调用",
                 )
             response.json.requireCompletedResponse()
             val usage = response.json.extractUsage()
-            val hasReasoningContent = response.json.extractReasoningContent().isNotBlank()
+            val hasReasoningContent = checkpointReasoning.isNotBlank() ||
+                response.json.extractReasoningContent().isNotBlank()
             val content = payload
             require(content.isNotBlank()) {
                 if (response.json.extractReasoningContent().isNotBlank()) {
@@ -842,6 +875,7 @@ class RemoteAiAnalyzer {
         var firstReasoningMs = -1L
         var firstContentMs = -1L
         var earlyComplete = false
+        var reasoningCheckpoint = false
 
         fun report(message: String, force: Boolean = false) {
             val now = System.currentTimeMillis()
@@ -879,6 +913,22 @@ class RemoteAiAnalyzer {
                 if (firstReasoningMs < 0L) firstReasoningMs = System.currentTimeMillis() - startedAtMs
                 reasoning.append(reasoningPart)
                 report("模型正在推理 · 已收到 ${reasoning.length} 个推理字符")
+                val elapsedMs = System.currentTimeMillis() - startedAtMs
+                if (
+                    AiReasoningCheckpoint.shouldFinalize(
+                        reasoningChars = reasoning.length,
+                        contentChars = content.length,
+                        elapsedMs = elapsedMs,
+                    )
+                ) {
+                    reasoningCheckpoint = true
+                    finishReason = "reasoning_checkpoint"
+                    report(
+                        "真实推理已达到收口点，准备沿用同一对话生成核心预测",
+                        force = true,
+                    )
+                    break
+                }
             }
             if (contentPart.isNotEmpty()) {
                 if (firstContentMs < 0L) firstContentMs = System.currentTimeMillis() - startedAtMs
@@ -913,6 +963,7 @@ class RemoteAiAnalyzer {
                 put("_tianji_first_content_ms", firstContentMs)
                 put("_tianji_stream_finished_ms", System.currentTimeMillis() - startedAtMs)
                 put("_tianji_early_complete", earlyComplete)
+                put("_tianji_reasoning_checkpoint", reasoningCheckpoint)
             }
     }
 
