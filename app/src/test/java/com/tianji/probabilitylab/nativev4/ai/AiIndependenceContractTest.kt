@@ -30,9 +30,15 @@ class AiIndependenceContractTest {
             .substringBefore("private class RemoteAiChatClient")
         assertTrue(builder.contains("judgementMode == AiJudgementMode.INDEPENDENT"))
         assertTrue(builder.contains("raw-history-v1"))
-        assertTrue(builder.contains("if (independent)"))
-        assertTrue(builder.contains("else {
-                    put(
-                        "verified_position_statistics""))
+
+        val independentBranch = builder.substringAfter("if (independent) {")
+            .substringBefore("} else {")
+        assertFalse(independentBranch.contains("verified_position_statistics"))
+        assertFalse(independentBranch.contains("native_model_reference"))
+        assertFalse(independentBranch.contains("report.selectedPosition"))
+
+        val referenceBranch = builder.substringAfter("} else {")
+        assertTrue(referenceBranch.contains("verified_position_statistics"))
+        assertTrue(referenceBranch.contains("native_model_reference"))
     }
 }
