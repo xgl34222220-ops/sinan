@@ -70,21 +70,11 @@ replace_once(
 )
 
 # Both the first response and same-conversation completion only need the core prediction JSON.
-old_explain = '''                jsonOutput = true,
-                explainOutput = true,
-                streamResponse = true,'''
 text = analysis.read_text(encoding="utf-8")
-if text.count(old_explain) != 2:
-    raise RuntimeError(f"{analysis}: expected 2 explainOutput matches, got {text.count(old_explain)}")
-analysis.write_text(
-    text.replace(
-        old_explain,
-        '''                jsonOutput = true,
-                explainOutput = false,
-                streamResponse = true,''',
-    ),
-    encoding="utf-8",
-)
+flag = "explainOutput = true,"
+if text.count(flag) != 2:
+    raise RuntimeError(f"{analysis}: expected 2 explainOutput flags, got {text.count(flag)}")
+analysis.write_text(text.replace(flag, "explainOutput = false,"), encoding="utf-8")
 
 # Remove the instructions that expanded a small ranking task into a long report.
 replace_once(
