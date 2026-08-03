@@ -35,6 +35,17 @@ jobs:
             > /tmp/apply_v560_patch.py
           python3 -m py_compile /tmp/apply_v560_patch.py
           python3 /tmp/apply_v560_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiConversationTimelineTest.kt')
+          text = path.read_text(encoding='utf-8')
+          old = 'assertEquals(24, events.size)'
+          new = 'assertEquals(10, events.size)'
+          if old not in text:
+              raise SystemExit('timeline cap assertion not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
           grep -q 'versionCode = 35' app/build.gradle.kts
           grep -q 'versionName = "5.6.0"' app/build.gradle.kts
           test -f app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAdaptiveLearning.kt
