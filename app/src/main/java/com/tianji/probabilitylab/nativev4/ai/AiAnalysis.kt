@@ -550,7 +550,7 @@ class RemoteAiAnalyzer {
             fallback: Boolean = false,
             prompt: String = userPrompt,
         ): AiForecast {
-            var response = post(
+            val response = post(
                 config = config,
                 temperature = if (reasoningDecision.expectsReasoning) 0.1 else 0.2,
                 systemPrompt = SYSTEM_PROMPT,
@@ -562,51 +562,14 @@ class RemoteAiAnalyzer {
                 streamResponse = true,
                 onProgress = onProgress,
             )
-            var payload = response.json.extractCompleteForecastPayload()
-            var continuedConversation = false
-            if (
-                payload == null &&
-                (response.json.extractContent().isNotBlank() ||
-                    response.json.extractReasoningContent().isNotBlank())
-            ) {
-                continuedConversation = true
-                onProgress(
-                    "首次推理已完成，正在沿用同一对话补全最终 JSON",
-                    System.currentTimeMillis() - started,
+            val payload = response.json.extractCompleteForecastPayload()
+                ?: throw AiConversationFinalizationException(
+                    "模型未返回完整的 position 和 10 项 scores；本次请求已停止，未自动再次调用",
                 )
-                response = runCatching {
-                    post(
-                        config = config,
-                        temperature = if (reasoningDecision.expectsReasoning) 0.1 else 0.2,
-                        systemPrompt = SYSTEM_PROMPT,
-                        userPrompt = prompt,
-                        reasoningDecision = reasoningDecision,
-                        readTimeoutMs = 120_000,
-                        jsonOutput = true,
-                        explainOutput = false,
-                        streamResponse = true,
-                        onProgress = onProgress,
-                        previousAssistantContent = response.json.extractContent(),
-                        previousReasoningContent = response.json.extractReasoningContent(),
-                        followUpPrompt = FINALIZE_JSON_PROMPT,
-                    )
-                }.getOrElse { cause ->
-                    throw AiConversationFinalizationException(
-                        "首次推理已完成，但继续对话补全结果失败：${cause.message.orEmpty().take(100)}",
-                        cause,
-                    )
-                }
-                payload = response.json.extractCompleteForecastPayload()
-                if (payload == null) {
-                    throw AiConversationFinalizationException(
-                        "首次推理与继续对话均未返回完整的 position 和 10 项 scores",
-                    )
-                }
-            }
             response.json.requireCompletedResponse()
             val usage = response.json.extractUsage()
             val hasReasoningContent = response.json.extractReasoningContent().isNotBlank()
-            val content = payload ?: response.json.extractContent()
+            val content = payload
             require(content.isNotBlank()) {
                 if (response.json.extractReasoningContent().isNotBlank()) {
                     "模型只返回了思考过程，没有生成最终 JSON"
@@ -634,7 +597,6 @@ class RemoteAiAnalyzer {
                 estimatedCost = estimateCost(config, usage),
                 executionNote = buildString {
                     append(executionNote)
-                    if (continuedConversation) append(" · 同一对话补全结果")
                     response.json.streamPhaseSummary().takeIf(String::isNotBlank)?.let {
                         append(" · $it")
                     }
@@ -1410,8 +1372,6 @@ class RemoteAiAnalyzer {
     ) : IllegalStateException(message, cause)
 
     private companion object {
-        const val FINALIZE_JSON_PROMPT =
-            "你已经完成分析。不要重新计算或解释，立即只输出包含position与10项scores的紧凑JSON。"
         const val SYSTEM_PROMPT = """你是独立概率排序模型。输入包含真实开奖和客户端逐期核验的统计，本地候选已隐藏。先比较position 1至10，选择证据较充分的一个名次；不得默认固定名次。随后按号码1至10顺序给出10个非负原始scores，每项至少保留6位小数，避免并列。六码、七码和说明均由客户端根据scores与真实历史生成。完成内部分析后立即只输出position与scores的JSON，不要解释、不要Markdown、不要逐期复述，也不要输出思维过程。"""
     }
 }
