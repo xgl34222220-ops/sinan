@@ -26,11 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Apply generated message UI patch
-        run: |
-          awk '/python3 - <<'\''PY'\''/{capture=1; next} /^          PY$/{capture=0} capture' \
-            .github/workflows/patch-chat-message-actions.yml \
-            | sed 's/^          //' > /tmp/patch_chat_actions.py
-          python3 /tmp/patch_chat_actions.py
+        run: python3 scripts/patch_chat_message_actions.py
 
       - name: Commit patch to PR branch
         run: |
