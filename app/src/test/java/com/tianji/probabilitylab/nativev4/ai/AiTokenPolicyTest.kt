@@ -42,14 +42,15 @@ class AiTokenPolicyTest {
         assertTrue(budget.label.contains("客户端不限"))
     }
 
-    @Test fun openAiResponsesLeavesLimitToSelectedModel() {
+    @Test fun openAiResponsesUsesBoundedFormalForecastOutput() {
         val config = AiConfig(
             provider = AiProvider.OPENAI,
             endpoint = "https://api.openai.com/v1/responses",
             model = "gpt-5",
+            reasoningMode = AiReasoningMode.LOW,
         )
         val budget = AiTokenPolicy.resolve(config, responsesApi = true)
-        assertNull(budget.parameter)
-        assertNull(budget.value)
+        assertEquals("max_output_tokens", budget.parameter)
+        assertEquals(AiTokenPolicy.LOW_MAX_OUTPUT_TOKENS, budget.value)
     }
 }
