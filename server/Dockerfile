@@ -6,15 +6,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN addgroup --system tianji && adduser --system --ingroup tianji tianji
+RUN addgroup --system --gid 10001 tianji \
+    && adduser --system --uid 10001 --ingroup tianji --home /app tianji
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-RUN mkdir -p /app/data && chown -R tianji:tianji /app
+RUN mkdir -p /app/data && chown -R 10001:10001 /app
 
-USER tianji
+USER 10001:10001
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
