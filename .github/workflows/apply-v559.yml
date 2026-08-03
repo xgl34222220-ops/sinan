@@ -27,6 +27,7 @@ jobs:
           from pathlib import Path
           path = Path('tools/apply_v559.py')
           text = path.read_text(encoding='utf-8')
+
           old = '''text = replace_once(
               text,
               '\"${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}\",',
@@ -39,8 +40,19 @@ jobs:
               raise RuntimeError(f"formal status label: expected 2 matches, found {text.count(old_formal_label)}")
           text = text.replace(old_formal_label, new_formal_label, 2)'''
           if old not in text:
-              raise SystemExit('preflight target not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+              raise SystemExit('formal-label preflight target not found')
+          text = text.replace(old, new, 1)
+
+          old_regex = '    result, count = re.subn(pattern, replacement, text, count=1, flags=re.S)\n'
+          new_regex = (
+              '    compiled = re.compile(pattern, re.S)\n'
+              '    result, count = compiled.subn(lambda _match: replacement, text, count=1)\n'
+          )
+          if old_regex not in text:
+              raise SystemExit('regex helper preflight target not found')
+          text = text.replace(old_regex, new_regex, 1)
+
+          path.write_text(text, encoding='utf-8')
           PY
 
       - name: Apply source patch
