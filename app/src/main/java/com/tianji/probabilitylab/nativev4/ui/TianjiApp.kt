@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.tianji.probabilitylab.nativev4.AppController
+import com.tianji.probabilitylab.nativev4.ai.AiChatController
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceStore
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import com.tianji.probabilitylab.nativev4.ui.theme.PaletteMode
@@ -48,19 +49,26 @@ import kotlinx.coroutines.launch
 fun TianjiApp() {
     val context = LocalContext.current
     val controller = remember { AppController(context) }
+    val chatController = remember { AiChatController() }
     val appearance = remember { AppearanceStore(context.applicationContext) }
     val paletteMode by appearance.palette.collectAsState(initial = PaletteMode.MONET)
     val scope = rememberCoroutineScope()
     val state = controller.state
     var destination by rememberSaveable { mutableStateOf(NavDestination.FORECAST) }
+    var showChat by rememberSaveable { mutableStateOf(false) }
     val density = LocalDensity.current
     val accessibleDensity = remember(density.density, density.fontScale) {
         Density(density.density, density.fontScale)
     }
 
-    DisposableEffect(controller) { onDispose(controller::close) }
-    BackHandler(enabled = destination != NavDestination.FORECAST) {
-        destination = NavDestination.FORECAST
+    DisposableEffect(controller, chatController) {
+        onDispose {
+            chatController.close()
+            controller.close()
+        }
+    }
+    BackHandler(enabled = showChat || destination != NavDestination.FORECAST) {
+        if (showChat) showChat = false else destination = NavDestination.FORECAST
     }
 
     TianjiTheme(mode = paletteMode, lottery = state.lottery) {
@@ -154,8 +162,24 @@ fun TianjiApp() {
                                     .align(Alignment.BottomCenter)
                                     .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
                             )
+                            AiChatFloatingButton(
+                                onClick = { showChat = true },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = 18.dp, bottom = 84.dp),
+                            )
                         }
                     }
+                }
+                if (showChat) {
+                    AiChatDialog(
+                        controller = chatController,
+                        configs = controller.aiConfigs,
+                        snapshot = state.snapshot,
+                        report = state.report,
+                        onRefresh = controller::refresh,
+                        onDismiss = { showChat = false },
+                    )
                 }
             }
         }
