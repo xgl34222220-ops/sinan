@@ -1,0 +1,55 @@
+services:
+  api:
+    build:
+      context: ./server
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8000"
+    networks:
+      - tianji
+
+  worker:
+    build:
+      context: ./server
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - tianji
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      TIANJI_DOMAIN: ${TIANJI_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - tianji
+
+networks:
+  tianji:
+
+volumes:
+  caddy_data:
+  caddy_config:
