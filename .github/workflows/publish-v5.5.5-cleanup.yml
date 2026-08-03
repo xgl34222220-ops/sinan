@@ -132,24 +132,21 @@ jobs:
 
           cp RELEASE_NOTES_v5.5.5.md dist/RELEASE_NOTES.md
           if [[ "$GENERATED" == true ]]; then
-            cat >> dist/RELEASE_NOTES.md <<'EOF'
-
-## 签名迁移说明
-
-本正式版启用新的长期正式签名。由于旧版签名私钥已不存在，已安装旧签名版本的设备需要先备份应用数据并卸载旧版，再安装本版本；从 v5.5.5 开始后续版本将使用本次正式签名，可直接覆盖升级。
-EOF
+            printf '%s\n' '' '## 签名迁移说明' '' \
+              '本正式版启用新的长期正式签名。由于旧版签名私钥已不存在，已安装旧签名版本的设备需要先备份应用数据并卸载旧版，再安装本版本；从 v5.5.5 开始后续版本将使用本次正式签名，可直接覆盖升级。' \
+              >> dist/RELEASE_NOTES.md
             cp "$KEYSTORE" "$RUNNER_TEMP/signing-backup/tianji-release-v5.5.5.jks"
             base64 -w 0 "$KEYSTORE" > "$RUNNER_TEMP/signing-backup/TIANJI_KEYSTORE_BASE64.txt"
-            cat > "$RUNNER_TEMP/signing-backup/SIGNING-CREDENTIALS.txt" <<EOF
-TIANJI_KEYSTORE_PASSWORD=$STORE_PASSWORD
-TIANJI_KEY_ALIAS=$KEY_ALIAS
-TIANJI_KEY_PASSWORD=$KEY_PASSWORD
-EOF
-            cat > "$RUNNER_TEMP/signing-backup/README.txt" <<'EOF'
-这是天机从 v5.5.5 开始使用的长期正式签名私钥备份。
-请离线保存，任何人获得此文件和密码都能签署可覆盖安装的应用。
-将 TIANJI_KEYSTORE_BASE64.txt 的完整内容和 SIGNING-CREDENTIALS.txt 中的三项值分别写入同名 GitHub Actions Secrets。
-EOF
+            printf '%s\n' \
+              "TIANJI_KEYSTORE_PASSWORD=$STORE_PASSWORD" \
+              "TIANJI_KEY_ALIAS=$KEY_ALIAS" \
+              "TIANJI_KEY_PASSWORD=$KEY_PASSWORD" \
+              > "$RUNNER_TEMP/signing-backup/SIGNING-CREDENTIALS.txt"
+            printf '%s\n' \
+              '这是天机从 v5.5.5 开始使用的长期正式签名私钥备份。' \
+              '请离线保存，任何人获得此文件和密码都能签署可覆盖安装的应用。' \
+              '将 TIANJI_KEYSTORE_BASE64.txt 的完整内容和 SIGNING-CREDENTIALS.txt 中的三项值分别写入同名 GitHub Actions Secrets。' \
+              > "$RUNNER_TEMP/signing-backup/README.txt"
           fi
 
           echo "generated=$GENERATED" >> "$GITHUB_OUTPUT"
