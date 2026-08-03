@@ -44,16 +44,33 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Restore signing key from protected secrets
+      - name: Restore and verify protected signing identity
         shell: bash
         env:
           TIANJI_KEYSTORE_BASE64: ${{ secrets.TIANJI_KEYSTORE_BASE64 }}
+          TIANJI_KEYSTORE_PASSWORD: ${{ secrets.TIANJI_KEYSTORE_PASSWORD }}
+          TIANJI_KEY_ALIAS: ${{ secrets.TIANJI_KEY_ALIAS }}
+          TIANJI_KEY_PASSWORD: ${{ secrets.TIANJI_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "$TIANJI_KEYSTORE_BASE64"
+          test -n "$TIANJI_KEYSTORE_PASSWORD"
+          test -n "$TIANJI_KEY_ALIAS"
+          test -n "$TIANJI_KEY_PASSWORD"
           mkdir -p .signing
           printf '%s' "$TIANJI_KEYSTORE_BASE64" | base64 --decode > .signing/tianji-release.jks
           test -s .signing/tianji-release.jks
+          keytool -list \
+            -keystore .signing/tianji-release.jks \
+            -storepass "$TIANJI_KEYSTORE_PASSWORD" \
+            -alias "$TIANJI_KEY_ALIAS" >/dev/null
+          keytool -exportcert -rfc \
+            -keystore .signing/tianji-release.jks \
+            -storepass "$TIANJI_KEYSTORE_PASSWORD" \
+            -alias "$TIANJI_KEY_ALIAS" \
+            -file .signing/tianji-release-cert.pem
+          openssl x509 -in .signing/tianji-release-cert.pem \
+            -noout -fingerprint -sha256 > .signing/CERT_SHA256.txt
 
       - name: Verify version, test and build signed APK
         shell: bash
@@ -77,10 +94,13 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" \
             verify --verbose --print-certs "$APK" | tee dist/APK_VERIFY.txt
+          grep -q 'Verified using v2 scheme.*true' dist/APK_VERIFY.txt
+          grep -q 'Verified using v3 scheme.*true' dist/APK_VERIFY.txt
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" \
             dump badging "$APK" | head -n 5 | tee dist/APK_BADGING.txt
           grep -q "package: name='com.tianji.probabilitylab.nativev4'" dist/APK_BADGING.txt
           grep -q "versionName='$VERSION'" dist/APK_BADGING.txt
+          cp .signing/CERT_SHA256.txt dist/SIGNING_CERT_SHA256.txt
           sha256sum "$APK" > "dist/Tianji-v${VERSION}-SHA256.txt"
           unzip -t "$APK" >/dev/null
 
