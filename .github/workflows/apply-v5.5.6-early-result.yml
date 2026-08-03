@@ -7,6 +7,8 @@ on:
       - '.github/workflows/apply-v5.5.6-early-result.yml'
       - 'scripts/apply_v5_5_6_early_result.py'
       - 'RELEASE_NOTES_v5.5.6.md'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
