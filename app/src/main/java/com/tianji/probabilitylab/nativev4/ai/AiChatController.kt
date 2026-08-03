@@ -248,19 +248,22 @@ class AiChatController(context: Context) {
         val judgementMode = session.judgementMode
         val learningStrategy = AiLearningStrategy.chat(activeModel, persona.id, judgementMode)
         val requestedPosition = AiAdaptiveSignalEngine.extractRequestedPosition(text)
-            ?: report.selectedPosition
+        // Never default an independent chat request to the native model's selected position.
+        // The provisional position only drives the local status card; strict independent prompts
+        // omit this learning context and compare all ten positions from raw history.
+        val learningPosition = requestedPosition ?: session.prediction?.position ?: 0
         val learningProfile = learningStore.profile(
             snapshot.lottery.apiKey,
             config.id,
             learningStrategy,
-            requestedPosition,
+            learningPosition,
         )
         val learningContext = learningStore.snapshot(
             snapshot.history,
             snapshot.lottery.apiKey,
             config.id,
             learningStrategy,
-            requestedPosition,
+            learningPosition,
         )
         val token = generation.incrementAndGet()
         val nextTitle = if (session.messages.none { it.role == AiChatRole.USER }) {
@@ -647,21 +650,20 @@ object AiChatContextBuilder {
         judgementMode: AiJudgementMode,
         learningContext: JSONObject,
     ): JSONObject {
-        val verifiedHistory = snapshot.history.takeLast(120)
+        val verifiedHistory = snapshot.history
+            .filter { it.numbers.size == 10 }
+            .takeLast(120)
+        require(verifiedHistory.isNotEmpty()) { "没有可用于对话分析的接口历史" }
         val wantsPrediction = AiChatProtocol.wantsPrediction(question)
         val requestedPosition = extractPosition(question)
-        val positions = when {
-            requestedPosition != null -> listOf(requestedPosition)
-            wantsPrediction -> (0 until 10).toList()
-            else -> listOf(report.selectedPosition)
-        }
+        val positions = requestedPosition?.let(::listOf) ?: (0 until 10).toList()
         val rawWindow = when {
-            wantsPrediction && requestedPosition == null -> 48
-            wantsPrediction -> 32
-            requestedPosition != null -> 24
-            else -> 12
+            wantsPrediction -> 120
+            requestedPosition != null -> 80
+            else -> 60
         }
         val compactHistory = verifiedHistory.takeLast(rawWindow)
+        val independent = judgementMode == AiJudgementMode.INDEPENDENT
         return JSONObject()
             .put("lottery", snapshot.lottery.displayName)
             .put("latest_period", snapshot.latest.period)
@@ -675,18 +677,34 @@ object AiChatContextBuilder {
             .put(
                 "compact_history",
                 JSONArray(compactHistory.map { draw ->
-                    "${draw.period}:${draw.numbers.joinToString(",")}"
+                    JSONObject()
+                        .put("period", draw.period)
+                        .put("numbers", JSONArray(draw.numbers))
                 }),
             )
             .put(
-                "verified_position_statistics",
-                JSONArray(positions.map { position ->
-                    toJson(computePositionStatistics(verifiedHistory, position))
-                }),
+                "input_isolation",
+                if (independent) {
+                    "strict: no native selected position, candidates, matrix, factor weights or client precomputed statistics"
+                } else {
+                    "native reference explicitly enabled by the user"
+                },
             )
-            .put("adaptive_learning", learningContext)
             .apply {
-                if (judgementMode != AiJudgementMode.INDEPENDENT) {
+                if (independent) {
+                    put("independence_protocol", "raw-history-v1")
+                    put(
+                        "independent_analysis_rule",
+                        "自行从原始历史提取特征并比较名次；不得猜测本机答案，也不得为了刻意不同而反向选择。",
+                    )
+                } else {
+                    put(
+                        "verified_position_statistics",
+                        JSONArray(positions.map { position ->
+                            toJson(computePositionStatistics(verifiedHistory, position))
+                        }),
+                    )
+                    put("adaptive_learning", learningContext)
                     put(
                         "native_model_reference",
                         JSONObject()
@@ -919,7 +937,7 @@ private class RemoteAiChatClient {
                 .put("role", "user")
                 .put(
                     "content",
-                    "以下是客户端刚刚根据当前开奖接口历史逐期计算的事实。所有回答只能以这些事实为依据：\n${context}",
+                    "以下是当前开奖接口原始历史与必要元数据。独立模式不会包含本机候选、名次、概率矩阵或本机预计算统计；参考/反向模式才会明确附带native_model_reference：\n${context}",
                 ),
         )
         if (memorySummary.isNotBlank()) {
@@ -950,7 +968,7 @@ private class RemoteAiChatClient {
     ): String = buildString {
         val judgementInstruction = when (judgementMode) {
             AiJudgementMode.INDEPENDENT ->
-                "当前为独立学习模式：客户端没有向你提供本机最终候选。必须形成自己的判断，不得猜测或迎合本机答案。"
+                "当前为严格独立模式：客户端只提供原始开奖历史，不提供本机选择的名次、候选、概率矩阵、因子权重或本机预计算统计。必须自行提取特征并比较十个名次；不得猜测本机答案，也不得为了显得不同而故意反选。"
             AiJudgementMode.NATIVE_REFERENCE ->
                 "当前为参考本机模式：native_model_reference只是一份可质疑参考，必须独立计算并在不同时坚持自己的结论。"
             AiJudgementMode.CONTRARIAN ->
@@ -962,7 +980,7 @@ private class RemoteAiChatClient {
                 "adaptive_learning由客户端根据此前真实前向开奖结果逐期更新，包含学习期数、命中率、连续未中、六类因子权重和最近策略变化。" +
                 "上一期未中或连续未中时，必须重新检查因子是否失效，并明确说明本期改变了什么；禁止机械复制旧候选。" +
                 "使用简体中文直接、自然地回答，支持跨期开奖持续追问和复盘。" +
-                "只能引用客户端提供的当前开奖接口历史、核验统计和持续学习档案，不得虚构期号、次数或数据来源。" +
+                "独立模式只能引用客户端提供的原始开奖历史；参考/反向模式可额外使用明确标注的核验统计与本机参考。不得虚构期号、次数或数据来源。" +
                 "所有转移、遗漏和趋势结论必须同时说明样本强弱；1次与2次之类的小差异不得包装成强规律。" +
                 "用户说出现几率大时，应解释为历史样本中的相对频次或模型相对评分，不得称为真实中奖概率。" +
                 "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小或没有强候选。" +

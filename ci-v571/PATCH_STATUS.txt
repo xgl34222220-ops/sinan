@@ -1,0 +1,4 @@
+status=patch_success
+source_sha=59e38e3f13cc28a05566c2a911c087cb358e2867
+checked_at=2026-08-03T23:49:35Z
+Source isolation patch applied; Android verification still required.
