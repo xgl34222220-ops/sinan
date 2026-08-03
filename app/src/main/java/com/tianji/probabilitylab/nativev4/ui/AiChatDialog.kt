@@ -659,12 +659,11 @@ private fun ChatMessageBubble(message: AiChatMessage, isStreaming: Boolean) {
                 isStreaming -> "正在思考，等待第一段正文…"
                 else -> ""
             }
-            Text(
-                visible,
+            ChatMarkdownText(
+                text = visible,
                 color = if (message.content.isBlank()) colors.textDim else colors.textSoft,
                 fontSize = 15.sp,
                 lineHeight = 23.sp,
-                fontWeight = FontWeight.Normal,
             )
             message.latencyMs?.let {
                 Text(
