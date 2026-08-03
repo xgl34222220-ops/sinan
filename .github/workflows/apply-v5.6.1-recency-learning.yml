@@ -30,12 +30,14 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_required(path, old, new, count=1):
+          def replace_required(path: str, old: str, new: str, count: int = 1) -> None:
               file = Path(path)
               text = file.read_text(encoding="utf-8")
               found = text.count(old)
               if found < count:
-                  raise SystemExit(f"missing replacement in {path}: expected {count}, found {found}\n{old[:240]}")
+                  raise SystemExit(
+                      f"missing replacement in {path}: expected {count}, found {found}\n{old[:260]}"
+                  )
               file.write_text(text.replace(old, new, count), encoding="utf-8")
 
           app_db = Path("app/src/main/java/com/tianji/probabilitylab/nativev4/data/AppDatabase.kt")
@@ -65,7 +67,7 @@ jobs:
 
           '''
           if db_marker not in app_db_text:
-              raise SystemExit("AppDatabase marker missing")
+              raise SystemExit("AppDatabase insertion marker missing")
           if "loadSettledAiForecastsForLearning" not in app_db_text:
               app_db_text = app_db_text.replace(db_marker, db_method + db_marker, 1)
           app_db.write_text(app_db_text, encoding="utf-8")
@@ -168,11 +170,11 @@ jobs:
                   }
           """,
               """        archiveData.filter { it.lotteryKey == snapshot.lottery.apiKey }.forEach { archive ->
-                      archive.candidates.forEach { record ->
+                      archive.candidates.forEach candidateLoop@ { record ->
                           val position = record.prediction.position
                           val actualNumber = record.actualNumber
                               ?: drawsByPeriod[record.targetPeriod]?.numbers?.getOrNull(position)
-                              ?: return@forEach
+                              ?: return@candidateLoop
                           learningStore.learnChatCandidate(
                               outcomeId = record.id,
                               lotteryKey = archive.lotteryKey,
@@ -238,19 +240,23 @@ jobs:
           )
           replace_required(
               "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt",
-              """                            learningStore.profile(
-                                      snapshot.lottery.apiKey,
-                                      config.id,
-                                      activeModel,
-                                      prediction.position,
-                                  )
+              """                        val resolvedLearning = reply.prediction?.let { prediction ->
+                              learningStore.profile(
+                                  snapshot.lottery.apiKey,
+                                  config.id,
+                                  activeModel,
+                                  prediction.position,
+                              )
+                          } ?: learningProfile
           """,
-              """                            learningStore.profile(
-                                      snapshot.lottery.apiKey,
-                                      config.id,
-                                      learningStrategy,
-                                      prediction.position,
-                                  )
+              """                        val resolvedLearning = reply.prediction?.let { prediction ->
+                              learningStore.profile(
+                                  snapshot.lottery.apiKey,
+                                  config.id,
+                                  learningStrategy,
+                                  prediction.position,
+                              )
+                          } ?: learningProfile
           """,
           )
 
@@ -274,7 +280,7 @@ jobs:
 
           '''
           if guard_marker not in chat_text:
-              raise SystemExit("AiChat guard marker missing")
+              raise SystemExit("AiChat guard insertion marker missing")
           if "internal object AiPredictionFreshnessGuard" not in chat_text:
               chat_text = chat_text.replace(guard_marker, "\n\n" + guard + guard_marker, 1)
           chat.write_text(chat_text, encoding="utf-8")
@@ -287,11 +293,13 @@ jobs:
 
           readme = Path("README.md")
           readme_text = readme.read_text(encoding="utf-8")
-          readme_text = readme_text.replace(
-              "5.6.0 持续学习正式候选",
-              "5.6.1 时效自适应学习正式候选",
+          old_version = "5.6.0 持续学习正式候选"
+          if old_version not in readme_text:
+              raise SystemExit("README version marker missing")
+          readme.write_text(
+              readme_text.replace(old_version, "5.6.1 时效自适应学习正式候选", 1),
+              encoding="utf-8",
           )
-          readme.write_text(readme_text, encoding="utf-8")
           PY
 
       - name: Verify debug and release builds
