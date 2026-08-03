@@ -57,8 +57,7 @@
 
 ## 最终自动验证
 
-- 功能源码提交：`644c0eb890c3901c5a673ec4394abf0f9cb570be`。
-- 最终说明与正常 CI 提交：`640eeaf0d59aacc84c5a89b0bcb25ba3d70edf4a`。
+- 多会话功能源码提交：`644c0eb890c3901c5a673ec4394abf0f9cb570be`。
 - Debug 单元测试：51 项，0 失败，0 跳过。
 - Release 单元测试：51 项，0 失败，0 跳过。
 - Android Lint：No Issues Found。
