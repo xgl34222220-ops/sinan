@@ -339,43 +339,35 @@ private fun ChatTopBar(
 ) {
     val colors = LocalTianjiColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().height(60.dp),
+        modifier = Modifier.fillMaxWidth().height(54.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(13.dp))
-                .background(colors.accent.copy(alpha = 0.13f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Rounded.AutoAwesome, null, tint = colors.accent, modifier = Modifier.size(19.dp))
-        }
-        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "天机分析",
+                "天机",
                 color = colors.text,
-                fontSize = 18.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
             Text(
                 session.title.ifBlank { "新对话" },
                 color = colors.textDim,
-                fontSize = 10.5.sp,
+                fontSize = 9.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         ContextUsagePill(session.contextUsagePercent)
         SmallTopAction(onClick = onNew, enabled = !session.isRunning) {
-            Icon(Icons.Rounded.Add, "新建对话", tint = colors.textSoft, modifier = Modifier.size(20.dp))
+            Icon(Icons.Rounded.Add, "新建对话", tint = colors.textSoft, modifier = Modifier.size(19.dp))
         }
         SmallTopAction(onClick = onHistory, enabled = !session.isRunning) {
-            Icon(Icons.Rounded.History, "对话历史", tint = colors.textSoft, modifier = Modifier.size(19.dp))
+            Icon(Icons.Rounded.History, "对话历史", tint = colors.textSoft, modifier = Modifier.size(18.dp))
         }
         Box {
             SmallTopAction(onClick = onMore, enabled = !session.isRunning) {
-                Icon(Icons.Rounded.MoreVert, "更多", tint = colors.textSoft, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.MoreVert, "更多", tint = colors.textSoft, modifier = Modifier.size(19.dp))
             }
             DropdownMenu(expanded = moreExpanded, onDismissRequest = dismissMore) {
                 DropdownMenuItem(
@@ -396,7 +388,7 @@ private fun ChatTopBar(
             }
         }
         SmallTopAction(onClick = onClose) {
-            Icon(Icons.Rounded.Close, "关闭", tint = colors.textSoft, modifier = Modifier.size(21.dp))
+            Icon(Icons.Rounded.Close, "关闭", tint = colors.textSoft, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -418,11 +410,11 @@ private fun ContextUsagePill(percent: Int) {
         percent >= 55 -> colors.accent
         else -> colors.green
     }
-    Surface(shape = CircleShape, color = tint.copy(alpha = 0.09f)) {
+    Surface(shape = RoundedCornerShape(10.dp), color = tint.copy(alpha = 0.08f)) {
         Text(
             "${percent.coerceIn(0, 100)}%",
             color = tint,
-            fontSize = 9.sp,
+            fontSize = 8.5.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
         )
@@ -449,50 +441,50 @@ private fun SessionControlStrip(
     val persona = AiChatPersona.fromId(session.personaId)
     Surface(
         modifier = Modifier.fillMaxWidth().animateContentSize(),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White.copy(alpha = 0.035f),
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White.copy(alpha = 0.025f),
     ) {
         Column {
             Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp).clickable(onClick = onToggle)
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier.size(28.dp).clip(RoundedCornerShape(10.dp))
-                        .background(colors.accent.copy(alpha = 0.1f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.Tune, null, tint = colors.accent, modifier = Modifier.size(16.dp))
-                }
+                Icon(Icons.Rounded.Tune, null, tint = colors.accent, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(9.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        selectedModel.ifBlank { "请选择模型" },
-                        color = colors.text,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        "${selectedConfig?.displayName ?: "未配置"} · ${persona.displayName} · 目标期${report?.targetPeriod ?: "待同步"}",
-                        color = colors.textDim,
-                        fontSize = 9.5.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    selectedModel.ifBlank { "选择模型" },
+                    color = colors.text,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    persona.displayName,
+                    color = colors.accent,
+                    fontSize = 8.5.sp,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 7.dp),
+                )
+                Text(
+                    report?.targetPeriod?.let { "期$it" } ?: "待同步",
+                    color = colors.textDim,
+                    fontSize = 8.5.sp,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(4.dp))
                 Icon(
                     if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                     if (expanded) "收起" else "展开",
                     tint = colors.textDim,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(18.dp),
                 )
             }
             if (expanded) {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.line.copy(alpha = 0.55f)))
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.line.copy(alpha = 0.4f)))
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 5.dp)) {
                     SelectorRow(
                         label = "配置",
                         value = selectedConfig?.displayName ?: "未配置",
@@ -516,14 +508,10 @@ private fun SessionControlStrip(
                     )
                     val ready = snapshot != null && report != null && selectedConfig != null
                     Text(
-                        if (ready) {
-                            "${snapshot!!.history.takeLast(120).size}期真实接口历史 · 对话可跨期开奖继续"
-                        } else {
-                            "请先准备开奖历史和完整 AI 配置"
-                        },
+                        if (ready) "${snapshot!!.history.takeLast(120).size}期真实接口历史" else "请先准备开奖历史和完整AI配置",
                         color = if (ready) colors.green else colors.amber,
-                        fontSize = 9.5.sp,
-                        modifier = Modifier.padding(start = 62.dp, top = 5.dp, bottom = 2.dp),
+                        fontSize = 8.5.sp,
+                        modifier = Modifier.padding(start = 62.dp, top = 2.dp, bottom = 3.dp),
                     )
                 }
             }
@@ -576,37 +564,37 @@ private fun SelectorRow(
 private fun WelcomePanel(persona: AiChatPersona, enabled: Boolean, onPrompt: (String) -> Unit) {
     val colors = LocalTianjiColors.current
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 42.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            modifier = Modifier.size(54.dp).clip(RoundedCornerShape(19.dp))
-                .background(colors.accent.copy(alpha = 0.11f)),
+            modifier = Modifier.size(42.dp).clip(RoundedCornerShape(15.dp))
+                .background(colors.accent.copy(alpha = 0.1f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.AutoAwesome, null, tint = colors.accent, modifier = Modifier.size(25.dp))
+            Icon(Icons.Rounded.AutoAwesome, null, tint = colors.accent, modifier = Modifier.size(20.dp))
         }
-        Spacer(Modifier.height(14.dp))
-        Text("开始分析", color = colors.text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(10.dp))
+        Text("开始分析", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Text(
             "同一会话可以持续复盘多期开奖",
             color = colors.textDim,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(top = 4.dp, bottom = 18.dp),
+            fontSize = 9.5.sp,
+            modifier = Modifier.padding(top = 3.dp, bottom = 13.dp),
         )
         persona.quickPrompts.take(3).forEach { prompt ->
             Surface(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
                     .clickable(enabled = enabled) { onPrompt(prompt) },
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White.copy(alpha = 0.035f),
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White.copy(alpha = 0.025f),
             ) {
                 Text(
                     prompt,
                     color = if (enabled) colors.textSoft else colors.textDim,
-                    fontSize = 12.5.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
+                    fontSize = 11.5.sp,
+                    lineHeight = 17.sp,
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
                 )
             }
         }
@@ -620,59 +608,48 @@ private fun ChatMessageBubble(message: AiChatMessage, isStreaming: Boolean) {
         SystemEventChip(message.content)
         return
     }
-    val user = message.role == AiChatRole.USER
-    if (user) {
+    if (message.role == AiChatRole.USER) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
             Text(
                 message.content,
                 color = colors.text,
-                fontSize = 14.sp,
-                lineHeight = 21.sp,
-                fontWeight = FontWeight.Normal,
-                modifier = Modifier.widthIn(max = 304.dp)
-                    .clip(RoundedCornerShape(20.dp, 20.dp, 7.dp, 20.dp))
-                    .background(colors.accent.copy(alpha = 0.16f))
-                    .padding(horizontal = 15.dp, vertical = 12.dp),
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                modifier = Modifier.widthIn(max = 286.dp)
+                    .clip(RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp))
+                    .background(colors.accent.copy(alpha = 0.13f))
+                    .padding(horizontal = 13.dp, vertical = 10.dp),
             )
         }
         return
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Box(
-            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(11.dp))
-                .background(colors.accent.copy(alpha = 0.11f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Rounded.AutoAwesome, null, tint = colors.accent, modifier = Modifier.size(16.dp))
+    Column(Modifier.fillMaxWidth().animateContentSize()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AutoAwesome, null, tint = colors.accent, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.width(5.dp))
+            Text("天机", color = colors.accent, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text("天机", color = colors.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(5.dp))
-            val visible = when {
-                message.content.isNotBlank() && isStreaming -> message.content + " ▍"
-                message.content.isNotBlank() -> message.content
-                isStreaming -> "正在思考，等待第一段正文…"
-                else -> ""
-            }
-            ChatMarkdownText(
-                text = visible,
-                color = if (message.content.isBlank()) colors.textDim else colors.textSoft,
-                fontSize = 15.sp,
-                lineHeight = 23.sp,
+        Spacer(Modifier.height(5.dp))
+        val visible = when {
+            message.content.isNotBlank() && isStreaming -> message.content + " ▍"
+            message.content.isNotBlank() -> message.content
+            isStreaming -> "正在思考，等待第一段正文…"
+            else -> ""
+        }
+        ChatMarkdownText(
+            text = visible,
+            color = if (message.content.isBlank()) colors.textDim else colors.textSoft,
+            fontSize = 13.5.sp,
+            lineHeight = 21.sp,
+        )
+        message.latencyMs?.let {
+            Text(
+                "${it / 1_000.0}s",
+                color = colors.textDim,
+                fontSize = 8.5.sp,
+                modifier = Modifier.padding(top = 5.dp),
             )
-            message.latencyMs?.let {
-                Text(
-                    "${it / 1_000.0}s",
-                    color = colors.textDim,
-                    fontSize = 9.sp,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
         }
     }
 }
@@ -721,42 +698,34 @@ private fun ChatPredictionCard(record: AiChatCandidateRecord) {
     val colors = LocalTianjiColors.current
     val hit = record.actualNumber?.let { it in record.prediction.top6 }
     Surface(
-        modifier = Modifier.padding(start = 40.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = colors.accent.copy(alpha = 0.07f),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(15.dp),
+        color = colors.accent.copy(alpha = 0.055f),
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+                Text(
+                    "第${record.prediction.position + 1}名",
+                    color = colors.accent,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    " · 目标期${record.targetPeriod}",
+                    color = colors.textDim,
+                    fontSize = 8.5.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                hit?.let {
                     Text(
-                        "第${record.prediction.position + 1}名候选",
-                        color = colors.accent,
-                        fontSize = 12.5.sp,
+                        if (it) "命中" else "未中",
+                        color = if (it) colors.green else colors.amber,
+                        fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
                     )
-                    Text(
-                        "目标期 ${record.targetPeriod}",
-                        color = colors.textDim,
-                        fontSize = 9.5.sp,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-                hit?.let {
-                    Surface(
-                        shape = CircleShape,
-                        color = (if (it) colors.green else colors.amber).copy(alpha = 0.1f),
-                    ) {
-                        Text(
-                            if (it) "命中" else "未中",
-                            color = if (it) colors.green else colors.amber,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
-                    }
                 }
             }
-            Spacer(Modifier.height(11.dp))
+            Spacer(Modifier.height(9.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 record.prediction.top6.forEach { number -> NumberBall(number) }
             }
@@ -764,8 +733,8 @@ private fun ChatPredictionCard(record: AiChatCandidateRecord) {
                 Text(
                     "实际号码 $actual · 仅用于本对话复盘",
                     color = colors.textDim,
-                    fontSize = 9.5.sp,
-                    modifier = Modifier.padding(top = 9.dp),
+                    fontSize = 8.5.sp,
+                    modifier = Modifier.padding(top = 7.dp),
                 )
             }
         }
@@ -776,11 +745,11 @@ private fun ChatPredictionCard(record: AiChatCandidateRecord) {
 private fun NumberBall(number: Int) {
     val colors = LocalTianjiColors.current
     Box(
-        modifier = Modifier.size(34.dp).clip(CircleShape)
-            .background(colors.accent.copy(alpha = 0.15f)),
+        modifier = Modifier.size(30.dp).clip(CircleShape)
+            .background(colors.accent.copy(alpha = 0.13f)),
         contentAlignment = Alignment.Center,
     ) {
-        Text(number.toString(), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(number.toString(), color = colors.text, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -796,13 +765,12 @@ private fun ChatComposer(
 ) {
     val colors = LocalTianjiColors.current
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = Color.White.copy(alpha = 0.055f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, colors.line.copy(alpha = 0.7f)),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White.copy(alpha = 0.04f),
     ) {
         Row(
-            modifier = Modifier.padding(start = 16.dp, top = 10.dp, end = 7.dp, bottom = 8.dp),
+            modifier = Modifier.padding(start = 14.dp, top = 8.dp, end = 6.dp, bottom = 7.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             BasicTextField(
@@ -810,10 +778,10 @@ private fun ChatComposer(
                 onValueChange = onInput,
                 enabled = enabled,
                 modifier = Modifier.weight(1f).padding(bottom = 4.dp),
-                textStyle = TextStyle(color = colors.text, fontSize = 14.sp, lineHeight = 20.sp),
+                textStyle = TextStyle(color = colors.text, fontSize = 13.sp, lineHeight = 19.sp),
                 cursorBrush = SolidColor(colors.accent),
                 minLines = 1,
-                maxLines = 5,
+                maxLines = 4,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { if (enabled && input.isNotBlank()) onSend() }),
                 decorationBox = { inner ->
@@ -822,8 +790,8 @@ private fun ChatComposer(
                             Text(
                                 placeholder,
                                 color = colors.textDim,
-                                fontSize = 12.sp,
-                                lineHeight = 18.sp,
+                                fontSize = 10.5.sp,
+                                lineHeight = 16.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -832,11 +800,11 @@ private fun ChatComposer(
                     }
                 },
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(7.dp))
             Button(
                 onClick = if (isRunning) onStop else onSend,
                 enabled = isRunning || (enabled && input.isNotBlank()),
-                modifier = Modifier.size(43.dp),
+                modifier = Modifier.size(40.dp),
                 shape = CircleShape,
                 contentPadding = PaddingValues(0.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -847,7 +815,7 @@ private fun ChatComposer(
                     if (isRunning) Icons.Rounded.StopCircle else Icons.AutoMirrored.Rounded.Send,
                     if (isRunning) "停止" else "发送",
                     tint = Color.White,
-                    modifier = Modifier.size(21.dp),
+                    modifier = Modifier.size(19.dp),
                 )
             }
         }

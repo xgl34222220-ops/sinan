@@ -481,11 +481,7 @@ class RemoteAiAnalyzer {
         AiProbabilityVector.requireForecastable(baseJson.doubleList("scores"))
 
         val highDecision = AiReasoningEngine.resolve(config, AiReasoningMode.HIGH)
-        val reasoningResponse = if (
-            config.reasoningMode == AiReasoningMode.HIGH &&
-            highDecision.supported &&
-            !baseDecision.expectsReasoning
-        ) runCatching {
+        val reasoningResponse = if (highDecision.supported && !baseDecision.expectsReasoning) runCatching {
             post(
                 config = config,
                 temperature = 0.0,
@@ -550,7 +546,6 @@ class RemoteAiAnalyzer {
             fallback: Boolean = false,
             prompt: String = userPrompt,
         ): AiForecast {
-            var checkpointReasoning = ""
             var response = post(
                 config = config,
                 temperature = if (reasoningDecision.expectsReasoning) 0.1 else 0.2,
@@ -559,50 +554,55 @@ class RemoteAiAnalyzer {
                 reasoningDecision = reasoningDecision,
                 readTimeoutMs = readTimeoutMs,
                 jsonOutput = true,
-                explainOutput = false,
+                explainOutput = true,
                 streamResponse = true,
                 onProgress = onProgress,
             )
-            if (response.json.optBoolean("_tianji_reasoning_checkpoint", false)) {
-                checkpointReasoning = response.json.extractReasoningContent()
-                require(checkpointReasoning.isNotBlank()) {
-                    "模型进入思考收口阶段，但没有保留到可复用的推理上下文"
-                }
+            var payload = response.json.extractCompleteForecastPayload()
+            var continuedConversation = false
+            if (
+                payload == null &&
+                (response.json.extractContent().isNotBlank() ||
+                    response.json.extractReasoningContent().isNotBlank())
+            ) {
+                continuedConversation = true
                 onProgress(
-                    "真实推理已达到收口点，正在同一对话整理 position 与 scores；不会重新分析120期",
+                    "首次推理已完成，正在沿用同一对话补全最终 JSON",
                     System.currentTimeMillis() - started,
                 )
-                val finalizationDecision = reasoningDecision.copy(
-                    sendControl = reasoningDecision.protocol == AiReasoningProtocol.DEEPSEEK,
-                    enableThinking = false,
-                    effort = null,
-                    displayLabel = "${reasoningDecision.protocol.label} · 已完成思考，整理结果",
-                )
-                response = post(
-                    config = config,
-                    temperature = 0.0,
-                    systemPrompt = SYSTEM_PROMPT,
-                    userPrompt = prompt,
-                    reasoningDecision = finalizationDecision,
-                    readTimeoutMs = 45_000,
-                    jsonOutput = true,
-                    explainOutput = false,
-                    streamResponse = true,
-                    onProgress = onProgress,
-                    previousAssistantContent = "",
-                    previousReasoningContent = checkpointReasoning,
-                    followUpPrompt = "基于上面已经完成的真实推理，不要重新分析历史，也不要继续展开思考。现在立即只输出一个JSON对象：position为1至10整数，scores为按号码1至10排列的10项非负原始评分。",
-                )
+                response = runCatching {
+                    post(
+                        config = config,
+                        temperature = if (reasoningDecision.expectsReasoning) 0.1 else 0.2,
+                        systemPrompt = SYSTEM_PROMPT,
+                        userPrompt = prompt,
+                        reasoningDecision = reasoningDecision,
+                        readTimeoutMs = 120_000,
+                        jsonOutput = true,
+                        explainOutput = true,
+                        streamResponse = true,
+                        onProgress = onProgress,
+                        previousAssistantContent = response.json.extractContent(),
+                        previousReasoningContent = response.json.extractReasoningContent(),
+                        followUpPrompt = FINALIZE_JSON_PROMPT,
+                    )
+                }.getOrElse { cause ->
+                    throw AiConversationFinalizationException(
+                        "首次推理已完成，但继续对话补全结果失败：${cause.message.orEmpty().take(100)}",
+                        cause,
+                    )
+                }
+                payload = response.json.extractCompleteForecastPayload()
+                if (payload == null) {
+                    throw AiConversationFinalizationException(
+                        "首次推理与继续对话均未返回完整的 position 和 10 项 scores",
+                    )
+                }
             }
-            val payload = response.json.extractCompleteForecastPayload()
-                ?: throw AiConversationFinalizationException(
-                    "模型未返回完整的 position 和 10 项 scores；本次请求已停止，未自动再次调用",
-                )
             response.json.requireCompletedResponse()
             val usage = response.json.extractUsage()
-            val hasReasoningContent = checkpointReasoning.isNotBlank() ||
-                response.json.extractReasoningContent().isNotBlank()
-            val content = payload
+            val hasReasoningContent = response.json.extractReasoningContent().isNotBlank()
+            val content = payload ?: response.json.extractContent()
             require(content.isNotBlank()) {
                 if (response.json.extractReasoningContent().isNotBlank()) {
                     "模型只返回了思考过程，没有生成最终 JSON"
@@ -630,6 +630,7 @@ class RemoteAiAnalyzer {
                 estimatedCost = estimateCost(config, usage),
                 executionNote = buildString {
                     append(executionNote)
+                    if (continuedConversation) append(" · 同一对话补全结果")
                     response.json.streamPhaseSummary().takeIf(String::isNotBlank)?.let {
                         append(" · $it")
                     }
@@ -874,72 +875,45 @@ class RemoteAiAnalyzer {
         var lastProgressAt = 0L
         var firstReasoningMs = -1L
         var firstContentMs = -1L
-        var earlyComplete = false
-        var reasoningCheckpoint = false
 
-        fun report(message: String, force: Boolean = false) {
+        fun report(message: String) {
             val now = System.currentTimeMillis()
-            if (force || now - lastProgressAt >= 1_000L) {
+            if (now - lastProgressAt >= 1_000L) {
                 lastProgressAt = now
                 onProgress(message, now - startedAtMs)
             }
         }
 
-        while (true) {
-            val rawLine = reader.readLine() ?: break
+        reader.forEachLine { rawLine ->
             val line = rawLine.trim()
-            if (line.isBlank()) continue
+            if (line.isBlank()) return@forEachLine
             if (!line.startsWith("data:")) {
                 if (line.startsWith("{")) plainBody.append(line)
-                continue
+                return@forEachLine
             }
             val payload = line.removePrefix("data:").trim()
-            if (payload == "[DONE]" || payload.isBlank()) continue
-            val chunk = runCatching { JSONObject(payload) }.getOrNull() ?: continue
+            if (payload == "[DONE]" || payload.isBlank()) return@forEachLine
+            val chunk = runCatching { JSONObject(payload) }.getOrNull() ?: return@forEachLine
             responseId = chunk.optString("id").ifBlank { responseId }
             chunk.optJSONObject("usage")?.let { usage = it }
-            val choice = chunk.optJSONArray("choices")?.optJSONObject(0) ?: continue
+            val choice = chunk.optJSONArray("choices")?.optJSONObject(0) ?: return@forEachLine
             finishReason = choice.optString("finish_reason").ifBlank { finishReason }
-            val delta = choice.optJSONObject("delta") ?: continue
-            val reasoningPart = delta.opt("reasoning_content")
-                ?.takeUnless { it == JSONObject.NULL }
-                ?.toString()
-                .orEmpty()
-            val contentPart = delta.opt("content")
-                ?.takeUnless { it == JSONObject.NULL }
-                ?.toString()
-                .orEmpty()
+            val delta = choice.optJSONObject("delta") ?: return@forEachLine
+            val reasoningPart = delta.optString("reasoning_content")
+            val contentPart = delta.optString("content")
             if (reasoningPart.isNotEmpty()) {
                 if (firstReasoningMs < 0L) firstReasoningMs = System.currentTimeMillis() - startedAtMs
                 reasoning.append(reasoningPart)
                 report("模型正在推理 · 已收到 ${reasoning.length} 个推理字符")
-                val elapsedMs = System.currentTimeMillis() - startedAtMs
-                if (
-                    AiReasoningCheckpoint.shouldFinalize(
-                        reasoningChars = reasoning.length,
-                        contentChars = content.length,
-                        elapsedMs = elapsedMs,
-                    )
-                ) {
-                    reasoningCheckpoint = true
-                    finishReason = "reasoning_checkpoint"
-                    report(
-                        "真实推理已达到收口点，准备沿用同一对话生成核心预测",
-                        force = true,
-                    )
-                    break
-                }
             }
             if (contentPart.isNotEmpty()) {
                 if (firstContentMs < 0L) firstContentMs = System.currentTimeMillis() - startedAtMs
                 content.append(contentPart)
                 if (AiForecastPayloadExtractor.containsForecastCore(content.toString())) {
-                    earlyComplete = true
-                    finishReason = "stop"
-                    report("已取得完整预测结果，已主动结束剩余输出", force = true)
-                    break
+                    report("已收到完整预测核心，正在校验说明与结束状态")
+                } else {
+                    report("模型正在生成结构化预测 · 已收到 ${content.length} 个结果字符")
                 }
-                report("模型正在生成结构化预测 · 已收到 ${content.length} 个结果字符")
             }
         }
 
@@ -962,8 +936,6 @@ class RemoteAiAnalyzer {
                 put("_tianji_first_reasoning_ms", firstReasoningMs)
                 put("_tianji_first_content_ms", firstContentMs)
                 put("_tianji_stream_finished_ms", System.currentTimeMillis() - startedAtMs)
-                put("_tianji_early_complete", earlyComplete)
-                put("_tianji_reasoning_checkpoint", reasoningCheckpoint)
             }
     }
 
@@ -971,17 +943,15 @@ class RemoteAiAnalyzer {
         val firstReasoning = optLong("_tianji_first_reasoning_ms", -1L)
         val firstContent = optLong("_tianji_first_content_ms", -1L)
         val finished = optLong("_tianji_stream_finished_ms", -1L)
-        val earlyComplete = optBoolean("_tianji_early_complete", false)
         if (finished < 0L) return ""
         fun seconds(value: Long): String = String.format(java.util.Locale.US, "%.1fs", value / 1000.0)
-        val phases = when {
+        return when {
             firstReasoning >= 0L && firstContent >= firstReasoning ->
                 "首个推理 ${seconds(firstReasoning)} · 推理阶段 ${seconds(firstContent - firstReasoning)} · 结果阶段 ${seconds((finished - firstContent).coerceAtLeast(0L))}"
             firstContent >= 0L ->
                 "首个结果 ${seconds(firstContent)} · 结果阶段 ${seconds((finished - firstContent).coerceAtLeast(0L))}"
             else -> "响应总耗时 ${seconds(finished)}"
         }
-        return if (earlyComplete) "$phases · 完整结果到达后主动收口" else phases
     }
 
     private fun JSONObject.extractContent(): String = optJSONArray("choices")
@@ -1291,11 +1261,8 @@ class RemoteAiAnalyzer {
             put("verified_fact_history_size", snapshot.history.size)
             put("data_source", "fresh lottery API history fetched immediately before this analysis")
             put("history_order", "oldest_to_newest; the final item is the latest verified draw")
+            put("reasoning_efficiency_rule", AiPromptCompactor.REASONING_RULE)
             put("compact_draw_format", AiPromptCompactor.FORMAT)
-            put(
-                "response_priority",
-                "完成名次与10项评分后立即输出JSON。不要解释方法、不要逐期复述、不要输出思维过程。",
-            )
             put("latest_period", snapshot.latest.period)
             put("latest_numbers", JSONArray(snapshot.latest.numbers))
             put(
@@ -1303,8 +1270,12 @@ class RemoteAiAnalyzer {
                 "必须先横向比较position 1至10的全部已核验统计，再选择证据最充分的一个名次。不得默认、照抄或偏向position=1；名次选择必须由本次数据决定。",
             )
             put(
-                "scoring_rule",
-                "综合已核验频次、遗漏、后继转移和趋势信息完成排序；不要把任何单项指标机械当成必中依据。",
+                "multi_factor_rule",
+                "禁止使用单一指标或简单的遗漏+转移未加权求和。factor_weights固定顺序为[近20期频次,近60期频次,当前遗漏,后继转移,趋势稳定性]，归一化后至少3项权重>=0.08，任何一项不得超过0.65。scores必须与这些权重和已核验统计方向一致。",
+            )
+            put(
+                "output_rule",
+                "所有说明字段必须使用简体中文并保持精简；JSON键按position、scores、factor_weights、calculation_summary、position_reason、candidate_reason、uncertainty顺序输出。完成真实推理后立即输出JSON，不要写英文、Markdown、长篇方法教学或逐期复述。",
             )
             put(
                 "verified_position_statistics",
@@ -1318,7 +1289,12 @@ class RemoteAiAnalyzer {
                 "required_json_schema",
                 JSONObject()
                     .put("position", "1至10的整数")
-                    .put("scores", "按号码1至10排列的10项非负原始评分，每项至少6位小数，不得四舍五入成并列"),
+                    .put("scores", "按号码1至10排列的10项非负原始评分，每项至少6位小数，不得四舍五入成并列")
+                    .put("factor_weights", "固定5项权重：[近20期频次,近60期频次,当前遗漏,后继转移,趋势稳定性]")
+                    .put("calculation_summary", "不超过100个汉字，说明多因素如何共同形成评分；禁止单一公式")
+                    .put("position_reason", "不超过80个汉字，说明该名次相对其他九个名次的多因素优势")
+                    .put("candidate_reason", "不超过100个汉字，说明六码排序的主要证据与冲突")
+                    .put("uncertainty", "不超过70个汉字，说明样本、漂移和冲突风险"),
             )
         }
 
@@ -1423,6 +1399,8 @@ class RemoteAiAnalyzer {
     ) : IllegalStateException(message, cause)
 
     private companion object {
-        const val SYSTEM_PROMPT = """你是独立概率排序模型。输入包含真实开奖和客户端逐期核验的统计，本地候选已隐藏。先比较position 1至10，选择证据较充分的一个名次；不得默认固定名次。随后按号码1至10顺序给出10个非负原始scores，每项至少保留6位小数，避免并列。六码、七码和说明均由客户端根据scores与真实历史生成。完成内部分析后立即只输出position与scores的JSON，不要解释、不要Markdown、不要逐期复述，也不要输出思维过程。"""
+        const val FINALIZE_JSON_PROMPT =
+            "你已经完成上一轮统计分析。不要重新计算、不要复述推理过程。立即用简体中文输出一个紧凑JSON对象，键顺序必须为position、scores、factor_weights、calculation_summary、position_reason、candidate_reason、uncertainty。factor_weights固定对应近20频次、近60频次、遗漏、后继转移、趋势稳定性，至少三项有效参与。"
+        const val SYSTEM_PROMPT = """你是独立概率排序模型。输入含真实开奖和由客户端逐期计算并核验的统计表，本地盲测候选已被刻意隐藏。遗漏、近20/60期次数、后继转移和趋势稳定性必须以 verified_position_statistics 为事实来源，原始历史仅用于交叉核验。你必须先比较position 1至10，再选择证据最充分的名次；不得默认第1名或偏向固定名次。禁止只使用单一指标，禁止使用“遗漏+转移次数”的简单未加权求和；必须让近20频次、近60频次、遗漏、后继转移、趋势稳定性中至少三类因素共同参与，任何一类归一化权重不得超过0.65。随后按号码1至10顺序输出10个非负原始评分，每项至少保留6位小数，六码、七码和最终排序由客户端从scores确定。所有解释必须使用简体中文且精简，只说明可核验统计、因素权重、证据冲突和不确定性，不得输出隐藏思维链、英文、Markdown、长篇教学或逐期复述。JSON键顺序必须为position、scores、factor_weights、calculation_summary、position_reason、candidate_reason、uncertainty。只输出required_json_schema规定的JSON，不承诺准确率、盈利或必中。"""
     }
 }

@@ -66,15 +66,24 @@ object AiReasoningEngine {
             )
         }
         return when (preference) {
-            AiReasoningMode.AUTO -> AiReasoningDecision(
-                protocol, preference, true, false, false, null,
-                "${protocol.label} · 模型默认",
-            )
+            AiReasoningMode.AUTO -> when (protocol) {
+                AiReasoningProtocol.DEEPSEEK -> AiReasoningDecision(
+                    protocol, preference, true, true, true, "high",
+                    "${protocol.label} · 自动思考",
+                )
+                else -> AiReasoningDecision(
+                    protocol, preference, true, false, false, null,
+                    "${protocol.label} · 模型默认",
+                )
+            }
             AiReasoningMode.LOW -> when (protocol) {
-                AiReasoningProtocol.DEEPSEEK,
+                AiReasoningProtocol.DEEPSEEK -> AiReasoningDecision(
+                    protocol, preference, true, true, true, "high",
+                    "${protocol.label} · 省时思考",
+                )
                 AiReasoningProtocol.ENABLE_THINKING -> AiReasoningDecision(
                     protocol, preference, true, true, false, null,
-                    "${protocol.label} · 已关闭可控推理",
+                    "${protocol.label} · 已关闭推理",
                 )
                 else -> AiReasoningDecision(
                     protocol, preference, true, true, true, "low",

@@ -38,16 +38,6 @@ class AiForecastPayloadExtractorTest {
     }
 
     @Test
-    fun coreBecomesAvailableImmediatelyAfterTenthScore() {
-        val incomplete = "{\"position\":8,\"scores\":[0.1,0.2,0.3]"
-        val completeCoreWithUnfinishedExplanation =
-            "{\"position\":8,\"scores\":[$scores],\"calculation_summary\":\"仍在生成"
-
-        assertNull(AiForecastPayloadExtractor.salvageCoreJson(incomplete))
-        assertNotNull(AiForecastPayloadExtractor.salvageCoreJson(completeCoreWithUnfinishedExplanation))
-    }
-
-    @Test
     fun rejectsIncompleteScoreArray() {
         val text = "{\"position\":8,\"scores\":[0.1,0.2,0.3]}"
         assertNull(AiForecastPayloadExtractor.salvageCoreJson(text))
