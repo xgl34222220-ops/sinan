@@ -10,6 +10,8 @@ import androidx.core.content.edit
 import com.tianji.probabilitylab.nativev4.ai.AiAnalysisMode
 import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.ai.AiConnectionState
+import com.tianji.probabilitylab.nativev4.ai.AiConversationStage
+import com.tianji.probabilitylab.nativev4.ai.AiConversationTimeline
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusAudit
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusEngine
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusRecord
@@ -137,7 +139,17 @@ class AppController(context: Context) {
             error = null,
             aiStatuses = state.aiStatuses.mapValues { (_, status) ->
                 if (status.state == AiConnectionState.ANALYZING || status.state == AiConnectionState.TESTING) {
-                    status.copy(state = AiConnectionState.UNTESTED, message = "数据刷新，任务已取消")
+                    status.copy(
+                        state = AiConnectionState.UNTESTED,
+                        message = "数据刷新，任务已取消",
+                        timeline = AiConversationTimeline.merge(
+                            status.timeline,
+                            AiConversationTimeline.event(
+                                AiConversationStage.CANCELLED,
+                                "数据刷新，当前分析已取消",
+                            ),
+                        ),
+                    )
                 } else {
                     status
                 }
@@ -284,13 +296,20 @@ class AppController(context: Context) {
     fun cancelAi(profileId: String) {
         aiTasks.cancel(profileId)
         remoteAiAnalyzer.cancelActiveRequests(profileId)
+        val current = state.aiStatuses[profileId] ?: AiRunStatus(profileId)
         state = state.copy(
             aiStatuses = state.aiStatuses + (
-                profileId to AiRunStatus(
-                    profileId,
-                    AiConnectionState.CANCELLED,
-                    "已取消本次请求",
+                profileId to current.copy(
+                    state = AiConnectionState.CANCELLED,
+                    message = "已取消本次请求",
                     checkedAtEpochMs = System.currentTimeMillis(),
+                    timeline = AiConversationTimeline.merge(
+                        current.timeline,
+                        AiConversationTimeline.event(
+                            AiConversationStage.CANCELLED,
+                            "用户取消了当前请求",
+                        ),
+                    ),
                 )
             ),
         )
@@ -372,10 +391,14 @@ class AppController(context: Context) {
         val lottery = state.lottery
         val token = aiGeneration.incrementAndGet()
         val syncingStatuses = configs.associate { config ->
+            val message = "正在从开奖接口强制同步最新历史…"
             config.id to AiRunStatus(
                 profileId = config.id,
                 state = AiConnectionState.ANALYZING,
-                message = "正在从开奖接口强制同步最新历史…",
+                message = message,
+                timeline = listOf(
+                    AiConversationTimeline.event(AiConversationStage.PREPARING, message),
+                ),
             )
         }
         state = state.copy(
@@ -424,8 +447,16 @@ class AppController(context: Context) {
                         }
                         val runningStatuses = eligibleConfigs.associate { config ->
                             val reasoning = AiReasoningEngine.resolve(config).displayLabel
-                            val message = "接口历史已同步，正在${config.analysisMode.label} · $reasoning…"
-                            config.id to AiRunStatus(config.id, AiConnectionState.ANALYZING, message)
+                            val message = "接口历史已同步，准备${config.analysisMode.label} · $reasoning"
+                            val current = state.aiStatuses[config.id] ?: AiRunStatus(config.id)
+                            config.id to current.copy(
+                                state = AiConnectionState.ANALYZING,
+                                message = message,
+                                timeline = AiConversationTimeline.merge(
+                                    current.timeline,
+                                    AiConversationTimeline.event(AiConversationStage.REQUEST, message),
+                                ),
+                            )
                         }
                         state = preparation.loadedState.copy(
                             aiError = null,
@@ -473,13 +504,19 @@ class AppController(context: Context) {
                                 state.report?.targetPeriod == report.targetPeriod &&
                                 state.aiStatuses[config.id]?.state == AiConnectionState.ANALYZING
                             ) {
+                                val current = state.aiStatuses[config.id] ?: AiRunStatus(config.id)
+                                val event = AiConversationTimeline.event(
+                                    stage = AiConversationTimeline.classify(message),
+                                    message = message,
+                                    elapsedMs = elapsedMs,
+                                )
                                 state = state.copy(
                                     aiStatuses = state.aiStatuses + (
-                                        config.id to AiRunStatus(
-                                            profileId = config.id,
+                                        config.id to current.copy(
                                             state = AiConnectionState.ANALYZING,
                                             message = "$message · ${elapsedMs / 1_000}s",
                                             checkedAtEpochMs = System.currentTimeMillis(),
+                                            timeline = AiConversationTimeline.merge(current.timeline, event),
                                         )
                                     ),
                                 )
@@ -555,22 +592,33 @@ class AppController(context: Context) {
                                 aiLiveAudit = completed.audit,
                                 aiProfileAudits = completed.profileAudits,
                                 aiStatuses = state.aiStatuses + (
-                                    config.id to AiRunStatus(
-                                        profileId = config.id,
-                                        state = AiConnectionState.CONNECTED,
-                                        message = when {
+                                    config.id to run {
+                                        val current = state.aiStatuses[config.id] ?: AiRunStatus(config.id)
+                                        val successMessage = when {
                                             !completed.inserted -> "本期已有冻结预测，保留首次结果"
                                             forecast.reasoningState == AiReasoningState.FALLBACK ->
-                                                "${forecast.executionNote} · 已冻结降级结果"
+                                                "${forecast.executionNote} · 已冻结协议兼容结果"
                                             forecast.reasoningState == AiReasoningState.VERIFIED ->
                                                 forecast.reasoningTokens?.let { "已冻结 · 推理 $it tokens" }
                                                     ?: "已冻结 · 推理状态已验证"
                                             forecast.responseId.isBlank() -> "已接入并冻结预测"
                                             else -> "已冻结 · 响应 ${forecast.responseId.takeLast(10)}"
-                                        },
-                                        latencyMs = forecast.latencyMs,
-                                        checkedAtEpochMs = forecast.createdAtEpochMs,
-                                    )
+                                        }
+                                        current.copy(
+                                            state = AiConnectionState.CONNECTED,
+                                            message = successMessage,
+                                            latencyMs = forecast.latencyMs,
+                                            checkedAtEpochMs = forecast.createdAtEpochMs,
+                                            timeline = AiConversationTimeline.merge(
+                                                current.timeline,
+                                                AiConversationTimeline.event(
+                                                    AiConversationStage.SUCCESS,
+                                                    successMessage,
+                                                    forecast.latencyMs,
+                                                ),
+                                            ),
+                                        )
+                                    }
                                 ),
                             )
                         },
@@ -580,12 +628,22 @@ class AppController(context: Context) {
                             }
                             state = state.copy(
                                 aiStatuses = state.aiStatuses + (
-                                    config.id to AiRunStatus(
-                                        profileId = config.id,
-                                        state = AiConnectionState.FAILED,
-                                        message = it.message ?: "AI 分析失败",
-                                        checkedAtEpochMs = System.currentTimeMillis(),
-                                    )
+                                    config.id to run {
+                                        val current = state.aiStatuses[config.id] ?: AiRunStatus(config.id)
+                                        val failureMessage = it.message ?: "AI 分析失败"
+                                        current.copy(
+                                            state = AiConnectionState.FAILED,
+                                            message = failureMessage,
+                                            checkedAtEpochMs = System.currentTimeMillis(),
+                                            timeline = AiConversationTimeline.merge(
+                                                current.timeline,
+                                                AiConversationTimeline.event(
+                                                    AiConversationStage.ERROR,
+                                                    failureMessage,
+                                                ),
+                                            ),
+                                        )
+                                    }
                                 ),
                             )
                         },
@@ -604,11 +662,15 @@ class AppController(context: Context) {
 
     private fun markAiPreparationFailed(configs: List<AiConfig>, message: String) {
         val failed = configs.associate { config ->
-            config.id to AiRunStatus(
-                profileId = config.id,
+            val current = state.aiStatuses[config.id] ?: AiRunStatus(config.id)
+            config.id to current.copy(
                 state = AiConnectionState.FAILED,
                 message = message,
                 checkedAtEpochMs = System.currentTimeMillis(),
+                timeline = AiConversationTimeline.merge(
+                    current.timeline,
+                    AiConversationTimeline.event(AiConversationStage.ERROR, message),
+                ),
             )
         }
         state = state.copy(aiError = message, aiStatuses = state.aiStatuses + failed)
