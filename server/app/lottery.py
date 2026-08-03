@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
-from .models import DrawModel, LOTTERIES, LotterySpec
+from .models import DrawModel, LotterySpec
 
 
 BASE_URL = "https://api.api68.com"
+CHINA_ZONE = ZoneInfo("Asia/Shanghai")
 HEADERS = {
     "Accept": "application/json",
     "Cache-Control": "no-cache",
@@ -60,15 +63,18 @@ class LotteryClient:
         return merge_draws([draw for draw in draws if draw is not None])
 
     def fetch_recent(self, spec: LotterySpec, days: int) -> tuple[list[DrawModel], str, int | None, int | None]:
-        today = datetime.now().date()
+        today = datetime.now(CHINA_ZONE).date()
+        dates = [today - timedelta(days=offset) for offset in range(max(1, days))]
         all_draws: list[DrawModel] = []
-        failures: list[str] = []
-        for offset in range(max(1, days)):
-            target = today - timedelta(days=offset)
-            try:
-                all_draws.extend(self.fetch_date(spec, target))
-            except Exception:
-                failures.append(target.isoformat())
+        worker_count = min(6, len(dates))
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            futures = {pool.submit(self.fetch_date, spec, target): target for target in dates}
+            for future in as_completed(futures):
+                try:
+                    all_draws.extend(future.result())
+                except Exception:
+                    # A missing day does not invalidate other verified dates; the next cycle retries.
+                    continue
         latest, next_period, server_time, next_draw_at = self.fetch_latest(spec)
         all_draws.append(latest)
         merged = merge_draws(all_draws)[-spec.history_target :]
@@ -140,7 +146,7 @@ class LotteryClient:
 
     @staticmethod
     def _now_ms() -> int:
-        return int(datetime.now().timestamp() * 1000)
+        return int(datetime.now(tz=CHINA_ZONE).timestamp() * 1000)
 
 
 def merge_draws(draws: list[DrawModel]) -> list[DrawModel]:
@@ -186,7 +192,8 @@ def parse_epoch_ms(value: str) -> int | None:
     )
     for pattern in patterns:
         try:
-            return int(datetime.strptime(text[:19], pattern).timestamp() * 1000)
+            parsed = datetime.strptime(text[:19], pattern).replace(tzinfo=CHINA_ZONE)
+            return int(parsed.timestamp() * 1000)
         except ValueError:
             continue
     return None
