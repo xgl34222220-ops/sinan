@@ -1,0 +1,182 @@
+name: Publish verified Tianji v5.5.9
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-v5.5.9-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-tianji-v5.5.9
+  cancel-in-progress: false
+
+env:
+  SOURCE_SHA: bac6b9d82d27c85fdc91a6dd4b4205e6959bf9a7
+  RELEASE_TAG: v5.5.9
+  VERSION_NAME: 5.5.9
+  VERSION_CODE: '34'
+  EXPECTED_CERT_SHA256: 5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed
+  SIGNING_ARTIFACT_ID: '8842385591'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+
+      - name: Verify pinned source and version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -F 'versionName = "5.5.9"' app/build.gradle.kts
+          grep -F 'versionCode = 34' app/build.gradle.kts
+          test -f RELEASE_NOTES_v5.5.9.md
+
+      - name: Restore protected production signing backup
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tianji-signing"
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SIGNING_ARTIFACT_ID}/zip" \
+            -o "$RUNNER_TEMP/tianji-signing-backup.zip"
+          unzip -q "$RUNNER_TEMP/tianji-signing-backup.zip" -d "$RUNNER_TEMP/tianji-signing"
+          test -f "$RUNNER_TEMP/tianji-signing/tianji-release-v5.5.5.jks"
+          test -f "$RUNNER_TEMP/tianji-signing/SIGNING-CREDENTIALS.txt"
+          while IFS='=' read -r key value; do
+            test -n "$key"
+            test -n "$value"
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+          done < "$RUNNER_TEMP/tianji-signing/SIGNING-CREDENTIALS.txt"
+          printf 'TIANJI_KEYSTORE_FILE=%s\n' \
+            "$RUNNER_TEMP/tianji-signing/tianji-release-v5.5.5.jks" >> "$GITHUB_ENV"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Run tests, lint and signed release builds
+        shell: bash
+        run: >-
+          gradle --no-daemon --stacktrace
+          :app:testDebugUnitTest
+          :app:testReleaseUnitTest
+          :app:lintDebug
+          :app:lintRelease
+          :app:assembleRelease
+          :app:bundleRelease
+
+      - name: Verify APK identity, signing continuity and package version
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          AAB='app/build/outputs/bundle/release/app-release.aab'
+          test -s "$APK"
+          test -s "$AAB"
+
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
+          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner.txt" | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          test "$CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          ACTUAL_NAME="$($APKANALYZER manifest version-name "$APK" | tr -d '\r\n')"
+          ACTUAL_CODE="$($APKANALYZER manifest version-code "$APK" | tr -d '\r\n')"
+          test "$ACTUAL_NAME" = "$VERSION_NAME"
+          test "$ACTUAL_CODE" = "$VERSION_CODE"
+
+          mkdir -p release-output
+          cp "$APK" "release-output/Tianji-v5.5.9-release.apk"
+          cp "$AAB" "release-output/Tianji-v5.5.9-release.aab"
+          sha256sum \
+            "release-output/Tianji-v5.5.9-release.apk" \
+            "release-output/Tianji-v5.5.9-release.aab" \
+            > "release-output/Tianji-v5.5.9-SHA256.txt"
+          printf 'Certificate SHA-256: %s\nVersion name: %s\nVersion code: %s\nSource commit: %s\n' \
+            "$CERT_SHA256" "$ACTUAL_NAME" "$ACTUAL_CODE" "$SOURCE_SHA" \
+            > "release-output/Tianji-v5.5.9-VERIFY.txt"
+
+      - name: Refuse to overwrite an existing formal release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite it."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Tag $RELEASE_TAG already exists; refusing to move it."
+            exit 1
+          fi
+
+      - name: Create immutable tag at verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git tag -a "$RELEASE_TAG" "$SOURCE_SHA" -m "天机 v5.5.9 正式版"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: Publish GitHub formal release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            "release-output/Tianji-v5.5.9-release.apk" \
+            "release-output/Tianji-v5.5.9-release.aab" \
+            "release-output/Tianji-v5.5.9-SHA256.txt" \
+            "release-output/Tianji-v5.5.9-VERIFY.txt" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "天机 v5.5.9" \
+            --notes-file RELEASE_NOTES_v5.5.9.md \
+            --latest
+
+      - name: Upload verified release outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tianji-v5.5.9-formal-release
+          path: release-output/
+          if-no-files-found: error
+          retention-days: 30
