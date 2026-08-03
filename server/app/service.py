@@ -20,9 +20,11 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
     if spec is None:
         raise KeyError(f"未知彩种：{lottery_key}")
 
+    existing_count = len(database.list_draws(lottery_key, 180))
+    sync_days = settings.history_days if existing_count < 180 else 2
     draws, next_period, server_time, next_draw_at = lottery_client.fetch_recent(
         spec,
-        settings.history_days,
+        sync_days,
     )
     database.save_draws(draws)
     settled = database.settle_forecasts(lottery_key)
@@ -92,6 +94,7 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
         "latest_period": latest.period,
         "next_period": next_period,
         "draws": len(history),
+        "sync_days": sync_days,
         "settled": settled,
         "generated": generated,
         "server_time_epoch_ms": server_time,
