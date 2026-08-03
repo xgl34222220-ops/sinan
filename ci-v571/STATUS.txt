@@ -1,0 +1,11 @@
+status=patch_failure
+checked_at=2026-08-03T23:50:00Z
+source_sha=aa4d7aae823423d8d148396bcbf2ba9b818f1845
+python=success
+patch=success:1
+java=skipped
+android=skipped
+gradle=skipped
+sdk=skipped
+build=skipped:none
+Source patch exited with code 1.
