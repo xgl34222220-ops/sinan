@@ -75,8 +75,8 @@ android {
 
     lint {
         // API 36 and these AndroidX versions are the newest set verified with AGP 8.13.
-        // Newer dependency releases currently require API 37 / AGP 9.1 and are intentionally deferred.
-        disable += setOf("OldTargetApi", "NewerVersionAvailable")
+        // Reported newer releases require API 37 / AGP 9.1, so upgrading them is intentionally deferred.
+        disable += setOf("OldTargetApi", "GradleDependency")
     }
 }
 
