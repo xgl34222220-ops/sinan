@@ -3,9 +3,9 @@ package com.tianji.probabilitylab.nativev4.ai
 import java.net.URL
 
 enum class AiReasoningMode(val label: String, val detail: String) {
-    AUTO("自动", "对话沿用模型思考；正式预测自动压缩长思考"),
-    LOW("省时", "关闭可控长思考，优先速度与费用"),
-    HIGH("深入", "分析对话可使用高推理；正式预测仍采用限时核心矩阵"),
+    AUTO("自动", "对话沿用模型思考；正式预测使用限时自动思考"),
+    LOW("省时", "关闭或降低可控长思考，优先速度与费用"),
+    HIGH("深入", "分析对话与正式预测均使用高推理；正式预测到时强制收口"),
 }
 
 enum class AiReasoningProtocol(val label: String) {
@@ -99,37 +99,93 @@ object AiReasoningEngine {
     }
 
     /**
-     * Formal forward forecasts already receive client-verified statistics and only need a compact
-     * score matrix. AUTO/LOW therefore stop unbounded DeepSeek thinking; HIGH deliberately keeps
-     * the full reasoning request. Free-form chat continues to use [resolve] and is unaffected.
+     * Formal forecasts keep real reasoning while the transport layer enforces a hard wall-clock
+     * deadline. LOW minimizes controllable reasoning, AUTO requests normal reasoning and HIGH
+     * requests the strongest available reasoning. A complete position + scores core is frozen
+     * immediately instead of waiting for an explanatory transcript or the final SSE marker.
      */
     fun resolveForecast(config: AiConfig): AiReasoningDecision {
         val resolved = resolve(config)
-        return when (resolved.protocol) {
-            AiReasoningProtocol.DEEPSEEK -> resolved.copy(
-                sendControl = true,
-                enableThinking = false,
-                effort = null,
-                displayLabel = "${resolved.protocol.label} · 正式预测限时",
-            )
-            AiReasoningProtocol.ENABLE_THINKING, AiReasoningProtocol.OPENROUTER -> resolved.copy(
-                sendControl = true,
-                enableThinking = false,
-                effort = null,
-                displayLabel = "${resolved.protocol.label} · 正式预测限时",
-            )
-            AiReasoningProtocol.OPENAI -> resolved.copy(
-                sendControl = false,
-                enableThinking = false,
-                effort = null,
-                displayLabel = "${resolved.protocol.label} · 正式预测限时结构化",
-            )
-            AiReasoningProtocol.AUTO, AiReasoningProtocol.NONE -> resolved.copy(
-                sendControl = false,
-                enableThinking = false,
-                effort = null,
-                displayLabel = "正式预测限时结构化",
-            )
+        return when (config.reasoningMode) {
+            AiReasoningMode.LOW -> when (resolved.protocol) {
+                AiReasoningProtocol.DEEPSEEK,
+                AiReasoningProtocol.ENABLE_THINKING,
+                AiReasoningProtocol.OPENROUTER -> resolved.copy(
+                    sendControl = true,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "${resolved.protocol.label} · 正式预测省时",
+                )
+                AiReasoningProtocol.OPENAI -> resolved.copy(
+                    sendControl = true,
+                    enableThinking = true,
+                    effort = "low",
+                    displayLabel = "${resolved.protocol.label} · 正式预测低推理",
+                )
+                AiReasoningProtocol.AUTO,
+                AiReasoningProtocol.NONE -> resolved.copy(
+                    sendControl = false,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "正式预测省时结构化",
+                )
+            }
+            AiReasoningMode.AUTO -> when (resolved.protocol) {
+                AiReasoningProtocol.DEEPSEEK -> resolved.copy(
+                    sendControl = true,
+                    enableThinking = true,
+                    effort = "high",
+                    displayLabel = "${resolved.protocol.label} · 正式预测自动思考 · 限时收口",
+                )
+                AiReasoningProtocol.OPENAI,
+                AiReasoningProtocol.OPENROUTER -> resolved.copy(
+                    sendControl = true,
+                    enableThinking = true,
+                    effort = "medium",
+                    displayLabel = "${resolved.protocol.label} · 正式预测中等推理 · 限时收口",
+                )
+                AiReasoningProtocol.ENABLE_THINKING -> resolved.copy(
+                    sendControl = true,
+                    enableThinking = true,
+                    effort = null,
+                    displayLabel = "${resolved.protocol.label} · 正式预测自动思考 · 限时收口",
+                )
+                AiReasoningProtocol.AUTO,
+                AiReasoningProtocol.NONE -> resolved.copy(
+                    sendControl = false,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "正式预测使用模型默认思考 · 限时收口",
+                )
+            }
+            AiReasoningMode.HIGH -> when (resolved.protocol) {
+                AiReasoningProtocol.DEEPSEEK -> resolved.copy(
+                    sendControl = true,
+                    enableThinking = true,
+                    effort = "max",
+                    displayLabel = "${resolved.protocol.label} · 正式预测深度思考 · 限时收口",
+                )
+                AiReasoningProtocol.OPENAI,
+                AiReasoningProtocol.OPENROUTER -> resolved.copy(
+                    sendControl = true,
+                    enableThinking = true,
+                    effort = "high",
+                    displayLabel = "${resolved.protocol.label} · 正式预测高推理 · 限时收口",
+                )
+                AiReasoningProtocol.ENABLE_THINKING -> resolved.copy(
+                    sendControl = true,
+                    enableThinking = true,
+                    effort = null,
+                    displayLabel = "${resolved.protocol.label} · 正式预测深度思考 · 限时收口",
+                )
+                AiReasoningProtocol.AUTO,
+                AiReasoningProtocol.NONE -> resolved.copy(
+                    sendControl = false,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "正式预测使用模型默认深度思考 · 限时收口",
+                )
+            }
         }
     }
 

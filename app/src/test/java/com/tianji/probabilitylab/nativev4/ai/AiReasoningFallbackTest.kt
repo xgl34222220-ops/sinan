@@ -2,7 +2,6 @@ package com.tianji.probabilitylab.nativev4.ai
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,20 +28,23 @@ class AiReasoningFallbackTest {
         assertFalse(value.expectsReasoning)
     }
 
-    @Test fun formalAutoUsesFastForecastDecision() {
+    @Test fun formalAutoKeepsBoundedThinking() {
         val value = AiReasoningEngine.resolveForecast(config(AiReasoningMode.AUTO))
         assertTrue(value.sendControl)
-        assertFalse(value.enableThinking)
-        assertFalse(value.expectsReasoning)
+        assertTrue(value.enableThinking)
+        assertTrue(value.expectsReasoning)
+        assertEquals("high", value.effort)
+        assertTrue(value.displayLabel.contains("限时收口"))
     }
 
-    @Test fun formalHighAlsoUsesHardLimitedCoreForecast() {
+    @Test fun formalHighKeepsMaxThinkingWithDeadline() {
         val value = AiReasoningEngine.resolveForecast(config(AiReasoningMode.HIGH))
         assertTrue(value.sendControl)
-        assertFalse(value.enableThinking)
-        assertFalse(value.expectsReasoning)
-        assertNull(value.effort)
-        assertTrue(value.displayLabel.contains("限时"))
+        assertTrue(value.enableThinking)
+        assertTrue(value.expectsReasoning)
+        assertEquals("max", value.effort)
+        assertTrue(value.displayLabel.contains("深度思考"))
+        assertTrue(value.displayLabel.contains("限时收口"))
     }
 
     @Test fun chatRetryNeverDisablesThinking() {
