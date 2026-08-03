@@ -32,7 +32,7 @@ def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:
 
 def load_settings() -> Settings:
     return Settings(
-        database_path=os.getenv("TIANJI_DATABASE", "/app/data/tianji.db").strip(),
+        database_path=os.getenv("TIANJI_DATABASE", "./data/tianji.db").strip(),
         api_token=os.getenv("TIANJI_API_TOKEN", "").strip(),
         poll_seconds=_int_env("TIANJI_POLL_SECONDS", 30, 15, 3600),
         history_days=_int_env("TIANJI_HISTORY_DAYS", 14, 2, 40),
