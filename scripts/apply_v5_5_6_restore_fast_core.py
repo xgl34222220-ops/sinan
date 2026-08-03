@@ -14,10 +14,8 @@ def replace_once(path: Path, old: str, new: str) -> None:
 
 analysis = ROOT / "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt"
 reasoning = ROOT / "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiReasoning.kt"
-readme = ROOT / "README.md"
-notes = ROOT / "RELEASE_NOTES_v5.5.6.md"
 
-# Restore AUTO to true provider/model default. Do not force DeepSeek high reasoning.
+# AUTO must use the provider/model default. It must not silently become forced high reasoning.
 replace_once(
     reasoning,
     '''            AiReasoningMode.AUTO -> when (protocol) {
@@ -38,7 +36,7 @@ replace_once(
 ''',
 )
 
-# Restore the meaning of the low/fast option for controllable DeepSeek-style APIs.
+# Restore the documented meaning of the low/fast option.
 replace_once(
     reasoning,
     '''            AiReasoningMode.LOW -> when (protocol) {
@@ -60,7 +58,7 @@ replace_once(
 ''',
 )
 
-# Capability tests should not secretly run a second forced high-reasoning request in AUTO mode.
+# Capability testing must not secretly launch a second forced-high request for AUTO profiles.
 replace_once(
     analysis,
     '''        val reasoningResponse = if (highDecision.supported && !baseDecision.expectsReasoning) runCatching {''',
@@ -71,13 +69,13 @@ replace_once(
         ) runCatching {''',
 )
 
-# Analysis and same-conversation completion require only the prediction core.
+# Both the first response and same-conversation completion only need the core prediction JSON.
 old_explain = '''                jsonOutput = true,
                 explainOutput = true,
                 streamResponse = true,'''
 text = analysis.read_text(encoding="utf-8")
 if text.count(old_explain) != 2:
-    raise RuntimeError(f"{analysis}: expected 2 analysis explainOutput matches, got {text.count(old_explain)}")
+    raise RuntimeError(f"{analysis}: expected 2 explainOutput matches, got {text.count(old_explain)}")
 analysis.write_text(
     text.replace(
         old_explain,
@@ -88,7 +86,7 @@ analysis.write_text(
     encoding="utf-8",
 )
 
-# Remove instructions that turned a small ranking task into a long research report.
+# Remove the instructions that expanded a small ranking task into a long report.
 replace_once(
     analysis,
     '''            put("reasoning_efficiency_rule", AiPromptCompactor.REASONING_RULE)
@@ -137,7 +135,7 @@ replace_once(
 ''',
 )
 
-# Keep the same-conversation fallback tiny and core-only.
+# Same-conversation completion is core-only and does not re-run the analysis.
 replace_once(
     analysis,
     '''        const val FINALIZE_JSON_PROMPT =
@@ -150,5 +148,4 @@ replace_once(
 ''',
 )
 
-# Document that v5.5.6 restores the previously stable, short core contract.
-notes_text = notes.read_text(encoding="utf-8")nif False else None
+print("v5.5.6 lightweight core prediction restored")
