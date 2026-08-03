@@ -8,11 +8,21 @@ from . import ai
 from .config import settings
 from .db import database
 from .lottery import lottery_client
-from .models import LOTTERIES, SnapshotModel
+from .models import LOTTERIES, LotterySpec, SnapshotModel
 from .predictor import predict
 
 
 SERVICE_VERSION = "1.0.0"
+SAFETY_WINDOW_MS = 5_000
+
+
+def _target_is_open(spec: LotterySpec, trained_through_period: str, target_period: str) -> bool:
+    latest, current_next_period, _, next_draw_at = lottery_client.fetch_latest(spec)
+    if latest.period != trained_through_period or current_next_period != target_period:
+        return False
+    if next_draw_at is not None and int(time.time() * 1000) >= next_draw_at - SAFETY_WINDOW_MS:
+        return False
+    return database.get_draw(spec.key, target_period) is None
 
 
 def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
@@ -32,26 +42,35 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
     latest = history[-1]
 
     generated: list[str] = []
-    if next_period and next_period != "待同步" and database.get_draw(lottery_key, next_period) is None:
+    now_ms = int(time.time() * 1000)
+    before_safety_window = next_draw_at is None or now_ms < next_draw_at - SAFETY_WINDOW_MS
+    target_candidate = (
+        next_period
+        and next_period != "待同步"
+        and before_safety_window
+        and database.get_draw(lottery_key, next_period) is None
+    )
+    if target_candidate:
         native_model = "tianji-native-cloud-v1"
         if not database.has_forecast(lottery_key, next_period, "native", native_model):
             native = predict(history)
             selected = native.selected
-            inserted = database.save_forecast(
-                lottery=lottery_key,
-                target_period=next_period,
-                trained_through_period=latest.period,
-                position=selected.position,
-                top6=selected.top6,
-                top7=selected.top7,
-                probabilities=selected.probabilities,
-                source="native",
-                model=native_model,
-                analysis=native.analysis,
-                risk_note=native.risk_note,
-            )
-            if inserted is not None:
-                generated.append("native")
+            if _target_is_open(spec, latest.period, next_period):
+                inserted = database.save_forecast(
+                    lottery=lottery_key,
+                    target_period=next_period,
+                    trained_through_period=latest.period,
+                    position=selected.position,
+                    top6=selected.top6,
+                    top7=selected.top7,
+                    probabilities=selected.probabilities,
+                    source="native",
+                    model=native_model,
+                    analysis=native.analysis,
+                    risk_note=native.risk_note,
+                )
+                if inserted is not None:
+                    generated.append("native")
 
         if settings.ai_enabled and not database.has_forecast(
             lottery_key,
@@ -61,6 +80,8 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
         ):
             try:
                 result = ai.analyze(history, next_period)
+                if not _target_is_open(spec, latest.period, next_period):
+                    raise RuntimeError("AI 完成时目标期已经封盘，结果已丢弃且不会进入前向档案")
                 inserted = database.save_forecast(
                     lottery=lottery_key,
                     target_period=next_period,
