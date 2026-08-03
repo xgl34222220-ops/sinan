@@ -1,64 +1,14 @@
 name: Patch Tianji AI independence v5.7.1
 
 on:
-  push:
-    branches:
-      - fix/ai-true-independence-v5.7.1
   workflow_dispatch:
 
 permissions:
   contents: write
 
-concurrency:
-  group: tianji-ai-v571-patch
-  cancel-in-progress: true
-
 jobs:
   patch:
+    if: false
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
-      - name: Checkout branch
-        uses: actions/checkout@v4
-        with:
-          ref: fix/ai-true-independence-v5.7.1
-          fetch-depth: 0
-
-      - name: Apply deterministic patch
-        id: patch
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          python3 tools/patch_ai_true_independence_v571.py 2>&1 | tee ai-v571-patch.log
-          code=${PIPESTATUS[0]}
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-
-      - name: Record patch result
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ci-v571
-          code='${{ steps.patch.outputs.exit_code }}'
-          if [[ "$code" == '0' ]]; then
-            status='patch_success'
-            summary='Source isolation patch applied; Android verification still required.'
-            rm -f ci-v571/ERROR_SUMMARY.txt
-          else
-            status='patch_failure'
-            summary="Patch exited with code ${code:-unknown}."
-            tail -n 240 ai-v571-patch.log > ci-v571/ERROR_SUMMARY.txt
-          fi
-          {
-            echo "status=$status"
-            echo "source_sha=$(git rev-parse HEAD)"
-            echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "$summary"
-          } > ci-v571/PATCH_STATUS.txt
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m "ci: record AI v5.7.1 source isolation patch ($status)" || true
-          git push origin HEAD:fix/ai-true-independence-v5.7.1
+      - run: echo "AI independence source patch already applied"
