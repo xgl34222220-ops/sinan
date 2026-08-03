@@ -8,13 +8,42 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: tianji-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  patch_chat_message_actions:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 35
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Apply generated message UI patch
+        run: |
+          awk '/python3 - <<'\''PY'\''/{capture=1; next} /^          PY$/{capture=0} capture' \
+            .github/workflows/patch-chat-message-actions.yml \
+            | sed 's/^          //' > /tmp/patch_chat_actions.py
+          python3 /tmp/patch_chat_actions.py
+
+      - name: Commit patch to PR branch
+        run: |
+          if git diff --quiet; then
+            echo "Patch already applied"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AiChatDialog.kt
+          git commit -m "feat: add copy read-aloud and repeat chat actions"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
