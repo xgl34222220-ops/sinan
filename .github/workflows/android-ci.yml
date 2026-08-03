@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: tianji-ci-${{ github.workflow }}-${{ github.ref }}
@@ -21,35 +21,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply pending chat archive fix
-        shell: bash
-        run: |
-          set -euo pipefail
-          PATCH_FILE=.github/patches/chat_archive_v3.patch.gz.b64
-          if [ ! -f "$PATCH_FILE" ]; then
-            PATCH_FILE=.github/patches/chat_archive_v2.patch.gz.b64
-          fi
-          if [ ! -f "$PATCH_FILE" ]; then
-            PATCH_FILE=.github/patches/chat_archive.patch.gz.b64
-          fi
-          if [ ! -f "$PATCH_FILE" ]; then
-            echo 'No pending chat archive patch.'
-            exit 0
-          fi
-          base64 --decode "$PATCH_FILE" | gzip --decompress > /tmp/chat_archive.patch
-          git apply --check /tmp/chat_archive.patch
-          git apply /tmp/chat_archive.patch
-          git show f43095bdd677d9c96a79c1034376e4561bea0c75:.github/workflows/android-ci.yml > .github/workflows/android-ci.yml
-          rm -f .github/patches/chat_archive.patch.gz.b64
-          rm -f .github/patches/chat_archive_v2.patch.gz.b64
-          rm -f .github/patches/chat_archive_v3.patch.gz.b64
-          rm -f .github/patches/trigger.txt
-          rm -f .github/workflows/source-export.yml
-          rm -f .github/workflows/apply-chat-archive.yml
-          git diff --check
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -80,21 +51,6 @@ jobs:
           :app:lintDebug
           :app:assembleDebug
           :app:assembleRelease
-
-      - name: Commit verified chat archive fix
-        if: github.event_name == 'push' && github.ref_name == 'feature/v5.5.6-early-result'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            echo 'No pending source changes to commit.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'fix(chat): 可选具体模型并按目标期持久化对话候选'
-          git push origin HEAD:${GITHUB_REF_NAME}
 
       - name: Upload Debug APK and reports
         if: always()

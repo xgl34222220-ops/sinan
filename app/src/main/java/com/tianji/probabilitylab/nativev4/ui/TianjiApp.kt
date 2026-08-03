@@ -49,7 +49,7 @@ import kotlinx.coroutines.launch
 fun TianjiApp() {
     val context = LocalContext.current
     val controller = remember { AppController(context) }
-    val chatController = remember { AiChatController() }
+    val chatController = remember { AiChatController(context.applicationContext) }
     val appearance = remember { AppearanceStore(context.applicationContext) }
     val paletteMode by appearance.palette.collectAsState(initial = PaletteMode.MONET)
     val scope = rememberCoroutineScope()
@@ -175,6 +175,7 @@ fun TianjiApp() {
                     AiChatDialog(
                         controller = chatController,
                         configs = controller.aiConfigs,
+                        modelCatalogs = controller.aiAvailableModels,
                         snapshot = state.snapshot,
                         report = state.report,
                         onRefresh = controller::refresh,

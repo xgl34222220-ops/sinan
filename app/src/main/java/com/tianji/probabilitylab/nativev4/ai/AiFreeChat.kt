@@ -102,8 +102,39 @@ data class AiChatPrediction(
     val probabilities: List<Double>,
 )
 
-data class AiChatSession(
+data class AiChatArchive(
+    val id: String,
+    val lotteryKey: String,
     val profileId: String,
+    val profileName: String,
+    val model: String,
+    val targetPeriod: String,
+    val personaId: String = AiChatPersona.COMPREHENSIVE.id,
+    val messages: List<AiChatMessage> = emptyList(),
+    val prediction: AiChatPrediction? = null,
+    val createdAtEpochMs: Long = System.currentTimeMillis(),
+    val updatedAtEpochMs: Long = System.currentTimeMillis(),
+)
+
+data class AiChatArchiveSummary(
+    val id: String,
+    val lotteryKey: String,
+    val profileId: String,
+    val targetPeriod: String,
+    val profileName: String,
+    val model: String,
+    val personaId: String,
+    val messageCount: Int,
+    val hasPrediction: Boolean,
+    val updatedAtEpochMs: Long,
+)
+
+data class AiChatSession(
+    val archiveId: String = "",
+    val lotteryKey: String = "",
+    val profileId: String,
+    val profileName: String = "",
+    val model: String = "",
     val personaId: String = AiChatPersona.COMPREHENSIVE.id,
     val messages: List<AiChatMessage> = emptyList(),
     val isRunning: Boolean = false,
@@ -112,6 +143,9 @@ data class AiChatSession(
     val prediction: AiChatPrediction? = null,
     val targetPeriod: String? = null,
     val streamingMessageId: String? = null,
+    val isReadOnlyArchive: Boolean = false,
+    val createdAtEpochMs: Long = System.currentTimeMillis(),
+    val updatedAtEpochMs: Long = System.currentTimeMillis(),
 )
 
 data class AiChatReply(
@@ -122,6 +156,12 @@ data class AiChatReply(
     val reasoningTokens: Int?,
     val reasoningVerified: Boolean,
 )
+
+object AiChatArchiveId {
+    fun of(lotteryKey: String, targetPeriod: String, profileId: String, model: String): String =
+        listOf(lotteryKey, targetPeriod, profileId, model)
+            .joinToString("\u001F") { it.trim() }
+}
 
 /**
  * Keeps free-form chat independent from the official frozen forecast protocol.

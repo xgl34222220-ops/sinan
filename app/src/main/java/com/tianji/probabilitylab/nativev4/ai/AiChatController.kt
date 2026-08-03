@@ -1,5 +1,6 @@
 package com.tianji.probabilitylab.nativev4.ai
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
@@ -23,40 +24,85 @@ import kotlin.math.max
  * Runs free-form questions independently from the official forward forecast archive.
  * Chat replies are never persisted as verified results and never replace first-frozen forecasts.
  */
-class AiChatController {
+class AiChatController(context: Context) {
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val generation = AtomicInteger(0)
     private val client = RemoteAiChatClient()
+    private val archiveStore = AiChatArchiveStore(context.applicationContext)
+    private var archiveData = archiveStore.loadAll()
 
     var session by mutableStateOf(AiChatSession(profileId = ""))
         private set
 
-    fun selectProfile(profileId: String, targetPeriod: String?) {
-        if (profileId.isBlank()) {
-            if (session.profileId.isNotBlank()) {
-                session = AiChatSession(
-                    profileId = "",
-                    personaId = session.personaId,
-                    targetPeriod = targetPeriod,
-                )
-            }
+    var archives by mutableStateOf(archiveData.map(AiChatArchiveCodec::summary))
+        private set
+
+    fun selectContext(
+        profileId: String,
+        profileName: String,
+        model: String,
+        lotteryKey: String,
+        targetPeriod: String?,
+    ) {
+        val normalizedTarget = targetPeriod.orEmpty().trim()
+        val normalizedModel = model.trim()
+        val normalizedProfile = profileId.trim()
+        val normalizedLottery = lotteryKey.trim()
+        if (
+            normalizedProfile.isBlank() || normalizedModel.isBlank() ||
+            normalizedLottery.isBlank() || normalizedTarget.isBlank()
+        ) {
+            if (session.isRunning) cancel()
+            persistCurrent()
+            session = AiChatSession(
+                profileId = normalizedProfile,
+                profileName = profileName.trim(),
+                model = normalizedModel,
+                lotteryKey = normalizedLottery,
+                targetPeriod = normalizedTarget.ifBlank { null },
+                personaId = session.personaId,
+            )
             return
         }
-        if (session.profileId == profileId && session.targetPeriod == targetPeriod) return
-        cancel()
-        session = AiChatSession(
-            profileId = profileId,
+        val archiveId = AiChatArchiveId.of(
+            normalizedLottery,
+            normalizedTarget,
+            normalizedProfile,
+            normalizedModel,
+        )
+        if (session.archiveId == archiveId && !session.isReadOnlyArchive) return
+        if (session.isRunning) cancel()
+        persistCurrent()
+        val saved = archiveData.firstOrNull { it.id == archiveId }
+        session = saved?.toSession(isReadOnly = false) ?: AiChatSession(
+            archiveId = archiveId,
+            lotteryKey = normalizedLottery,
+            profileId = normalizedProfile,
+            profileName = profileName.trim(),
+            model = normalizedModel,
             personaId = session.personaId,
-            targetPeriod = targetPeriod,
+            targetPeriod = normalizedTarget,
         )
     }
 
-    fun selectPersona(personaId: String) {
+    fun openArchive(archiveId: String) {
         if (session.isRunning) return
+        val saved = archiveData.firstOrNull { it.id == archiveId } ?: return
+        persistCurrent()
+        session = saved.toSession(isReadOnly = true)
+    }
+
+    fun selectPersona(personaId: String) {
+        if (session.isRunning || session.isReadOnlyArchive) return
         val persona = AiChatPersona.fromId(personaId)
         if (session.personaId != persona.id) {
-            session = session.copy(personaId = persona.id, error = null)
+            session = session.copy(
+                personaId = persona.id,
+                error = null,
+                updatedAtEpochMs = System.currentTimeMillis(),
+            )
+            persistCurrent()
         }
     }
 
@@ -67,8 +113,16 @@ class AiChatController {
         question: String,
     ) {
         val text = question.trim()
-        if (text.isBlank() || session.isRunning) return
-        selectProfile(config.id, report.targetPeriod)
+        if (text.isBlank() || session.isRunning || session.isReadOnlyArchive) return
+        val activeModel = session.model.ifBlank { config.model }.trim()
+        selectContext(
+            profileId = config.id,
+            profileName = config.displayName,
+            model = activeModel,
+            lotteryKey = snapshot.lottery.apiKey,
+            targetPeriod = report.targetPeriod,
+        )
+        val activeConfig = config.copy(model = activeModel)
         val previousMessages = AiChatProtocol.trimHistory(session.messages)
         val userMessage = AiChatMessage(role = AiChatRole.USER, content = text)
         val assistantMessage = AiChatMessage(role = AiChatRole.ASSISTANT, content = "")
@@ -81,11 +135,13 @@ class AiChatController {
             error = null,
             prediction = null,
             streamingMessageId = assistantMessage.id,
+            updatedAtEpochMs = System.currentTimeMillis(),
         )
+        persistCurrent()
         executor.execute {
             val result = runCatching {
                 client.chat(
-                    config = config,
+                    config = activeConfig,
                     snapshot = snapshot,
                     report = report,
                     previousMessages = previousMessages,
@@ -127,7 +183,9 @@ class AiChatController {
                             error = null,
                             prediction = reply.prediction,
                             streamingMessageId = null,
+                            updatedAtEpochMs = System.currentTimeMillis(),
                         )
+                        persistCurrent()
                     },
                     onFailure = { cause ->
                         val partial = session.messages
@@ -143,7 +201,9 @@ class AiChatController {
                             progress = "",
                             error = cause.message ?: "对话分析失败",
                             streamingMessageId = null,
+                            updatedAtEpochMs = System.currentTimeMillis(),
                         )
+                        persistCurrent()
                     },
                 )
             }
@@ -166,29 +226,87 @@ class AiChatController {
                 progress = if (partial.isBlank()) "已取消本次对话" else "已停止继续生成",
                 error = null,
                 streamingMessageId = null,
+                updatedAtEpochMs = System.currentTimeMillis(),
             )
+            persistCurrent()
         }
     }
 
     fun clear() {
         cancel()
+        val archiveId = session.archiveId
+        if (archiveId.isNotBlank()) {
+            archiveData = archiveStore.delete(archiveId)
+            refreshArchiveSummaries()
+        }
         session = AiChatSession(
+            archiveId = session.archiveId,
+            lotteryKey = session.lotteryKey,
             profileId = session.profileId,
+            profileName = session.profileName,
+            model = session.model,
             personaId = session.personaId,
             targetPeriod = session.targetPeriod,
+            isReadOnlyArchive = session.isReadOnlyArchive,
         )
     }
 
     fun close() {
         cancel()
+        persistCurrent()
         executor.shutdownNow()
     }
+
+    private fun persistCurrent() {
+        val targetPeriod = session.targetPeriod.orEmpty()
+        if (
+            session.archiveId.isBlank() || session.lotteryKey.isBlank() ||
+            session.profileId.isBlank() || session.model.isBlank() || targetPeriod.isBlank()
+        ) return
+        val persistedMessages = session.messages.filter { it.content.isNotBlank() }
+        if (persistedMessages.isEmpty() && session.prediction == null) return
+        val archive = AiChatArchive(
+            id = session.archiveId,
+            lotteryKey = session.lotteryKey,
+            profileId = session.profileId,
+            profileName = session.profileName,
+            model = session.model,
+            targetPeriod = targetPeriod,
+            personaId = session.personaId,
+            messages = persistedMessages,
+            prediction = session.prediction,
+            createdAtEpochMs = session.createdAtEpochMs,
+            updatedAtEpochMs = System.currentTimeMillis(),
+        )
+        archiveData = archiveStore.upsert(archive)
+        refreshArchiveSummaries()
+    }
+
+    private fun refreshArchiveSummaries() {
+        archives = archiveData.map(AiChatArchiveCodec::summary)
+    }
+
+    private fun AiChatArchive.toSession(isReadOnly: Boolean): AiChatSession = AiChatSession(
+        archiveId = id,
+        lotteryKey = lotteryKey,
+        profileId = profileId,
+        profileName = profileName,
+        model = model,
+        personaId = personaId,
+        messages = messages,
+        prediction = prediction,
+        targetPeriod = targetPeriod,
+        isReadOnlyArchive = isReadOnly,
+        createdAtEpochMs = createdAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
+    )
 
     private fun replaceMessage(id: String, transform: (AiChatMessage) -> AiChatMessage) {
         session = session.copy(
             messages = session.messages.map { message ->
                 if (message.id == id) transform(message) else message
             },
+            updatedAtEpochMs = System.currentTimeMillis(),
         )
     }
 }

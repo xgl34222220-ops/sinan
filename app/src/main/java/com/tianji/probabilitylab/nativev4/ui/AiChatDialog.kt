@@ -32,15 +32,19 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.StopCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -64,11 +68,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.tianji.probabilitylab.nativev4.ai.AiChatArchiveId
+import com.tianji.probabilitylab.nativev4.ai.AiChatArchiveSummary
 import com.tianji.probabilitylab.nativev4.ai.AiChatController
 import com.tianji.probabilitylab.nativev4.ai.AiChatMessage
 import com.tianji.probabilitylab.nativev4.ai.AiChatPersona
 import com.tianji.probabilitylab.nativev4.ai.AiChatPrediction
 import com.tianji.probabilitylab.nativev4.ai.AiChatRole
+import com.tianji.probabilitylab.nativev4.ai.AiChatSession
 import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.model.DrawSnapshot
 import com.tianji.probabilitylab.nativev4.model.ForecastReport
@@ -95,6 +102,7 @@ fun AiChatFloatingButton(
 fun AiChatDialog(
     controller: AiChatController,
     configs: List<AiConfig>,
+    modelCatalogs: Map<String, List<String>>,
     snapshot: DrawSnapshot?,
     report: ForecastReport?,
     onRefresh: () -> Unit,
@@ -102,16 +110,66 @@ fun AiChatDialog(
 ) {
     val colors = LocalTianjiColors.current
     val completeConfigs = remember(configs) { configs.filter(AiConfig::isComplete) }
-    val configIds = completeConfigs.joinToString("|") { it.id }
-    val preferredConfig = completeConfigs.firstOrNull { it.id == controller.session.profileId }
-        ?: completeConfigs.firstOrNull()
     val session = controller.session
     val selectedPersona = AiChatPersona.fromId(session.personaId)
+    val preferredConfig = completeConfigs.firstOrNull { it.id == session.profileId }
+        ?: completeConfigs.firstOrNull()
+    val configSignature = completeConfigs.joinToString("|") { "${it.id}:${it.model}" }
+    val catalogSignature = modelCatalogs.entries
+        .sortedBy { it.key }
+        .joinToString("|") { (id, models) -> "$id:${models.joinToString(",")}" }
+
+    fun modelOptions(config: AiConfig?): List<String> {
+        if (config == null) return session.model.takeIf(String::isNotBlank)?.let(::listOf).orEmpty()
+        return buildList {
+            config.model.trim().takeIf(String::isNotBlank)?.let(::add)
+            addAll(modelCatalogs[config.id].orEmpty())
+            addAll(config.provider.fallbackModels)
+            if (session.profileId == config.id) {
+                session.model.trim().takeIf(String::isNotBlank)?.let(::add)
+            }
+        }.map(String::trim).filter(String::isNotBlank).distinct()
+    }
+
+    val availableModels = modelOptions(preferredConfig)
+    val selectedModel = when {
+        session.profileId == preferredConfig?.id && session.model in availableModels -> session.model
+        preferredConfig?.model?.isNotBlank() == true -> preferredConfig.model
+        else -> availableModels.firstOrNull().orEmpty()
+    }
+    val lotteryKey = snapshot?.lottery?.apiKey.orEmpty()
+    val currentTarget = report?.targetPeriod
+    val currentArchiveId = if (
+        preferredConfig != null && selectedModel.isNotBlank() &&
+        lotteryKey.isNotBlank() && !currentTarget.isNullOrBlank()
+    ) {
+        AiChatArchiveId.of(lotteryKey, currentTarget, preferredConfig.id, selectedModel)
+    } else {
+        ""
+    }
+    val archiveItems = controller.archives
+        .filter { summary ->
+            (lotteryKey.isBlank() || summary.lotteryKey == lotteryKey) &&
+                (preferredConfig == null || summary.profileId == preferredConfig.id)
+        }
+        .sortedByDescending(AiChatArchiveSummary::updatedAtEpochMs)
+
     var input by rememberSaveable { mutableStateOf("") }
+    var archiveMenuExpanded by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(configIds, report?.targetPeriod) {
-        controller.selectProfile(preferredConfig?.id.orEmpty(), report?.targetPeriod)
+    fun openCurrent(config: AiConfig?, model: String) {
+        controller.selectContext(
+            profileId = config?.id.orEmpty(),
+            profileName = config?.displayName.orEmpty(),
+            model = model,
+            lotteryKey = lotteryKey,
+            targetPeriod = currentTarget,
+        )
+    }
+
+    LaunchedEffect(configSignature, catalogSignature, lotteryKey, currentTarget) {
+        openCurrent(preferredConfig, selectedModel)
     }
     LaunchedEffect(
         session.messages.size,
@@ -129,11 +187,19 @@ fun AiChatDialog(
             ?: preferredConfig
         val currentSnapshot = snapshot
         val currentReport = report
-        if (config == null || currentSnapshot == null || currentReport == null) return
+        if (
+            config == null || currentSnapshot == null || currentReport == null ||
+            controller.session.isReadOnlyArchive
+        ) return
         val question = text.trim()
         if (question.isBlank()) return
         input = ""
-        controller.send(config, currentSnapshot, currentReport, question)
+        controller.send(
+            config = config.copy(model = controller.session.model.ifBlank { selectedModel }),
+            snapshot = currentSnapshot,
+            report = currentReport,
+            question = question,
+        )
     }
 
     Dialog(
@@ -188,19 +254,92 @@ fun AiChatDialog(
                             fontWeight = FontWeight.ExtraBold,
                         )
                         Text(
-                            "真实流式输出 · 读取接口历史 · 不写入正式成绩",
+                            if (session.isReadOnlyArchive) {
+                                "历史归档只读 · 对话与候选长期保存"
+                            } else {
+                                "真实流式输出 · 对话与候选按目标期归档"
+                            },
                             color = colors.textDim,
                             fontSize = 8.sp,
                         )
                     }
-                    IconButton(onClick = onRefresh, enabled = !session.isRunning) {
+                    Box {
+                        IconButton(
+                            onClick = { archiveMenuExpanded = true },
+                            enabled = !session.isRunning,
+                        ) {
+                            Icon(Icons.Rounded.History, "历史对话与候选", tint = colors.textSoft)
+                        }
+                        DropdownMenu(
+                            expanded = archiveMenuExpanded,
+                            onDismissRequest = { archiveMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text("返回当前目标期", fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "${currentTarget ?: "待同步"} · ${selectedModel.ifBlank { "待选模型" }}",
+                                            fontSize = 11.sp,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    archiveMenuExpanded = false
+                                    openCurrent(preferredConfig, selectedModel)
+                                },
+                            )
+                            if (archiveItems.isNotEmpty()) HorizontalDivider()
+                            archiveItems.take(60).forEach { archive ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                "目标期 ${archive.targetPeriod}",
+                                                fontWeight = if (archive.id == session.archiveId) {
+                                                    FontWeight.Bold
+                                                } else {
+                                                    FontWeight.Medium
+                                                },
+                                            )
+                                            Text(
+                                                buildString {
+                                                    append(archive.model)
+                                                    append(" · ${archive.messageCount}条对话")
+                                                    if (archive.hasPrediction) append(" · 有候选")
+                                                },
+                                                fontSize = 11.sp,
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        archiveMenuExpanded = false
+                                        if (archive.id == currentArchiveId) {
+                                            openCurrent(preferredConfig, selectedModel)
+                                        } else {
+                                            controller.openArchive(archive.id)
+                                        }
+                                    },
+                                )
+                            }
+                            if (archiveItems.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("暂无已保存的历史对话") },
+                                    enabled = false,
+                                    onClick = {},
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = onRefresh, enabled = !session.isRunning && !session.isReadOnlyArchive) {
                         Icon(Icons.Rounded.Refresh, "刷新开奖历史", tint = colors.textSoft)
                     }
                     IconButton(
                         onClick = controller::clear,
-                        enabled = session.messages.isNotEmpty() && !session.isRunning,
+                        enabled = (session.messages.isNotEmpty() || session.prediction != null) &&
+                            !session.isRunning,
                     ) {
-                        Icon(Icons.Rounded.DeleteSweep, "清空对话", tint = colors.textSoft)
+                        Icon(Icons.Rounded.DeleteSweep, "删除当前记录", tint = colors.textSoft)
                     }
                     IconButton(
                         onClick = {
@@ -212,7 +351,7 @@ fun AiChatDialog(
                     }
                 }
 
-                SelectorLabel("模型")
+                SelectorLabel("配置")
                 if (completeConfigs.isNotEmpty()) {
                     Row(
                         modifier = Modifier
@@ -223,12 +362,13 @@ fun AiChatDialog(
                     ) {
                         completeConfigs.forEach { config ->
                             FilterChip(
-                                selected = controller.session.profileId == config.id,
+                                selected = session.profileId == config.id,
                                 onClick = {
-                                    if (!session.isRunning) {
-                                        controller.selectProfile(config.id, report?.targetPeriod)
-                                    }
+                                    val nextModel = modelOptions(config).firstOrNull { it == config.model }
+                                        ?: modelOptions(config).firstOrNull().orEmpty()
+                                    openCurrent(config, nextModel)
                                 },
+                                enabled = !session.isRunning && !session.isReadOnlyArchive,
                                 label = {
                                     Text(
                                         config.displayName,
@@ -239,6 +379,39 @@ fun AiChatDialog(
                                 },
                             )
                         }
+                    }
+                }
+
+                SelectorLabel("模型")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    availableModels.forEach { model ->
+                        FilterChip(
+                            selected = session.model == model,
+                            onClick = { openCurrent(preferredConfig, model) },
+                            enabled = !session.isRunning && !session.isReadOnlyArchive,
+                            label = {
+                                Text(
+                                    model,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 8.sp,
+                                )
+                            },
+                        )
+                    }
+                    if (availableModels.isEmpty()) {
+                        Text(
+                            "请先读取模型列表或保存模型",
+                            color = colors.textDim,
+                            fontSize = 8.sp,
+                            modifier = Modifier.padding(8.dp),
+                        )
                     }
                 }
 
@@ -254,7 +427,7 @@ fun AiChatDialog(
                         FilterChip(
                             selected = session.personaId == persona.id,
                             onClick = { controller.selectPersona(persona.id) },
-                            enabled = !session.isRunning,
+                            enabled = !session.isRunning && !session.isReadOnlyArchive,
                             label = {
                                 Text(
                                     persona.displayName,
@@ -282,6 +455,7 @@ fun AiChatDialog(
                     snapshot = snapshot,
                     report = report,
                     hasConfig = preferredConfig != null,
+                    session = session,
                 )
                 Spacer(Modifier.height(8.dp))
 
@@ -298,7 +472,8 @@ fun AiChatDialog(
                         item(key = "welcome") {
                             WelcomePanel(
                                 persona = selectedPersona,
-                                enabled = preferredConfig != null && snapshot != null && report != null,
+                                enabled = preferredConfig != null && snapshot != null && report != null &&
+                                    !session.isReadOnlyArchive,
                                 onPrompt = ::submit,
                             )
                         }
@@ -310,7 +485,7 @@ fun AiChatDialog(
                         )
                     }
                     session.prediction?.let { prediction ->
-                        item(key = "prediction-${session.messages.size}") {
+                        item(key = "prediction-${session.archiveId}-${session.messages.size}") {
                             ChatPredictionCard(
                                 prediction = prediction,
                                 targetPeriod = session.targetPeriod,
@@ -360,13 +535,17 @@ fun AiChatDialog(
                         value = input,
                         onValueChange = { input = it },
                         enabled = preferredConfig != null && snapshot != null && report != null &&
-                            !session.isRunning,
+                            !session.isRunning && !session.isReadOnlyArchive,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(18.dp),
                         placeholder = {
                             Text(
-                                selectedPersona.quickPrompts.firstOrNull()
-                                    ?: "输入你想分析的问题",
+                                if (session.isReadOnlyArchive) {
+                                    "历史归档为只读，请从时钟按钮返回当前期"
+                                } else {
+                                    selectedPersona.quickPrompts.firstOrNull()
+                                        ?: "输入你想分析的问题"
+                                },
                                 fontSize = 8.5.sp,
                             )
                         },
@@ -379,19 +558,21 @@ fun AiChatDialog(
                     Button(
                         onClick = { submit(input) },
                         enabled = input.isNotBlank() && preferredConfig != null &&
-                            snapshot != null && report != null && !session.isRunning,
+                            snapshot != null && report != null && !session.isRunning &&
+                            !session.isReadOnlyArchive,
                         modifier = Modifier.size(52.dp),
                         shape = CircleShape,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = colors.accent),
                     ) {
-                        Icon(Icons.Rounded.Send, contentDescription = "发送", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "发送", tint = Color.White)
                     }
                 }
             }
         }
     }
 }
+
 
 @Composable
 private fun SelectorLabel(text: String) {
@@ -410,18 +591,22 @@ private fun SourceNotice(
     snapshot: DrawSnapshot?,
     report: ForecastReport?,
     hasConfig: Boolean,
+    session: AiChatSession,
 ) {
     val colors = LocalTianjiColors.current
     val tint = when {
+        session.isReadOnlyArchive -> colors.accent
         !hasConfig -> colors.amber
         snapshot == null || report == null -> colors.red
         snapshot.sourceHealth.isFresh -> colors.green
         else -> colors.amber
     }
     val text = when {
+        session.isReadOnlyArchive ->
+            "历史归档 · 目标期 ${session.targetPeriod ?: "未知"} · ${session.model} · 只读"
         !hasConfig -> "请先在数据页保存一个完整的 AI 配置"
         snapshot == null || report == null -> "开奖历史尚未准备完成，请先刷新"
-        else -> "已载入 ${snapshot.history.takeLast(120).size} 期接口历史 · 目标期 ${report.targetPeriod}"
+        else -> "已载入 ${snapshot.history.takeLast(120).size} 期接口历史 · 目标期 ${report.targetPeriod} · ${session.model}"
     }
     Text(
         text,
