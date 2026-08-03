@@ -19,34 +19,58 @@ jobs:
     timeout-minutes: 70
     steps:
       - name: Checkout fix branch
+        id: checkout
         uses: actions/checkout@v4
         with:
           ref: fix/ai-true-independence-v5.7.1
           fetch-depth: 0
 
       - name: Set up Python
+        id: python
+        continue-on-error: true
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
       - name: Apply source patch
-        run: python tools/patch_ai_true_independence_v571.py
+        id: patch
+        if: steps.python.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          python tools/patch_ai_true_independence_v571.py 2>&1 | tee ai-v571-patch.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Set up Java 17
+        id: java
+        if: steps.patch.outputs.exit_code == '0'
+        continue-on-error: true
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
+        id: android
+        if: steps.patch.outputs.exit_code == '0'
+        continue-on-error: true
         uses: android-actions/setup-android@v3
 
       - name: Set up Gradle 8.13
+        id: gradle
+        if: steps.patch.outputs.exit_code == '0'
+        continue-on-error: true
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
       - name: Install Android SDK 36
+        id: sdk
+        if: steps.patch.outputs.exit_code == '0' && steps.android.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -54,44 +78,86 @@ jobs:
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
       - name: Run tests lint and builds
+        id: build
+        if: steps.patch.outputs.exit_code == '0' && steps.java.outcome == 'success' && steps.android.outcome == 'success' && steps.gradle.outcome == 'success' && steps.sdk.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           gradle --no-daemon --stacktrace \
             :app:testDebugUnitTest \
             :app:testReleaseUnitTest \
             :app:lintDebug \
             :app:assembleDebug \
-            :app:assembleRelease
+            :app:assembleRelease \
+            2>&1 | tee ai-v571-build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      - name: Record verified result
+      - name: Record and commit result
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p ci-v571
-          cat > ci-v571/STATUS.txt <<EOF
-          status=success
-          checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          formal_ai_input=raw_history_only
-          independent_chat_native_position_leak=removed
-          independent_chat_native_statistics=removed
-          debug_release_tests=passed
-          lint_debug=passed
-          debug_apk=passed
-          r8_release_apk=passed
-          EOF
+          patch_code='${{ steps.patch.outputs.exit_code }}'
+          build_code='${{ steps.build.outputs.exit_code }}'
+          status='failure'
+          summary='Unknown failure.'
 
-      - name: Remove one-time patch machinery
-        run: |
-          rm -f tools/patch_ai_true_independence_v571.py
-          rm -f .github/workflows/apply-ai-true-independence-v571.yml
+          if [[ '${{ steps.python.outcome }}' != 'success' ]]; then
+            status='environment_failure'
+            summary='Python setup failed.'
+          elif [[ "$patch_code" != '0' ]]; then
+            status='patch_failure'
+            summary="Source patch exited with code ${patch_code:-unknown}."
+          elif [[ '${{ steps.java.outcome }}' != 'success' || '${{ steps.android.outcome }}' != 'success' || '${{ steps.gradle.outcome }}' != 'success' || '${{ steps.sdk.outcome }}' != 'success' ]]; then
+            status='environment_failure'
+            summary='Android build environment setup failed.'
+          elif [[ "$build_code" != '0' ]]; then
+            status='build_failure'
+            summary="Gradle verification exited with code ${build_code:-unknown}."
+          else
+            status='success'
+            summary='AI independence patch, tests, lint, Debug APK and R8 Release APK passed.'
+          fi
 
-      - name: Commit verified source fix
-        shell: bash
-        run: |
-          set -euo pipefail
+          {
+            echo "status=$status"
+            echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "source_sha=$(git rev-parse HEAD)"
+            echo "python=${{ steps.python.outcome }}"
+            echo "patch=${{ steps.patch.outcome }}:${patch_code:-none}"
+            echo "java=${{ steps.java.outcome }}"
+            echo "android=${{ steps.android.outcome }}"
+            echo "gradle=${{ steps.gradle.outcome }}"
+            echo "sdk=${{ steps.sdk.outcome }}"
+            echo "build=${{ steps.build.outcome }}:${build_code:-none}"
+            echo "$summary"
+          } > ci-v571/STATUS.txt
+
+          if [[ "$status" == 'patch_failure' ]]; then
+            tail -n 240 ai-v571-patch.log > ci-v571/ERROR_SUMMARY.txt
+          elif [[ "$status" == 'build_failure' ]]; then
+            grep -E '(^e: |error: |FAILURE:|What went wrong:|Compilation error|Unresolved reference|Type mismatch|Missing class)' ai-v571-build.log | tail -n 220 > ci-v571/ERROR_SUMMARY.txt || true
+            tail -n 320 ai-v571-build.log > ci-v571/BUILD_TAIL.txt
+          elif [[ "$status" == 'environment_failure' ]]; then
+            printf '%s\n' \
+              "python=${{ steps.python.outcome }}" \
+              "java=${{ steps.java.outcome }}" \
+              "android=${{ steps.android.outcome }}" \
+              "gradle=${{ steps.gradle.outcome }}" \
+              "sdk=${{ steps.sdk.outcome }}" \
+              > ci-v571/ERROR_SUMMARY.txt
+          else
+            rm -f ci-v571/ERROR_SUMMARY.txt ci-v571/BUILD_TAIL.txt
+            rm -f tools/patch_ai_true_independence_v571.py
+            rm -f .github/workflows/apply-ai-true-independence-v571.yml
+          fi
+
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
-          git commit -m "fix: v5.7.1 restore true AI independence"
+          git commit -m "ci: record AI independence v5.7.1 verification ($status)" || true
           git push origin HEAD:fix/ai-true-independence-v5.7.1
