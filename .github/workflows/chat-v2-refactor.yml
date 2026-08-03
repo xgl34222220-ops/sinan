@@ -56,6 +56,16 @@ jobs:
       - name: Apply multi-conversation refactor
         run: python3 .github/scripts/apply_chat_v2.py
 
+      - name: Fix generated context test interpolation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiChatContextWindowTest.kt')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('"第$index轮对话："', '"第${index}轮对话："')
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Remove one-shot helpers
         run: rm -f .github/scripts/apply_chat_v2.py .github/workflows/chat-v2-refactor.yml
 
