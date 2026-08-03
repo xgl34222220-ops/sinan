@@ -32,6 +32,7 @@ import com.tianji.probabilitylab.nativev4.ai.SecureAiConfigStore
 import com.tianji.probabilitylab.nativev4.data.AppDatabase
 import com.tianji.probabilitylab.nativev4.data.ArchiveIntegrity
 import com.tianji.probabilitylab.nativev4.data.HistoryIntegrity
+import com.tianji.probabilitylab.nativev4.data.CloudForecastApi
 import com.tianji.probabilitylab.nativev4.data.LotteryApi
 import com.tianji.probabilitylab.nativev4.data.hasAiForecast
 import com.tianji.probabilitylab.nativev4.domain.HistoryFingerprint
@@ -85,6 +86,7 @@ class AppController(context: Context) {
     private val appContext = context.applicationContext
     private val database = AppDatabase(appContext)
     private val api = LotteryApi()
+    private val cloudApi = CloudForecastApi()
     private val executor = Executors.newSingleThreadExecutor()
     private val preferences = appContext.getSharedPreferences("tianji-native-v5", Context.MODE_PRIVATE)
     private val initialAiConcurrency = preferences.getInt("ai_concurrency", 3).coerceIn(1, 3)
@@ -672,6 +674,7 @@ class AppController(context: Context) {
         generation.incrementAndGet()
         aiGeneration.incrementAndGet()
         api.cancelActiveRequests()
+        cloudApi.cancelActiveRequests()
         remoteAiAnalyzer.cancelActiveRequests()
         executor.shutdownNow()
         aiTasks.close()
@@ -824,7 +827,19 @@ class AppController(context: Context) {
         ) {
             database.lockForecast(lottery, report)
         }
-        val aiRecords = database.loadAiForecasts(lottery)
+        val localAiRecords = database.loadAiForecasts(lottery)
+        val cloudAiRecords = runCatching { cloudApi.fetchForecasts(lottery) }
+            .getOrDefault(emptyList())
+        val aiRecords = (cloudAiRecords + localAiRecords)
+            .distinctBy { record ->
+                listOf(
+                    record.profileId,
+                    record.targetPeriod,
+                    record.model,
+                    record.position.toString(),
+                ).joinToString("|")
+            }
+            .sortedByDescending { it.createdAtEpochMs }
         val learningRecords = database.loadSettledAiForecastsForLearning(lottery)
         aiLearningStore.learnOfficialRecords(lottery.apiKey, settlementHistory, learningRecords)
         return AppUiState(
