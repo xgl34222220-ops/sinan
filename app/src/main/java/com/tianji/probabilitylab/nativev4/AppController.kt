@@ -121,40 +121,21 @@ class AppController(context: Context) {
 
     fun selectLottery(lottery: LotteryType) {
         if (lottery == state.lottery) return
-        aiGeneration.incrementAndGet()
         preferences.edit { putString("lottery", lottery.apiKey) }
         state = AppUiState(lottery = lottery, aiConcurrency = state.aiConcurrency)
         refresh()
     }
 
     fun refresh() {
-        aiTasks.cancel()
+        // Refreshing draw data must not disconnect a paid AI request. Every AI task already owns
+        // a frozen snapshot and is validated against its exact target period before archiving.
         api.cancelActiveRequests()
-        remoteAiAnalyzer.cancelActiveRequests()
-        aiGeneration.incrementAndGet()
         val token = generation.incrementAndGet()
         val lottery = state.lottery
         state = state.copy(
             isLoading = state.snapshot == null,
             isRefreshing = state.snapshot != null,
             error = null,
-            aiStatuses = state.aiStatuses.mapValues { (_, status) ->
-                if (status.state == AiConnectionState.ANALYZING || status.state == AiConnectionState.TESTING) {
-                    status.copy(
-                        state = AiConnectionState.UNTESTED,
-                        message = "数据刷新，任务已取消",
-                        timeline = AiConversationTimeline.merge(
-                            status.timeline,
-                            AiConversationTimeline.event(
-                                AiConversationStage.CANCELLED,
-                                "数据刷新，当前分析已取消",
-                            ),
-                        ),
-                    )
-                } else {
-                    status
-                }
-            },
         )
         executor.execute {
             val result = runCatching { load(lottery) }
@@ -365,7 +346,16 @@ class AppController(context: Context) {
     }
 
     fun analyzeWithAi(profileId: String? = null) {
-        val requested = aiConfigs.filter { it.isComplete && (profileId == null || it.id == profileId) }
+        val runningIds = state.aiStatuses.filterValues {
+            it.state == AiConnectionState.ANALYZING || it.state == AiConnectionState.TESTING
+        }.keys
+        if (profileId != null && profileId in runningIds) {
+            state = state.copy(aiError = "该 AI 仍在后台运行，请等待完成或先手动取消")
+            return
+        }
+        val requested = aiConfigs.filter {
+            it.isComplete && (profileId == null || it.id == profileId) && it.id !in runningIds
+        }
         if (requested.isEmpty()) {
             state = state.copy(aiError = "请先在数据页保存至少一个完整的 AI 配置")
             return
@@ -427,7 +417,7 @@ class AppController(context: Context) {
                 )
             }
             mainHandler.post {
-                if (aiGeneration.get() != token || state.lottery != lottery) return@post
+                if (state.lottery != lottery) return@post
                 prepared.fold(
                     onSuccess = { preparation ->
                         val report = preparation.loadedState.report
@@ -447,7 +437,7 @@ class AppController(context: Context) {
                             )
                         }
                         val runningStatuses = eligibleConfigs.associate { config ->
-                            val reasoning = AiReasoningEngine.resolve(config).displayLabel
+                            val reasoning = AiReasoningEngine.resolveForecast(config).displayLabel
                             val message = "接口历史已同步，准备${config.analysisMode.label} · $reasoning"
                             val current = state.aiStatuses[config.id] ?: AiRunStatus(config.id)
                             config.id to current.copy(
@@ -489,7 +479,7 @@ class AppController(context: Context) {
         configs.forEach { config ->
             aiTasks.submit(config.id) {
                 val result = runCatching {
-                    require(aiGeneration.get() == token && !Thread.currentThread().isInterrupted) {
+                    require(!Thread.currentThread().isInterrupted) {
                         "请求已在发送前取消"
                     }
                     require(state.aiStatuses[config.id]?.state != AiConnectionState.CANCELLED) {
@@ -501,7 +491,6 @@ class AppController(context: Context) {
                     val forecast = remoteAiAnalyzer.analyze(config, snapshot, report) { message, elapsedMs ->
                         mainHandler.post {
                             if (
-                                aiGeneration.get() == token &&
                                 state.report?.targetPeriod == report.targetPeriod &&
                                 state.aiStatuses[config.id]?.state == AiConnectionState.ANALYZING
                             ) {
@@ -524,7 +513,7 @@ class AppController(context: Context) {
                             }
                         }
                     }
-                    require(aiGeneration.get() == token && !Thread.currentThread().isInterrupted) {
+                    require(!Thread.currentThread().isInterrupted) {
                         "数据已经刷新，本次 AI 结果已作废"
                     }
                     val targetCheck = api.verifyTargetPeriodOpen(snapshot.lottery, report.targetPeriod)
@@ -574,7 +563,7 @@ class AppController(context: Context) {
                     null
                 }
                 mainHandler.post {
-                    if (aiGeneration.get() != token || state.report?.targetPeriod != report.targetPeriod) {
+                    if (state.report?.targetPeriod != report.targetPeriod) {
                         return@post
                     }
                     result.fold(

@@ -516,48 +516,83 @@ class AppDatabase(context: Context) :
         }
     }
 
-    fun loadAiProfileAudits(lottery: LotteryType): List<AiProfileAudit> = readableDatabase.rawQuery(
-        """SELECT f.profile_id,
-            (SELECT f2.profile_name FROM ai_forecast_records f2
-                WHERE f2.lottery_type = f.lottery_type
-                    AND f2.profile_id = f.profile_id AND f2.model = f.model
-                    AND f2.analysis_mode = f.analysis_mode
-                    AND f2.reasoning_mode = f.reasoning_mode
-                    AND f2.reasoning_protocol = f.reasoning_protocol
-                    AND f2.settled_at IS NOT NULL
-                ORDER BY f2.id DESC LIMIT 1),
-            f.model, f.analysis_mode, f.reasoning_mode, f.reasoning_protocol, COUNT(*),
-            COALESCE(SUM(f.top6_hit), 0), COALESCE(SUM(f.top7_hit), 0),
-            AVG(f.brier_score), AVG(f.log_loss), AVG(f.actual_rank)
-            FROM ai_forecast_records f
-            WHERE f.lottery_type = ? AND f.settled_at IS NOT NULL
-            GROUP BY f.profile_id, f.model, f.analysis_mode, f.reasoning_mode, f.reasoning_protocol
-            ORDER BY MAX(f.id) DESC""".trimIndent(),
-        arrayOf(lottery.apiKey),
-    ).use { cursor ->
-        buildList {
-            while (cursor.moveToNext()) {
-                add(
-                    AiProfileAudit(
-                        profileId = cursor.getString(0),
-                        profileName = cursor.getString(1),
-                        model = cursor.getString(2),
-                        analysisMode = runCatching { AiAnalysisMode.valueOf(cursor.getString(3)) }
-                            .getOrDefault(AiAnalysisMode.FAST),
-                        reasoningMode = runCatching { AiReasoningMode.valueOf(cursor.getString(4)) }
-                            .getOrDefault(AiReasoningMode.AUTO),
-                        reasoningProtocol = runCatching {
-                            AiReasoningProtocol.valueOf(cursor.getString(5))
-                        }.getOrDefault(AiReasoningProtocol.AUTO),
-                        settled = cursor.getInt(6),
-                        top6Hits = cursor.getInt(7),
-                        top7Hits = cursor.getInt(8),
-                        meanBrierScore = if (cursor.isNull(9)) null else cursor.getDouble(9),
-                        meanLogLoss = if (cursor.isNull(10)) null else cursor.getDouble(10),
-                        meanActualRank = if (cursor.isNull(11)) null else cursor.getDouble(11),
-                    ),
-                )
+    fun loadAiProfileAudits(lottery: LotteryType): List<AiProfileAudit> {
+        val base = readableDatabase.rawQuery(
+            """SELECT f.profile_id,
+                (SELECT f2.profile_name FROM ai_forecast_records f2
+                    WHERE f2.lottery_type = f.lottery_type
+                        AND f2.profile_id = f.profile_id AND f2.model = f.model
+                        AND f2.analysis_mode = f.analysis_mode
+                        AND f2.reasoning_mode = f.reasoning_mode
+                        AND f2.reasoning_protocol = f.reasoning_protocol
+                        AND f2.settled_at IS NOT NULL
+                    ORDER BY f2.id DESC LIMIT 1),
+                f.model, f.analysis_mode, f.reasoning_mode, f.reasoning_protocol, COUNT(*),
+                COALESCE(SUM(f.top6_hit), 0), COALESCE(SUM(f.top7_hit), 0),
+                AVG(f.brier_score), AVG(f.log_loss), AVG(f.actual_rank),
+                AVG(f.latency_ms), AVG(f.input_tokens), AVG(f.output_tokens), AVG(f.estimated_cost)
+                FROM ai_forecast_records f
+                WHERE f.lottery_type = ? AND f.settled_at IS NOT NULL
+                GROUP BY f.profile_id, f.model, f.analysis_mode, f.reasoning_mode, f.reasoning_protocol
+                ORDER BY MAX(f.id) DESC""".trimIndent(),
+            arrayOf(lottery.apiKey),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(
+                        AiProfileAudit(
+                            profileId = cursor.getString(0),
+                            profileName = cursor.getString(1),
+                            model = cursor.getString(2),
+                            analysisMode = runCatching { AiAnalysisMode.valueOf(cursor.getString(3)) }
+                                .getOrDefault(AiAnalysisMode.FAST),
+                            reasoningMode = runCatching { AiReasoningMode.valueOf(cursor.getString(4)) }
+                                .getOrDefault(AiReasoningMode.AUTO),
+                            reasoningProtocol = runCatching {
+                                AiReasoningProtocol.valueOf(cursor.getString(5))
+                            }.getOrDefault(AiReasoningProtocol.AUTO),
+                            settled = cursor.getInt(6),
+                            top6Hits = cursor.getInt(7),
+                            top7Hits = cursor.getInt(8),
+                            meanBrierScore = if (cursor.isNull(9)) null else cursor.getDouble(9),
+                            meanLogLoss = if (cursor.isNull(10)) null else cursor.getDouble(10),
+                            meanActualRank = if (cursor.isNull(11)) null else cursor.getDouble(11),
+                            meanLatencyMs = if (cursor.isNull(12)) null else cursor.getDouble(12),
+                            meanInputTokens = if (cursor.isNull(13)) null else cursor.getDouble(13),
+                            meanOutputTokens = if (cursor.isNull(14)) null else cursor.getDouble(14),
+                            meanEstimatedCost = if (cursor.isNull(15)) null else cursor.getDouble(15),
+                        ),
+                    )
+                }
             }
+        }
+
+        fun recentRate(audit: AiProfileAudit, limit: Int): Double? = readableDatabase.rawQuery(
+            """SELECT AVG(top6_hit * 1.0) FROM (
+                SELECT top6_hit FROM ai_forecast_records
+                WHERE lottery_type = ? AND profile_id = ? AND model = ?
+                    AND analysis_mode = ? AND reasoning_mode = ? AND reasoning_protocol = ?
+                    AND settled_at IS NOT NULL
+                ORDER BY id DESC LIMIT $limit
+            )""".trimIndent(),
+            arrayOf(
+                lottery.apiKey,
+                audit.profileId,
+                audit.model,
+                audit.analysisMode.name,
+                audit.reasoningMode.name,
+                audit.reasoningProtocol.name,
+            ),
+        ).use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getDouble(0) else null
+        }
+
+        return base.map { audit ->
+            audit.copy(
+                recent20Top6Rate = recentRate(audit, 20),
+                recent50Top6Rate = recentRate(audit, 50),
+                recent100Top6Rate = recentRate(audit, 100),
+            )
         }
     }
 

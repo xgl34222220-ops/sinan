@@ -14,16 +14,18 @@ data class AiTokenBudget(
  * remain provider-controlled so a non-standard API is not broken by an unsupported parameter.
  */
 object AiTokenPolicy {
-    const val LOW_MAX_OUTPUT_TOKENS: Int = 4 * 1024
-    const val AUTO_MAX_OUTPUT_TOKENS: Int = 8 * 1024
-    const val HIGH_MAX_OUTPUT_TOKENS: Int = 32 * 1024
+    const val LOW_MAX_OUTPUT_TOKENS: Int = 1024
+    const val AUTO_MAX_OUTPUT_TOKENS: Int = 1536
+    const val HIGH_MAX_OUTPUT_TOKENS: Int = 2048
 
     fun resolve(config: AiConfig, responsesApi: Boolean): AiTokenBudget {
         val host = runCatching { URL(config.endpoint.trim()).host.lowercase() }.getOrDefault("")
         val model = config.model.trim().lowercase()
-        val officialDeepSeekV4 = host.endsWith("deepseek.com") && model.startsWith("deepseek-v4")
+        val boundedDeepSeek = config.provider == AiProvider.DEEPSEEK ||
+            host.contains("deepseek") || model.startsWith("deepseek-")
+        val boundedOpenAiResponses = config.provider == AiProvider.OPENAI && responsesApi
 
-        if (!officialDeepSeekV4) {
+        if (!boundedDeepSeek && !boundedOpenAiResponses) {
             return AiTokenBudget(
                 parameter = null,
                 value = null,
@@ -37,9 +39,9 @@ object AiTokenPolicy {
             AiReasoningMode.HIGH -> HIGH_MAX_OUTPUT_TOKENS to "深入"
         }
         return AiTokenBudget(
-            parameter = if (responsesApi) "max_output_tokens" else "max_tokens",
+            parameter = if (boundedOpenAiResponses) "max_output_tokens" else "max_tokens",
             value = value,
-            label = "正式预测输出上限 ${value / 1024}K（$modeLabel）",
+            label = "正式预测核心输出上限 $value tokens（$modeLabel）",
         )
     }
 }
