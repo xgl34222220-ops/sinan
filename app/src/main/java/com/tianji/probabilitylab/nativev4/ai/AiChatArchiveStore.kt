@@ -6,10 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/**
- * App-private archive for chat conversations and chat-only candidate cards.
- * It is deliberately separate from the official forward-forecast database.
- */
+/** App-private multi-conversation store, deliberately separate from official forecast records. */
 class AiChatArchiveStore(context: Context) {
     private val file = AtomicFile(File(context.filesDir, FILE_NAME))
 
@@ -23,14 +20,14 @@ class AiChatArchiveStore(context: Context) {
     @Synchronized
     fun upsert(archive: AiChatArchive): List<AiChatArchive> {
         val normalized = archive.copy(
-            messages = archive.messages
-                .filter { it.content.isNotBlank() }
-                .takeLast(MAX_MESSAGES_PER_ARCHIVE),
+            messages = archive.messages.filter { it.content.isNotBlank() }.takeLast(MAX_MESSAGES),
+            candidates = archive.candidates.takeLast(MAX_CANDIDATES),
+            memorySummary = archive.memorySummary.take(MAX_MEMORY_CHARS),
             updatedAtEpochMs = System.currentTimeMillis(),
         )
         val all = (loadAll().filterNot { it.id == normalized.id } + normalized)
             .sortedByDescending(AiChatArchive::updatedAtEpochMs)
-            .take(MAX_ARCHIVES)
+            .take(MAX_CONVERSATIONS)
         writeAll(all)
         return all
     }
@@ -56,23 +53,27 @@ class AiChatArchiveStore(context: Context) {
 
     private companion object {
         const val FILE_NAME = "ai_chat_archive_v1.json"
-        const val MAX_ARCHIVES = 1_000
-        const val MAX_MESSAGES_PER_ARCHIVE = 60
+        const val MAX_CONVERSATIONS = 240
+        const val MAX_MESSAGES = 240
+        const val MAX_CANDIDATES = 80
+        const val MAX_MEMORY_CHARS = 6_000
     }
 }
 
 object AiChatArchiveCodec {
     fun encode(archives: List<AiChatArchive>): String = JSONObject()
-        .put("schema", 1)
+        .put("schema", 2)
         .put("archives", JSONArray(archives.map(::toJson)))
         .toString()
 
     fun decode(text: String): List<AiChatArchive> {
         if (text.isBlank()) return emptyList()
-        val array = JSONObject(text).optJSONArray("archives") ?: return emptyList()
+        val root = JSONObject(text)
+        val schema = root.optInt("schema", 1)
+        val array = root.optJSONArray("archives") ?: return emptyList()
         return buildList {
             for (index in 0 until array.length()) {
-                array.optJSONObject(index)?.toArchiveOrNull()?.let(::add)
+                array.optJSONObject(index)?.toArchiveOrNull(schema)?.let(::add)
             }
         }.distinctBy(AiChatArchive::id)
             .sortedByDescending(AiChatArchive::updatedAtEpochMs)
@@ -85,9 +86,12 @@ object AiChatArchiveCodec {
         targetPeriod = archive.targetPeriod,
         profileName = archive.profileName,
         model = archive.model,
+        title = archive.title,
+        preview = archive.messages.lastOrNull { it.content.isNotBlank() }
+            ?.content?.replace(Regex("\\s+"), " ")?.take(72).orEmpty(),
         personaId = archive.personaId,
-        messageCount = archive.messages.size,
-        hasPrediction = archive.prediction != null,
+        messageCount = archive.messages.count { it.role != AiChatRole.SYSTEM },
+        hasPrediction = archive.candidates.isNotEmpty(),
         updatedAtEpochMs = archive.updatedAtEpochMs,
     )
 
@@ -97,52 +101,80 @@ object AiChatArchiveCodec {
         .put("profile_id", archive.profileId)
         .put("profile_name", archive.profileName)
         .put("model", archive.model)
+        .put("title", archive.title)
         .put("target_period", archive.targetPeriod)
         .put("persona_id", archive.personaId)
+        .put("memory_summary", archive.memorySummary)
+        .put("continuation_of", archive.continuationOf ?: JSONObject.NULL)
         .put("created_at", archive.createdAtEpochMs)
         .put("updated_at", archive.updatedAtEpochMs)
-        .put(
-            "messages",
-            JSONArray(archive.messages.map { message ->
-                JSONObject()
-                    .put("id", message.id)
-                    .put("role", message.role.name)
-                    .put("content", message.content)
-                    .put("created_at", message.createdAtEpochMs)
-                    .put("latency_ms", message.latencyMs ?: JSONObject.NULL)
-            }),
-        )
-        .put(
-            "prediction",
-            archive.prediction?.let { prediction ->
-                JSONObject()
-                    .put("position", prediction.position)
-                    .put("top6", JSONArray(prediction.top6))
-                    .put("top7", JSONArray(prediction.top7))
-                    .put("probabilities", JSONArray(prediction.probabilities))
-            } ?: JSONObject.NULL,
-        )
+        .put("messages", JSONArray(archive.messages.map(::messageToJson)))
+        .put("candidates", JSONArray(archive.candidates.map(::candidateToJson)))
 
-    private fun JSONObject.toArchiveOrNull(): AiChatArchive? = runCatching {
+    private fun messageToJson(message: AiChatMessage): JSONObject = JSONObject()
+        .put("id", message.id)
+        .put("role", message.role.name)
+        .put("content", message.content)
+        .put("target_period", message.targetPeriod ?: JSONObject.NULL)
+        .put("created_at", message.createdAtEpochMs)
+        .put("latency_ms", message.latencyMs ?: JSONObject.NULL)
+
+    private fun candidateToJson(record: AiChatCandidateRecord): JSONObject = JSONObject()
+        .put("id", record.id)
+        .put("message_id", record.messageId)
+        .put("target_period", record.targetPeriod)
+        .put("actual_number", record.actualNumber ?: JSONObject.NULL)
+        .put("resolved_period", record.resolvedPeriod ?: JSONObject.NULL)
+        .put("created_at", record.createdAtEpochMs)
+        .put("prediction", predictionToJson(record.prediction))
+
+    private fun predictionToJson(prediction: AiChatPrediction): JSONObject = JSONObject()
+        .put("position", prediction.position)
+        .put("top6", JSONArray(prediction.top6))
+        .put("top7", JSONArray(prediction.top7))
+        .put("probabilities", JSONArray(prediction.probabilities))
+
+    private fun JSONObject.toArchiveOrNull(schema: Int): AiChatArchive? = runCatching {
         val lotteryKey = getString("lottery_key")
         val profileId = getString("profile_id")
         val model = getString("model")
-        val targetPeriod = getString("target_period")
-        val id = optString("id").ifBlank {
-            AiChatArchiveId.of(lotteryKey, targetPeriod, profileId, model)
-        }
+        val targetPeriod = optString("target_period")
         require(lotteryKey.isNotBlank() && profileId.isNotBlank() && model.isNotBlank())
-        require(targetPeriod.isNotBlank())
+        val messages = optJSONArray("messages").toMessages()
+        val legacyPrediction = optJSONObject("prediction")?.toPredictionOrNull()
+        val candidates = if (schema >= 2) {
+            optJSONArray("candidates").toCandidates()
+        } else {
+            legacyPrediction?.let { prediction ->
+                listOf(
+                    AiChatCandidateRecord(
+                        messageId = messages.lastOrNull { it.role == AiChatRole.ASSISTANT }?.id.orEmpty(),
+                        targetPeriod = targetPeriod,
+                        prediction = prediction,
+                        createdAtEpochMs = optLong("updated_at", System.currentTimeMillis()),
+                    ),
+                )
+            }.orEmpty()
+        }
+        val rawId = optString("id")
         AiChatArchive(
-            id = id,
+            id = rawId.ifBlank { AiChatConversationId.newId(lotteryKey, profileId, model) },
             lotteryKey = lotteryKey,
             profileId = profileId,
             profileName = optString("profile_name"),
             model = model,
+            title = optString("title").ifBlank {
+                messages.firstOrNull { it.role == AiChatRole.USER }
+                    ?.content?.let(AiChatProtocol::buildConversationTitle)
+                    ?: targetPeriod.takeIf(String::isNotBlank)?.let { "目标期 $it 分析" }
+                    ?: "历史对话"
+            },
             targetPeriod = targetPeriod,
             personaId = AiChatPersona.fromId(optString("persona_id")).id,
-            messages = optJSONArray("messages").toMessages(),
-            prediction = optJSONObject("prediction")?.toPredictionOrNull(),
+            memorySummary = optString("memory_summary").takeUnless { it == "null" }.orEmpty(),
+            continuationOf = optString("continuation_of").takeUnless { it.isBlank() || it == "null" },
+            messages = messages,
+            candidates = candidates,
             createdAtEpochMs = optLong("created_at", System.currentTimeMillis()),
             updatedAtEpochMs = optLong("updated_at", System.currentTimeMillis()),
         )
@@ -161,8 +193,32 @@ object AiChatArchiveCodec {
                         role = runCatching { AiChatRole.valueOf(item.optString("role")) }
                             .getOrDefault(AiChatRole.ASSISTANT),
                         content = content,
+                        targetPeriod = item.optString("target_period")
+                            .takeUnless { it.isBlank() || it == "null" },
                         createdAtEpochMs = item.optLong("created_at", System.currentTimeMillis()),
                         latencyMs = item.optLong("latency_ms", -1L).takeIf { it >= 0L },
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun JSONArray?.toCandidates(): List<AiChatCandidateRecord> {
+        if (this == null) return emptyList()
+        return buildList {
+            for (index in 0 until length()) {
+                val item = optJSONObject(index) ?: continue
+                val prediction = item.optJSONObject("prediction")?.toPredictionOrNull() ?: continue
+                add(
+                    AiChatCandidateRecord(
+                        id = item.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+                        messageId = item.optString("message_id"),
+                        targetPeriod = item.optString("target_period"),
+                        prediction = prediction,
+                        actualNumber = item.optInt("actual_number", -1).takeIf { it in 1..10 },
+                        resolvedPeriod = item.optString("resolved_period")
+                            .takeUnless { it.isBlank() || it == "null" },
+                        createdAtEpochMs = item.optLong("created_at", System.currentTimeMillis()),
                     ),
                 )
             }
@@ -184,7 +240,5 @@ object AiChatArchiveCodec {
         (0 until length()).mapNotNull { index -> optInt(index, -1).takeIf { it > 0 } }
 
     private fun JSONArray.toDoubleList(): List<Double> =
-        (0 until length()).mapNotNull { index ->
-            optDouble(index, Double.NaN).takeIf(Double::isFinite)
-        }
+        (0 until length()).mapNotNull { index -> optDouble(index, Double.NaN).takeIf(Double::isFinite) }
 }

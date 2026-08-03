@@ -44,15 +44,14 @@ class AiChatController(context: Context) {
         model: String,
         lotteryKey: String,
         targetPeriod: String?,
+        latestPeriod: String? = null,
+        latestNumbers: List<Int> = emptyList(),
     ) {
-        val normalizedTarget = targetPeriod.orEmpty().trim()
         val normalizedModel = model.trim()
         val normalizedProfile = profileId.trim()
         val normalizedLottery = lotteryKey.trim()
-        if (
-            normalizedProfile.isBlank() || normalizedModel.isBlank() ||
-            normalizedLottery.isBlank() || normalizedTarget.isBlank()
-        ) {
+        val normalizedTarget = targetPeriod.orEmpty().trim()
+        if (normalizedProfile.isBlank() || normalizedModel.isBlank() || normalizedLottery.isBlank()) {
             if (session.isRunning) cancel()
             persistCurrent()
             session = AiChatSession(
@@ -65,36 +64,79 @@ class AiChatController(context: Context) {
             )
             return
         }
-        val archiveId = AiChatArchiveId.of(
-            normalizedLottery,
-            normalizedTarget,
-            normalizedProfile,
-            normalizedModel,
-        )
-        if (session.archiveId == archiveId && !session.isReadOnlyArchive) return
+        val sameContext = session.lotteryKey == normalizedLottery &&
+            session.profileId == normalizedProfile && session.model == normalizedModel &&
+            session.archiveId.isNotBlank()
+        if (!sameContext) {
+            if (session.isRunning) cancel()
+            persistCurrent()
+            val saved = archiveData
+                .filter {
+                    it.lotteryKey == normalizedLottery && it.profileId == normalizedProfile &&
+                        it.model == normalizedModel
+                }
+                .maxByOrNull(AiChatArchive::updatedAtEpochMs)
+            session = saved?.toSession() ?: freshSession(
+                profileId = normalizedProfile,
+                profileName = profileName.trim(),
+                model = normalizedModel,
+                lotteryKey = normalizedLottery,
+                targetPeriod = normalizedTarget,
+            )
+        }
+        syncTargetTransition(normalizedTarget, latestPeriod, latestNumbers)
+    }
+
+    fun newConversation(
+        profileId: String,
+        profileName: String,
+        model: String,
+        lotteryKey: String,
+        targetPeriod: String?,
+        inheritStrategy: Boolean,
+    ) {
         if (session.isRunning) cancel()
+        val memory = if (inheritStrategy) {
+            AiChatProtocol.buildMemorySummary(session.memorySummary, session.messages, session.candidates)
+        } else {
+            ""
+        }
+        val previousId = session.archiveId.takeIf { inheritStrategy && it.isNotBlank() }
         persistCurrent()
-        val saved = archiveData.firstOrNull { it.id == archiveId }
-        session = saved?.toSession(isReadOnly = false) ?: AiChatSession(
-            archiveId = archiveId,
-            lotteryKey = normalizedLottery,
-            profileId = normalizedProfile,
+        session = freshSession(
+            profileId = profileId.trim(),
             profileName = profileName.trim(),
-            model = normalizedModel,
-            personaId = session.personaId,
-            targetPeriod = normalizedTarget,
+            model = model.trim(),
+            lotteryKey = lotteryKey.trim(),
+            targetPeriod = targetPeriod.orEmpty().trim(),
+            memorySummary = memory,
+            continuationOf = previousId,
+        ).copy(
+            messages = if (inheritStrategy && memory.isNotBlank()) {
+                listOf(
+                    AiChatMessage(
+                        role = AiChatRole.SYSTEM,
+                        content = "已从上一段对话继承关键策略、复盘反馈和候选核验；完整旧消息仍保存在历史会话中。",
+                        targetPeriod = targetPeriod,
+                    ),
+                )
+            } else {
+                emptyList()
+            },
+            rolloverNotice = if (inheritStrategy) "已继承上一段对话的策略摘要" else null,
         )
+        persistCurrent()
     }
 
     fun openArchive(archiveId: String) {
         if (session.isRunning) return
         val saved = archiveData.firstOrNull { it.id == archiveId } ?: return
         persistCurrent()
-        session = saved.toSession(isReadOnly = true)
+        session = saved.toSession()
     }
 
     fun selectPersona(personaId: String) {
-        if (session.isRunning || session.isReadOnlyArchive) return
+        if (session.isRunning) return
         val persona = AiChatPersona.fromId(personaId)
         if (session.personaId != persona.id) {
             session = session.copy(
@@ -113,7 +155,7 @@ class AiChatController(context: Context) {
         question: String,
     ) {
         val text = question.trim()
-        if (text.isBlank() || session.isRunning || session.isReadOnlyArchive) return
+        if (text.isBlank() || session.isRunning) return
         val activeModel = session.model.ifBlank { config.model }.trim()
         selectContext(
             profileId = config.id,
@@ -121,20 +163,40 @@ class AiChatController(context: Context) {
             model = activeModel,
             lotteryKey = snapshot.lottery.apiKey,
             targetPeriod = report.targetPeriod,
+            latestPeriod = snapshot.latest.period,
+            latestNumbers = snapshot.latest.numbers,
         )
+        ensureContextCapacity()
         val activeConfig = config.copy(model = activeModel)
-        val previousMessages = AiChatProtocol.trimHistory(session.messages)
-        val userMessage = AiChatMessage(role = AiChatRole.USER, content = text)
-        val assistantMessage = AiChatMessage(role = AiChatRole.ASSISTANT, content = "")
+        val plan = AiChatProtocol.planContext(session.messages, session.memorySummary)
+        val previousMessages = plan.messages
+        val userMessage = AiChatMessage(
+            role = AiChatRole.USER,
+            content = text,
+            targetPeriod = report.targetPeriod,
+        )
+        val assistantMessage = AiChatMessage(
+            role = AiChatRole.ASSISTANT,
+            content = "",
+            targetPeriod = report.targetPeriod,
+        )
         val persona = AiChatPersona.fromId(session.personaId)
         val token = generation.incrementAndGet()
+        val nextTitle = if (session.messages.none { it.role == AiChatRole.USER }) {
+            AiChatProtocol.buildConversationTitle(text)
+        } else {
+            session.title
+        }
         session = session.copy(
+            title = nextTitle,
             messages = session.messages + userMessage + assistantMessage,
             isRunning = true,
             progress = "正在整理当前接口历史…",
             error = null,
             prediction = null,
             streamingMessageId = assistantMessage.id,
+            contextUsagePercent = plan.usagePercent,
+            rolloverNotice = null,
             updatedAtEpochMs = System.currentTimeMillis(),
         )
         persistCurrent()
@@ -145,6 +207,7 @@ class AiChatController(context: Context) {
                     snapshot = snapshot,
                     report = report,
                     previousMessages = previousMessages,
+                    memorySummary = session.memorySummary,
                     question = text,
                     persona = persona,
                     onProgress = { progress ->
@@ -157,9 +220,7 @@ class AiChatController(context: Context) {
                     onStreamText = { content ->
                         mainHandler.post {
                             if (generation.get() == token && session.isRunning) {
-                                replaceMessage(assistantMessage.id) { current ->
-                                    current.copy(content = content)
-                                }
+                                replaceMessage(assistantMessage.id) { current -> current.copy(content = content) }
                             }
                         }
                     },
@@ -172,6 +233,13 @@ class AiChatController(context: Context) {
                         replaceMessage(assistantMessage.id) { current ->
                             current.copy(content = reply.content, latencyMs = reply.latencyMs)
                         }
+                        val nextCandidates = reply.prediction?.let { prediction ->
+                            session.candidates + AiChatCandidateRecord(
+                                messageId = assistantMessage.id,
+                                targetPeriod = report.targetPeriod,
+                                prediction = prediction,
+                            )
+                        } ?: session.candidates
                         session = session.copy(
                             isRunning = false,
                             progress = if (reply.reasoningVerified) {
@@ -182,15 +250,17 @@ class AiChatController(context: Context) {
                             },
                             error = null,
                             prediction = reply.prediction,
+                            candidates = nextCandidates,
                             streamingMessageId = null,
+                            contextUsagePercent = AiChatProtocol
+                                .planContext(session.messages, session.memorySummary).usagePercent,
                             updatedAtEpochMs = System.currentTimeMillis(),
                         )
                         persistCurrent()
                     },
                     onFailure = { cause ->
                         val partial = session.messages
-                            .firstOrNull { it.id == assistantMessage.id }
-                            ?.content.orEmpty()
+                            .firstOrNull { it.id == assistantMessage.id }?.content.orEmpty()
                         session = session.copy(
                             messages = if (partial.isBlank()) {
                                 session.messages.filterNot { it.id == assistantMessage.id }
@@ -234,20 +304,37 @@ class AiChatController(context: Context) {
 
     fun clear() {
         cancel()
-        val archiveId = session.archiveId
-        if (archiveId.isNotBlank()) {
-            archiveData = archiveStore.delete(archiveId)
-            refreshArchiveSummaries()
-        }
-        session = AiChatSession(
-            archiveId = session.archiveId,
-            lotteryKey = session.lotteryKey,
+        session = session.copy(
+            messages = emptyList(),
+            candidates = emptyList(),
+            prediction = null,
+            memorySummary = "",
+            title = "新对话",
+            contextUsagePercent = 0,
+            error = null,
+            progress = "",
+            updatedAtEpochMs = System.currentTimeMillis(),
+        )
+        persistCurrent(force = true)
+    }
+
+    fun deleteCurrent() {
+        cancel()
+        val deleted = session.archiveId
+        if (deleted.isNotBlank()) archiveData = archiveStore.delete(deleted)
+        refreshArchiveSummaries()
+        val replacement = archiveData
+            .filter {
+                it.lotteryKey == session.lotteryKey && it.profileId == session.profileId &&
+                    it.model == session.model
+            }
+            .maxByOrNull(AiChatArchive::updatedAtEpochMs)
+        session = replacement?.toSession() ?: freshSession(
             profileId = session.profileId,
             profileName = session.profileName,
             model = session.model,
-            personaId = session.personaId,
-            targetPeriod = session.targetPeriod,
-            isReadOnlyArchive = session.isReadOnlyArchive,
+            lotteryKey = session.lotteryKey,
+            targetPeriod = session.targetPeriod.orEmpty(),
         )
     }
 
@@ -257,24 +344,136 @@ class AiChatController(context: Context) {
         executor.shutdownNow()
     }
 
-    private fun persistCurrent() {
-        val targetPeriod = session.targetPeriod.orEmpty()
+    private fun ensureContextCapacity() {
+        val plan = AiChatProtocol.planContext(session.messages, session.memorySummary)
+        if (!plan.shouldRollover || session.messages.isEmpty()) {
+            session = session.copy(contextUsagePercent = plan.usagePercent)
+            return
+        }
+        val old = session
+        val summary = AiChatProtocol.buildMemorySummary(
+            old.memorySummary,
+            old.messages,
+            old.candidates,
+        )
+        persistCurrent()
+        session = freshSession(
+            profileId = old.profileId,
+            profileName = old.profileName,
+            model = old.model,
+            lotteryKey = old.lotteryKey,
+            targetPeriod = old.targetPeriod.orEmpty(),
+            memorySummary = summary,
+            continuationOf = old.archiveId,
+        ).copy(
+            title = "${old.title.take(17)} · 续",
+            personaId = old.personaId,
+            messages = listOf(
+                AiChatMessage(
+                    role = AiChatRole.SYSTEM,
+                    content = "当前对话接近客户端安全上下文阈值，已保存旧会话并用策略摘要续接。",
+                    targetPeriod = old.targetPeriod,
+                ),
+            ),
+            rolloverNotice = "上下文已自动总结并续接为新对话",
+        )
+        persistCurrent()
+    }
+
+    private fun syncTargetTransition(
+        newTarget: String,
+        latestPeriod: String?,
+        latestNumbers: List<Int>,
+    ) {
+        if (newTarget.isBlank()) return
+        val oldTarget = session.targetPeriod.orEmpty()
+        if (oldTarget.isBlank()) {
+            session = session.copy(targetPeriod = newTarget)
+            return
+        }
+        if (oldTarget == newTarget) return
+        val resolvedPeriod = latestPeriod.orEmpty()
+        var resolvedCandidate: AiChatCandidateRecord? = null
+        val nextCandidates = session.candidates.map { record ->
+            if (
+                record.actualNumber == null && record.targetPeriod == resolvedPeriod &&
+                record.prediction.position in latestNumbers.indices
+            ) {
+                val resolved = record.copy(
+                    actualNumber = latestNumbers[record.prediction.position],
+                    resolvedPeriod = resolvedPeriod,
+                )
+                resolvedCandidate = resolved
+                resolved
+            } else {
+                record
+            }
+        }
+        val event = buildString {
+            append("期开奖衔接：")
+            if (resolvedCandidate != null) {
+                val candidate = requireNotNull(resolvedCandidate)
+                val actual = requireNotNull(candidate.actualNumber)
+                append("${candidate.targetPeriod}期第${candidate.prediction.position + 1}名实际开出$actual，")
+                append(if (actual in candidate.prediction.top6) "上期六码命中" else "上期六码未中")
+                append("；")
+            } else if (resolvedPeriod.isNotBlank()) {
+                append("接口已更新到${resolvedPeriod}期；")
+            }
+            append("当前进入目标期$newTarget。可以继续在本对话中复盘并要求调整分析策略。")
+        }
+        session = session.copy(
+            targetPeriod = newTarget,
+            candidates = nextCandidates,
+            messages = session.messages + AiChatMessage(
+                role = AiChatRole.SYSTEM,
+                content = event,
+                targetPeriod = newTarget,
+            ),
+            updatedAtEpochMs = System.currentTimeMillis(),
+        )
+        persistCurrent()
+    }
+
+    private fun freshSession(
+        profileId: String,
+        profileName: String,
+        model: String,
+        lotteryKey: String,
+        targetPeriod: String,
+        memorySummary: String = "",
+        continuationOf: String? = null,
+    ): AiChatSession = AiChatSession(
+        archiveId = AiChatConversationId.newId(lotteryKey, profileId, model),
+        lotteryKey = lotteryKey,
+        profileId = profileId,
+        profileName = profileName,
+        model = model,
+        targetPeriod = targetPeriod.ifBlank { null },
+        memorySummary = memorySummary,
+        continuationOf = continuationOf,
+    )
+
+    private fun persistCurrent(force: Boolean = false) {
         if (
             session.archiveId.isBlank() || session.lotteryKey.isBlank() ||
-            session.profileId.isBlank() || session.model.isBlank() || targetPeriod.isBlank()
+            session.profileId.isBlank() || session.model.isBlank()
         ) return
         val persistedMessages = session.messages.filter { it.content.isNotBlank() }
-        if (persistedMessages.isEmpty() && session.prediction == null) return
+        if (!force && persistedMessages.isEmpty() && session.candidates.isEmpty()) return
         val archive = AiChatArchive(
             id = session.archiveId,
             lotteryKey = session.lotteryKey,
             profileId = session.profileId,
             profileName = session.profileName,
             model = session.model,
-            targetPeriod = targetPeriod,
+            title = session.title,
+            targetPeriod = session.targetPeriod.orEmpty(),
             personaId = session.personaId,
+            memorySummary = session.memorySummary,
+            continuationOf = session.continuationOf,
             messages = persistedMessages,
-            prediction = session.prediction,
+            candidates = session.candidates,
             createdAtEpochMs = session.createdAtEpochMs,
             updatedAtEpochMs = System.currentTimeMillis(),
         )
@@ -286,30 +485,33 @@ class AiChatController(context: Context) {
         archives = archiveData.map(AiChatArchiveCodec::summary)
     }
 
-    private fun AiChatArchive.toSession(isReadOnly: Boolean): AiChatSession = AiChatSession(
+    private fun AiChatArchive.toSession(): AiChatSession = AiChatSession(
         archiveId = id,
         lotteryKey = lotteryKey,
         profileId = profileId,
         profileName = profileName,
         model = model,
+        title = title,
         personaId = personaId,
+        memorySummary = memorySummary,
+        continuationOf = continuationOf,
         messages = messages,
-        prediction = prediction,
-        targetPeriod = targetPeriod,
-        isReadOnlyArchive = isReadOnly,
+        candidates = candidates,
+        prediction = candidates.lastOrNull()?.prediction,
+        targetPeriod = targetPeriod.ifBlank { null },
+        contextUsagePercent = AiChatProtocol.planContext(messages, memorySummary).usagePercent,
         createdAtEpochMs = createdAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
     )
 
     private fun replaceMessage(id: String, transform: (AiChatMessage) -> AiChatMessage) {
         session = session.copy(
-            messages = session.messages.map { message ->
-                if (message.id == id) transform(message) else message
-            },
+            messages = session.messages.map { message -> if (message.id == id) transform(message) else message },
             updatedAtEpochMs = System.currentTimeMillis(),
         )
     }
 }
+
 
 internal data class AiPositionStatistics(
     val position: Int,
@@ -442,6 +644,7 @@ private class RemoteAiChatClient {
         snapshot: DrawSnapshot,
         report: ForecastReport,
         previousMessages: List<AiChatMessage>,
+        memorySummary: String,
         question: String,
         persona: AiChatPersona,
         onProgress: (String) -> Unit,
@@ -458,6 +661,7 @@ private class RemoteAiChatClient {
         val messages = conversationMessages(
             context = context,
             previousMessages = previousMessages,
+            memorySummary = memorySummary,
             question = question,
             wantsPrediction = wantsPrediction,
             persona = persona,
@@ -534,6 +738,7 @@ private class RemoteAiChatClient {
     private fun conversationMessages(
         context: JSONObject,
         previousMessages: List<AiChatMessage>,
+        memorySummary: String,
         question: String,
         wantsPrediction: Boolean,
         persona: AiChatPersona,
@@ -551,12 +756,23 @@ private class RemoteAiChatClient {
                     "以下是客户端刚刚根据当前开奖接口历史逐期计算的事实。所有回答只能以这些事实为依据：\n${context}",
                 ),
         )
-        AiChatProtocol.trimHistory(previousMessages).forEach { message ->
+        if (memorySummary.isNotBlank()) {
             put(
                 JSONObject()
-                    .put("role", if (message.role == AiChatRole.USER) "user" else "assistant")
-                    .put("content", message.content),
+                    .put("role", "system")
+                    .put(
+                        "content",
+                        "以下是客户端从上一段长期对话压缩的策略记忆。它只代表用户曾明确提出的偏好、复盘和候选核验，不是新的开奖事实，也不代表模型参数已训练：\n$memorySummary",
+                    ),
             )
+        }
+        previousMessages.filter { it.content.isNotBlank() }.forEach { message ->
+            val role = when (message.role) {
+                AiChatRole.SYSTEM -> "system"
+                AiChatRole.USER -> "user"
+                AiChatRole.ASSISTANT -> "assistant"
+            }
+            put(JSONObject().put("role", role).put("content", message.content))
         }
         put(JSONObject().put("role", "user").put("content", question))
     }
@@ -565,7 +781,8 @@ private class RemoteAiChatClient {
         append(
             "你是天机内置的开奖记录分析助手，当前分析人设为【${persona.displayName}】。" +
                 "人设要求：${persona.instruction}" +
-                "使用简体中文直接、自然地回答，支持连续追问。" +
+                "使用简体中文直接、自然地回答，支持跨期开奖的连续追问和复盘。" +
+                "用户可以要求调整当前对话的分析侧重点；要明确这只影响后续对话研判，不会改写正式本机预测模型参数。" +
                 "只能引用客户端提供的当前开奖接口历史、逐期统计和本机模型参考；不得虚构期号、次数或数据来源。" +
                 "用户问某名次多少期、某号码出现多少次、遗漏多少期、当前号码之后常接哪些号时，必须从已核验字段计算并明确窗口。" +
                 "用户说出现几率大时，应解释为历史样本中的相对频次或模型相对评分，不得称为真实中奖概率。" +
