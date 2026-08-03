@@ -19,8 +19,8 @@ enum class AiChatPersona(
     COMPREHENSIVE(
         id = "comprehensive",
         displayName = "综合研判",
-        description = "综合频次、遗漏、转移、趋势和本机模型",
-        instruction = "综合使用20/60/120期频次、当前遗漏、后继转移、短长窗口变化和本机模型参考。先给结论，再列最关键证据和不确定性，避免只凭单一指标下结论。",
+        description = "综合真实历史、持续学习权重、遗漏、转移与状态变化",
+        instruction = "综合使用20/60/120期频次、当前遗漏、收缩后继转移、短长窗口变化和持续学习档案。默认独立于本机候选；先给结论，再列最关键证据、策略变化和不确定性，避免只凭单一指标下结论。",
         quickPrompts = listOf(
             "综合分析第一名，给出下一期相对候选和主要依据",
             "上一期候选没有命中，复盘后调整这期的分析策略",
@@ -69,6 +69,50 @@ enum class AiChatPersona(
             "第一名当前号码之后，历史上更常接哪些号？",
             "比较第一名后继转移和总体频次，哪些号码被明显高估或低估？",
             "分析第五名当前号码的历史后继分布和样本量",
+        ),
+    ),
+    ADAPTIVE_LEARNING(
+        id = "adaptive_learning",
+        displayName = "自适应学习",
+        description = "读取前向结算形成的长期权重，命中强化、未中纠偏",
+        instruction = "把adaptive_learning视为可审计的长期策略记忆。必须比较本期信号与历史权重是否仍适用；连续未中时明确改变至少一个分析侧重点，禁止照搬上一期号码。",
+        quickPrompts = listOf(
+            "根据持续学习档案分析下一期，说明这次改变了什么策略",
+            "复盘最近未中的原因，重新分配六类因子的侧重点",
+            "用独立学习模式给出六码，并说明与上一期策略的不同",
+        ),
+    ),
+    BAYES_BIG_DATA(
+        id = "bayes_big_data",
+        displayName = "贝叶斯大数据",
+        description = "用收缩估计处理小样本，避免把偶然次数夸成趋势",
+        instruction = "优先使用贝叶斯长窗频率和样本收缩。所有转移、遗漏和短窗结论都要结合样本量；差异不足时主动降低确定性，不得用1次对2次包装成强规律。",
+        quickPrompts = listOf(
+            "用贝叶斯收缩分析第六名，给出稳健六码",
+            "比较最近20期与120期，但过滤小样本噪声",
+            "哪些号码看似热门但经样本收缩后并不突出？",
+        ),
+    ),
+    REGIME_STATE(
+        id = "regime_state",
+        displayName = "状态走势",
+        description = "识别稳定、震荡、升温、降温和可能的状态切换",
+        instruction = "分析短中长窗口方向、波动和状态变化。只有多窗口一致且样本充分时才称为趋势；出现冲突时优先保守候选并指出可能的状态切换。",
+        quickPrompts = listOf(
+            "分析十个名次的状态变化，选择信号最清晰的一名",
+            "找出短中长窗口方向一致且波动较小的号码",
+            "判断当前是稳定、震荡还是可能发生状态切换",
+        ),
+    ),
+    UNIVERSAL_CONSENSUS(
+        id = "universal_consensus",
+        displayName = "万能码共识",
+        description = "汇总多个独立信号的共同候选，不把名称当成必中承诺",
+        instruction = "所谓万能码只表示贝叶斯、近期热度、遗漏、转移、状态和稳定性多个独立信号的共识池。必须列出支持数、冲突和边界号码；若共识弱，应明确说本期没有强万能码。",
+        quickPrompts = listOf(
+            "生成本期万能码共识池，并列出每个号码得到哪些信号支持",
+            "找出六类信号共同支持最多的六码，同时标注冲突",
+            "本期是否存在强共识？如果没有就直接说明没有",
         ),
     ),
     RISK_AUDIT(
@@ -124,6 +168,7 @@ data class AiChatArchive(
     val title: String = "新对话",
     val targetPeriod: String,
     val personaId: String = AiChatPersona.COMPREHENSIVE.id,
+    val judgementMode: AiJudgementMode = AiJudgementMode.INDEPENDENT,
     val memorySummary: String = "",
     val continuationOf: String? = null,
     val messages: List<AiChatMessage> = emptyList(),
@@ -155,6 +200,7 @@ data class AiChatSession(
     val model: String = "",
     val title: String = "新对话",
     val personaId: String = AiChatPersona.COMPREHENSIVE.id,
+    val judgementMode: AiJudgementMode = AiJudgementMode.INDEPENDENT,
     val memorySummary: String = "",
     val continuationOf: String? = null,
     val messages: List<AiChatMessage> = emptyList(),
@@ -168,6 +214,7 @@ data class AiChatSession(
     val isReadOnlyArchive: Boolean = false,
     val contextUsagePercent: Int = 0,
     val rolloverNotice: String? = null,
+    val learningProfile: AiLearningProfile = AiLearningProfile(),
     val createdAtEpochMs: Long = System.currentTimeMillis(),
     val updatedAtEpochMs: Long = System.currentTimeMillis(),
 )

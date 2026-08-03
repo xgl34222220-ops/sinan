@@ -88,6 +88,7 @@ import com.tianji.probabilitylab.nativev4.ai.AiChatMessage
 import com.tianji.probabilitylab.nativev4.ai.AiChatPersona
 import com.tianji.probabilitylab.nativev4.ai.AiChatRole
 import com.tianji.probabilitylab.nativev4.ai.AiChatSession
+import com.tianji.probabilitylab.nativev4.ai.AiJudgementMode
 import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.model.DrawSnapshot
 import com.tianji.probabilitylab.nativev4.model.ForecastReport
@@ -293,6 +294,7 @@ fun AiChatDialog(
                     },
                     onModel = { openContext(selectedConfig, it) },
                     onPersona = controller::selectPersona,
+                    onJudgementMode = controller::selectJudgementMode,
                 )
 
                 val candidatesByMessage = session.candidates.groupBy(AiChatCandidateRecord::messageId)
@@ -507,6 +509,7 @@ private fun SessionControlStrip(
     onConfig: (AiConfig) -> Unit,
     onModel: (String) -> Unit,
     onPersona: (String) -> Unit,
+    onJudgementMode: (AiJudgementMode) -> Unit,
 ) {
     val colors = LocalTianjiColors.current
     val persona = AiChatPersona.fromId(session.personaId)
@@ -533,7 +536,7 @@ private fun SessionControlStrip(
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    persona.displayName,
+                    "${session.judgementMode.label} · ${persona.displayName}",
                     color = colors.accent,
                     fontSize = 8.5.sp,
                     maxLines = 1,
@@ -577,12 +580,33 @@ private fun SessionControlStrip(
                         selectedKey = session.personaId,
                         onSelect = onPersona,
                     )
+                    SelectorRow(
+                        label = "判断",
+                        value = session.judgementMode.label,
+                        options = AiJudgementMode.entries.map { it.name to it.label },
+                        selectedKey = session.judgementMode.name,
+                        onSelect = { value -> onJudgementMode(AiJudgementMode.fromId(value)) },
+                    )
                     val ready = snapshot != null && report != null && selectedConfig != null
                     Text(
                         if (ready) "${snapshot!!.history.takeLast(120).size}期真实接口历史" else "请先准备开奖历史和完整AI配置",
                         color = if (ready) colors.green else colors.amber,
                         fontSize = 8.5.sp,
                         modifier = Modifier.padding(start = 62.dp, top = 2.dp, bottom = 3.dp),
+                    )
+                    val learning = session.learningProfile
+                    Text(
+                        "持续学习 ${learning.settled}期 · 六码 ${(learning.top6Rate * 100).toInt()}% · 连续未中 ${learning.missStreak}期",
+                        color = if (learning.missStreak >= 3) colors.amber else colors.accent,
+                        fontSize = 8.5.sp,
+                        modifier = Modifier.padding(start = 62.dp, top = 2.dp),
+                    )
+                    Text(
+                        learning.lastChange,
+                        color = colors.textDim,
+                        fontSize = 8.sp,
+                        lineHeight = 12.sp,
+                        modifier = Modifier.padding(start = 62.dp, top = 2.dp, bottom = 5.dp),
                     )
                 }
             }
@@ -648,7 +672,7 @@ private fun WelcomePanel(persona: AiChatPersona, enabled: Boolean, onPrompt: (St
         Spacer(Modifier.height(10.dp))
         Text("开始分析", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Text(
-            "同一会话可以持续复盘多期开奖",
+            "默认独立于本机候选，并根据真实前向结果持续纠偏",
             color = colors.textDim,
             fontSize = 9.5.sp,
             modifier = Modifier.padding(top = 3.dp, bottom = 13.dp),

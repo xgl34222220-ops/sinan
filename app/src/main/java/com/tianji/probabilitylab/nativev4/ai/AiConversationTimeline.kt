@@ -52,7 +52,7 @@ object AiConversationTimeline {
     fun merge(
         existing: List<AiConversationEvent>,
         next: AiConversationEvent,
-        maxEvents: Int = 24,
+        maxEvents: Int = 10,
     ): List<AiConversationEvent> {
         val replaceableStages = setOf(
             AiConversationStage.REASONING,
