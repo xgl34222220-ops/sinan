@@ -29,6 +29,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           def replace_required(path: str, old: str, new: str, count: int = 1) -> None:
               file = Path(path)
@@ -241,20 +242,19 @@ jobs:
 
           chat = Path("app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt")
           chat_text = chat.read_text(encoding="utf-8")
-          resolved_needle = """                                config.id,
-                                      activeModel,
-                                      prediction.position,
-          """
-          if resolved_needle not in chat_text:
-              raise SystemExit("resolved learning model marker missing")
-          chat_text = chat_text.replace(
-              resolved_needle,
-              """                                config.id,
-                                      learningStrategy,
-                                      prediction.position,
-          """,
-              1,
+          resolved_pattern = re.compile(
+              r"(val resolvedLearning = reply\.prediction\?\.let \{ prediction ->\s+"
+              r"learningStore\.profile\(\s+snapshot\.lottery\.apiKey,\s+config\.id,\s+)"
+              r"activeModel(\s*,\s+prediction\.position,)",
+              re.DOTALL,
           )
+          chat_text, resolved_count = resolved_pattern.subn(
+              lambda match: match.group(1) + "learningStrategy" + match.group(2),
+              chat_text,
+              count=1,
+          )
+          if resolved_count != 1:
+              raise SystemExit(f"resolved learning strategy replacement count: {resolved_count}")
 
           guard_marker = "\n\ninternal data class AiPositionStatistics("
           guard = '''
