@@ -37,7 +37,7 @@ object AiConversationTimeline {
 
     fun classify(message: String): AiConversationStage = when {
         "取消" in message -> AiConversationStage.CANCELLED
-        "失败" in message || "超时" in message || "错误" in message -> AiConversationStage.ERROR
+        "失败" in message || "超时" in message || "错误" in message || "中断" in message || "断流" in message -> AiConversationStage.ERROR
         "重连" in message || "重试" in message || "切换" in message -> AiConversationStage.RETRY
         "补全" in message || "继续对话" in message -> AiConversationStage.CONTINUATION
         "校验" in message || "核验" in message -> AiConversationStage.VALIDATING
@@ -54,12 +54,31 @@ object AiConversationTimeline {
         next: AiConversationEvent,
         maxEvents: Int = 24,
     ): List<AiConversationEvent> {
-        val replaceLatest = next.stage in setOf(
+        val replaceableStages = setOf(
             AiConversationStage.REASONING,
             AiConversationStage.OUTPUT,
             AiConversationStage.CONNECTED,
-        ) && existing.lastOrNull()?.stage == next.stage
-        val merged = if (replaceLatest) existing.dropLast(1) + next else existing + next
+        )
+        val phaseBoundaries = setOf(
+            AiConversationStage.CONTINUATION,
+            AiConversationStage.RETRY,
+            AiConversationStage.SUCCESS,
+            AiConversationStage.ERROR,
+            AiConversationStage.CANCELLED,
+        )
+        val merged = if (next.stage in replaceableStages) {
+            val boundaryIndex = existing.indexOfLast { it.stage in phaseBoundaries }
+            val replaceIndex = existing.indices.reversed().firstOrNull { index ->
+                index > boundaryIndex && existing[index].stage == next.stage
+            }
+            if (replaceIndex == null) {
+                existing + next
+            } else {
+                existing.toMutableList().apply { this[replaceIndex] = next }
+            }
+        } else {
+            existing + next
+        }
         return merged.takeLast(maxEvents.coerceAtLeast(1))
     }
 }

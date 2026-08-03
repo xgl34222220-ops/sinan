@@ -10,6 +10,7 @@ import androidx.core.content.edit
 import com.tianji.probabilitylab.nativev4.ai.AiAnalysisMode
 import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.ai.AiConnectionState
+import com.tianji.probabilitylab.nativev4.ai.AiErrorMessages
 import com.tianji.probabilitylab.nativev4.ai.AiConversationStage
 import com.tianji.probabilitylab.nativev4.ai.AiConversationTimeline
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusAudit
@@ -251,7 +252,7 @@ class AppController(context: Context) {
                                 profileId to AiRunStatus(
                                     profileId = profileId,
                                     state = AiConnectionState.FAILED,
-                                    message = it.message ?: "读取模型列表失败",
+                                    message = AiErrorMessages.userFacing(it, "读取模型列表失败"),
                                     checkedAtEpochMs = System.currentTimeMillis(),
                                 )
                             ),
@@ -353,7 +354,7 @@ class AppController(context: Context) {
                         AiRunStatus(
                             profileId = profileId,
                             state = AiConnectionState.FAILED,
-                            message = it.message ?: "连接失败",
+                            message = AiErrorMessages.userFacing(it, "连接失败"),
                             checkedAtEpochMs = System.currentTimeMillis(),
                         )
                     },
@@ -630,7 +631,7 @@ class AppController(context: Context) {
                                 aiStatuses = state.aiStatuses + (
                                     config.id to run {
                                         val current = state.aiStatuses[config.id] ?: AiRunStatus(config.id)
-                                        val failureMessage = it.message ?: "AI 分析失败"
+                                        val failureMessage = AiErrorMessages.userFacing(it, "AI 分析失败")
                                         current.copy(
                                             state = AiConnectionState.FAILED,
                                             message = failureMessage,
