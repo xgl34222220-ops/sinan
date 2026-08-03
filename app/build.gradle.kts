@@ -74,9 +74,9 @@ android {
     }
 
     lint {
-        // API 36 is the stable platform intentionally used by this release.
-        // Do not chase a newer preview SDK solely to silence OldTargetApi.
-        disable += "OldTargetApi"
+        // API 36 and these AndroidX versions are the newest set verified with AGP 8.13.
+        // Newer dependency releases currently require API 37 / AGP 9.1 and are intentionally deferred.
+        disable += setOf("OldTargetApi", "NewerVersionAvailable")
     }
 }
 
@@ -91,15 +91,15 @@ dependencies {
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
-    implementation("androidx.core:core-ktx:1.19.0")
-    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.datastore:datastore-preferences:1.2.1")
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
