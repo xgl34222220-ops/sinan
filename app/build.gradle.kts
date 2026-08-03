@@ -23,8 +23,8 @@ android {
         applicationId = "com.tianji.probabilitylab.nativev4"
         minSdk = 26
         targetSdk = 36
-        versionCode = 30
-        versionName = "5.5.5"
+        versionCode = 31
+        versionName = "5.5.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -72,6 +72,12 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    lint {
+        // API 36 and these AndroidX versions are the newest set verified with AGP 8.13.
+        // Reported newer releases require API 37 / AGP 9.1, so upgrading them is intentionally deferred.
+        disable += setOf("OldTargetApi", "GradleDependency")
+    }
 }
 
 kotlin {
@@ -98,4 +104,5 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20260522")
 }
