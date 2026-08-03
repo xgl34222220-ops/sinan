@@ -20,6 +20,29 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
+      - name: Fix patch preflight
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_v559.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''text = replace_once(
+              text,
+              '\"${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}\",',
+              '\"${config.analysisMode.label} · ${AiReasoningEngine.resolveForecast(config).displayLabel}\",',
+              "formal status label",
+          )'''
+          new = '''old_formal_label = '\"${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}\",'
+          new_formal_label = '\"${config.analysisMode.label} · ${AiReasoningEngine.resolveForecast(config).displayLabel}\",'
+          if text.count(old_formal_label) != 2:
+              raise RuntimeError(f"formal status label: expected 2 matches, found {text.count(old_formal_label)}")
+          text = text.replace(old_formal_label, new_formal_label, 2)'''
+          if old not in text:
+              raise SystemExit('preflight target not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Apply source patch
         run: python3 tools/apply_v559.py
 
