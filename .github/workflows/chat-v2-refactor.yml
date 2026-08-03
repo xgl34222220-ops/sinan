@@ -7,6 +7,12 @@ on:
     paths:
       - .github/scripts/apply_chat_v2.py
       - .github/workflows/chat-v2-refactor.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/scripts/apply_chat_v2.py
+      - .github/workflows/chat-v2-refactor.yml
 
 permissions:
   contents: write
