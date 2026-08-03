@@ -28,21 +28,35 @@ read_tty() {
 read_secret_tty() {
   local prompt="$1" value=""
   if [[ -r /dev/tty ]]; then
-    read -r -s -p "$prompt（输入时不显示，直接回车可暂不配置）: " value </dev/tty || true
+    read -r -s -p "$prompt（输入时不显示，直接回车保留原值或暂不配置）: " value </dev/tty || true
     printf '\n' >/dev/tty
   fi
   printf '%s' "$value"
 }
 
+env_value() {
+  local key="$1" fallback="${2:-}"
+  if [[ -f "$INSTALL_DIR/.env" ]]; then
+    local value
+    value="$(grep -m1 -E "^${key}=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2- || true)"
+    printf '%s' "${value:-$fallback}"
+  else
+    printf '%s' "$fallback"
+  fi
+}
+
+log "安装基础工具"
+apt-get update
+apt-get install -y ca-certificates curl gnupg git openssl
+
 install_docker() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     log "Docker 与 Compose 已安装"
+    systemctl enable --now docker
     return
   fi
 
   log "安装 Docker Engine 与 Compose"
-  apt-get update
-  apt-get install -y ca-certificates curl gnupg git openssl
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
@@ -71,14 +85,23 @@ else
   git clone --depth 1 --branch main "$REPO_URL" "$INSTALL_DIR"
 fi
 mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/backups"
+# The API/worker images run as uid/gid 10001 so the bind-mounted database stays writable.
+chown -R 10001:10001 "$INSTALL_DIR/data"
 
-DOMAIN="$(read_tty '请输入 DuckDNS 域名' "$DEFAULT_DOMAIN")"
+OLD_DOMAIN="$(env_value TIANJI_DOMAIN "$DEFAULT_DOMAIN")"
+OLD_ENDPOINT="$(env_value TIANJI_AI_ENDPOINT 'https://api.deepseek.com/chat/completions')"
+OLD_MODEL="$(env_value TIANJI_AI_MODEL 'deepseek-chat')"
+OLD_KEY="$(env_value TIANJI_AI_API_KEY '')"
+OLD_TOKEN="$(env_value TIANJI_API_TOKEN '')"
+
+DOMAIN="$(read_tty '请输入 DuckDNS 域名' "$OLD_DOMAIN")"
 [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || fail "域名格式不正确"
 
-AI_ENDPOINT="$(read_tty 'AI 接口地址' 'https://api.deepseek.com/chat/completions')"
-AI_MODEL="$(read_tty 'AI 模型名' 'deepseek-chat')"
-AI_KEY="$(read_secret_tty '请输入 AI API Key')"
-API_TOKEN="$(openssl rand -hex 32)"
+AI_ENDPOINT="$(read_tty 'AI 接口地址' "$OLD_ENDPOINT")"
+AI_MODEL="$(read_tty 'AI 模型名' "$OLD_MODEL")"
+NEW_AI_KEY="$(read_secret_tty '请输入 AI API Key')"
+AI_KEY="${NEW_AI_KEY:-$OLD_KEY}"
+API_TOKEN="${OLD_TOKEN:-$(openssl rand -hex 32)}"
 
 umask 077
 cat >"$INSTALL_DIR/.env" <<EOF
