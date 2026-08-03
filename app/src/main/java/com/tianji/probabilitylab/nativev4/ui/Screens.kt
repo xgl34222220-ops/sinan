@@ -68,6 +68,7 @@ import com.tianji.probabilitylab.nativev4.BuildConfig
 import com.tianji.probabilitylab.nativev4.ai.AiAnalysisMode
 import com.tianji.probabilitylab.nativev4.ai.AiConfig
 import com.tianji.probabilitylab.nativev4.ai.AiConnectionState
+import com.tianji.probabilitylab.nativev4.ai.AiConversationStage
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusEngine
 import com.tianji.probabilitylab.nativev4.ai.AiConsensusRecord
 import com.tianji.probabilitylab.nativev4.ai.AiForecastRecord
@@ -77,6 +78,7 @@ import com.tianji.probabilitylab.nativev4.ai.AiReasoningEngine
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningMode
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningProtocol
 import com.tianji.probabilitylab.nativev4.ai.AiReasoningState
+import com.tianji.probabilitylab.nativev4.ai.AiRunStatus
 import com.tianji.probabilitylab.nativev4.model.Draw
 import com.tianji.probabilitylab.nativev4.model.EvidenceMode
 import com.tianji.probabilitylab.nativev4.model.ForecastDeadline
@@ -659,6 +661,10 @@ private fun AiStatusRow(
     val colors = LocalTianjiColors.current
     val status = state.aiStatuses[config.id]
     val currentState = status?.state ?: AiConnectionState.UNTESTED
+    var expanded by remember(config.id) { mutableStateOf(false) }
+    val showTimeline = expanded ||
+        currentState == AiConnectionState.ANALYZING ||
+        currentState == AiConnectionState.FAILED
     val tint = when (currentState) {
         AiConnectionState.CONNECTED -> colors.green
         AiConnectionState.FAILED -> colors.red
@@ -666,58 +672,159 @@ private fun AiStatusRow(
         AiConnectionState.TESTING, AiConnectionState.ANALYZING -> colors.accent
         AiConnectionState.UNTESTED -> colors.amber
     }
-    Row(
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(tint.copy(alpha = 0.065f))
+            .border(1.dp, tint.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 11.dp, vertical = 10.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            if (currentState == AiConnectionState.TESTING || currentState == AiConnectionState.ANALYZING) {
+                CircularProgressIndicator(Modifier.size(14.dp), color = tint, strokeWidth = 1.8.dp)
+            } else {
+                Icon(
+                    if (currentState == AiConnectionState.CONNECTED) {
+                        Icons.Rounded.CheckCircle
+                    } else {
+                        Icons.Rounded.Info
+                    },
+                    null,
+                    tint = tint,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            Spacer(Modifier.width(7.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    config.displayName,
+                    color = colors.textSoft,
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}",
+                    color = colors.textDim,
+                    fontSize = 6.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    status?.message ?: "配置已保存，尚未测试",
+                    color = tint,
+                    fontSize = 7.sp,
+                    maxLines = 2,
+                    lineHeight = 11.sp,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (currentState == AiConnectionState.ANALYZING || currentState == AiConnectionState.TESTING) {
+                MiniActionButton("取消", Modifier.width(48.dp), tint = colors.amber) {
+                    onCancelAi(config.id)
+                }
+            } else {
+                status?.latencyMs?.let { Text("${it}ms", color = tint, fontSize = 8.sp) }
+            }
+        }
+        if (!status?.timeline.isNullOrEmpty()) {
+            Spacer(Modifier.height(9.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "分析对话",
+                    color = colors.textSoft,
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (showTimeline) "收起" else "查看 ${status?.timeline?.size ?: 0} 条",
+                    color = colors.accent,
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            if (showTimeline && status != null) {
+                Spacer(Modifier.height(5.dp))
+                AiConversationWindow(status)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiConversationWindow(status: AiRunStatus) {
+    val colors = LocalTianjiColors.current
+    val visible = status.timeline.takeLast(10)
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(tint.copy(alpha = 0.065f))
-            .border(1.dp, tint.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 11.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .background(Color.Black.copy(alpha = 0.16f))
+            .border(1.dp, colors.line, RoundedCornerShape(14.dp))
+            .padding(9.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        if (currentState == AiConnectionState.TESTING || currentState == AiConnectionState.ANALYZING) {
-            CircularProgressIndicator(Modifier.size(14.dp), color = tint, strokeWidth = 1.8.dp)
-        } else {
-            Icon(
-                if (currentState == AiConnectionState.CONNECTED) {
-                    Icons.Rounded.CheckCircle
-                } else {
-                    Icons.Rounded.Info
-                },
-                null,
-                tint = tint,
-                modifier = Modifier.size(14.dp),
-            )
+        visible.forEach { event ->
+            val isModel = event.stage == AiConversationStage.REASONING ||
+                event.stage == AiConversationStage.OUTPUT
+            val (label, tint) = when (event.stage) {
+                AiConversationStage.PREPARING -> "准备" to colors.textDim
+                AiConversationStage.REQUEST -> "天机" to colors.accent
+                AiConversationStage.CONNECTED -> "连接" to colors.accent
+                AiConversationStage.REASONING -> "模型推理" to colors.accent
+                AiConversationStage.OUTPUT -> "模型结果" to colors.green
+                AiConversationStage.VALIDATING -> "本机校验" to colors.amber
+                AiConversationStage.CONTINUATION -> "继续对话" to colors.amber
+                AiConversationStage.RETRY -> "协议重发" to colors.amber
+                AiConversationStage.SUCCESS -> "完成" to colors.green
+                AiConversationStage.ERROR -> "错误" to colors.red
+                AiConversationStage.CANCELLED -> "取消" to colors.amber
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = if (isModel) 22.dp else 0.dp,
+                        end = if (isModel) 0.dp else 22.dp,
+                    )
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(tint.copy(alpha = 0.085f))
+                    .border(1.dp, tint.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 9.dp, vertical = 8.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, color = tint, fontSize = 6.8.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "+${event.elapsedMs / 1_000}s",
+                        color = colors.textDim,
+                        fontSize = 6.5.sp,
+                    )
+                }
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    event.message,
+                    color = colors.textSoft,
+                    fontSize = 7.4.sp,
+                    lineHeight = 11.5.sp,
+                )
+            }
         }
-        Spacer(Modifier.width(7.dp))
-        Column(Modifier.weight(1f)) {
+        if (status.timeline.size > visible.size) {
             Text(
-                config.displayName,
-                color = colors.textSoft,
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                "${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}",
+                "较早的 ${status.timeline.size - visible.size} 条过程已折叠",
                 color = colors.textDim,
                 fontSize = 6.5.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
-            Text(
-                status?.message ?: "配置已保存，尚未测试",
-                color = tint,
-                fontSize = 7.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (currentState == AiConnectionState.ANALYZING || currentState == AiConnectionState.TESTING) {
-            MiniActionButton("取消", Modifier.width(48.dp), tint = colors.amber) {
-                onCancelAi(config.id)
-            }
-        } else {
-            status?.latencyMs?.let { Text("${it}ms", color = tint, fontSize = 8.sp) }
         }
     }
 }
