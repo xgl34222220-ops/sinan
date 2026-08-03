@@ -1,5 +1,7 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import android.speech.tts.TextToSpeech
+import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +32,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
@@ -55,6 +58,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +70,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -114,6 +121,56 @@ fun AiChatDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = LocalTianjiColors.current
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var speechEngine by remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(context.applicationContext) {
+        var engine: TextToSpeech? = null
+        engine = TextToSpeech(context.applicationContext) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val languageResult = engine?.setLanguage(Locale.SIMPLIFIED_CHINESE)
+                if (
+                    languageResult == TextToSpeech.LANG_MISSING_DATA ||
+                    languageResult == TextToSpeech.LANG_NOT_SUPPORTED
+                ) {
+                    engine?.language = Locale.getDefault()
+                }
+                speechEngine = engine
+            }
+        }
+        onDispose {
+            if (speechEngine === engine) speechEngine = null
+            engine?.stop()
+            engine?.shutdown()
+        }
+    }
+
+    fun copyMessage(message: AiChatMessage) {
+        val plain = chatMessagePlainText(message.content)
+        if (plain.isBlank()) return
+        clipboard.setText(AnnotatedString(plain))
+        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+    }
+
+    fun speakMessage(message: AiChatMessage) {
+        val plain = chatMessagePlainText(message.content)
+        if (plain.isBlank()) return
+        val engine = speechEngine
+        if (engine == null) {
+            Toast.makeText(context, "朗读引擎正在初始化", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val result = engine.speak(
+            plain,
+            TextToSpeech.QUEUE_FLUSH,
+            null,
+            "tianji-chat-${message.id}",
+        )
+        if (result == TextToSpeech.ERROR) {
+            Toast.makeText(context, "当前系统朗读引擎不可用", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val completeConfigs = remember(configs) { configs.filter(AiConfig::isComplete) }
     val session = controller.session
     val selectedConfig = completeConfigs.firstOrNull { it.id == session.profileId }
@@ -185,6 +242,16 @@ fun AiChatDialog(
         )
     }
 
+    fun repeatMessage(message: AiChatMessage) {
+        if (controller.session.isRunning) return
+        val prompt = repeatPromptFor(controller.session.messages, message.id)
+        if (prompt.isNullOrBlank()) {
+            Toast.makeText(context, "找不到这条回答对应的问题", Toast.LENGTH_SHORT).show()
+            return
+        }
+        submit(prompt)
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -248,6 +315,10 @@ fun AiChatDialog(
                         ChatMessageBubble(
                             message = message,
                             isStreaming = message.id == session.streamingMessageId && session.isRunning,
+                            canRepeat = !session.isRunning,
+                            onCopy = { copyMessage(message) },
+                            onSpeak = { speakMessage(message) },
+                            onRepeat = { repeatMessage(message) },
                         )
                         candidatesByMessage[message.id].orEmpty().forEach { record ->
                             Spacer(Modifier.height(8.dp))
@@ -602,23 +673,39 @@ private fun WelcomePanel(persona: AiChatPersona, enabled: Boolean, onPrompt: (St
 }
 
 @Composable
-private fun ChatMessageBubble(message: AiChatMessage, isStreaming: Boolean) {
+private fun ChatMessageBubble(
+    message: AiChatMessage,
+    isStreaming: Boolean,
+    canRepeat: Boolean,
+    onCopy: () -> Unit,
+    onSpeak: () -> Unit,
+    onRepeat: () -> Unit,
+) {
     val colors = LocalTianjiColors.current
     if (message.role == AiChatRole.SYSTEM) {
         SystemEventChip(message.content)
         return
     }
     if (message.role == AiChatRole.USER) {
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-            Text(
-                message.content,
-                color = colors.text,
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
-                modifier = Modifier.widthIn(max = 286.dp)
-                    .clip(RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp))
-                    .background(colors.accent.copy(alpha = 0.13f))
-                    .padding(horizontal = 13.dp, vertical = 10.dp),
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+            SelectionContainer {
+                Text(
+                    message.content,
+                    color = colors.text,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    modifier = Modifier.widthIn(max = 286.dp)
+                        .clip(RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp))
+                        .background(colors.accent.copy(alpha = 0.13f))
+                        .padding(horizontal = 13.dp, vertical = 10.dp),
+                )
+            }
+            ChatMessageActions(
+                role = message.role,
+                enabled = canRepeat,
+                onCopy = onCopy,
+                onSpeak = onSpeak,
+                onRepeat = onRepeat,
             )
         }
         return
@@ -637,12 +724,14 @@ private fun ChatMessageBubble(message: AiChatMessage, isStreaming: Boolean) {
             isStreaming -> "正在思考，等待第一段正文…"
             else -> ""
         }
-        ChatMarkdownText(
-            text = visible,
-            color = if (message.content.isBlank()) colors.textDim else colors.textSoft,
-            fontSize = 13.5.sp,
-            lineHeight = 21.sp,
-        )
+        SelectionContainer {
+            ChatMarkdownText(
+                text = visible,
+                color = if (message.content.isBlank()) colors.textDim else colors.textSoft,
+                fontSize = 13.5.sp,
+                lineHeight = 21.sp,
+            )
+        }
         message.latencyMs?.let {
             Text(
                 "${it / 1_000.0}s",
@@ -651,7 +740,53 @@ private fun ChatMessageBubble(message: AiChatMessage, isStreaming: Boolean) {
                 modifier = Modifier.padding(top = 5.dp),
             )
         }
+        if (!isStreaming && message.content.isNotBlank()) {
+            ChatMessageActions(
+                role = message.role,
+                enabled = canRepeat,
+                onCopy = onCopy,
+                onSpeak = onSpeak,
+                onRepeat = onRepeat,
+            )
+        }
     }
+}
+
+@Composable
+private fun ChatMessageActions(
+    role: AiChatRole,
+    enabled: Boolean,
+    onCopy: () -> Unit,
+    onSpeak: () -> Unit,
+    onRepeat: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.padding(top = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChatMessageAction("复制", true, onCopy)
+        ChatMessageAction("朗读", true, onSpeak)
+        ChatMessageAction(
+            if (role == AiChatRole.USER) "再次提问" else "重新回答",
+            enabled,
+            onRepeat,
+        )
+    }
+}
+
+@Composable
+private fun ChatMessageAction(label: String, enabled: Boolean, onClick: () -> Unit) {
+    val colors = LocalTianjiColors.current
+    Text(
+        label,
+        color = if (enabled) colors.textDim else colors.textDim.copy(alpha = 0.38f),
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.clip(RoundedCornerShape(9.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 7.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
