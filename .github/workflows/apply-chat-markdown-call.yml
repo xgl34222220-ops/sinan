@@ -1,0 +1,67 @@
+name: Wire chat Markdown renderer
+
+on:
+  push:
+    branches: [feature/v5.5.6-early-result]
+    paths:
+      - .github/workflows/apply-chat-markdown-call.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feature/v5.5.6-early-result
+
+      - name: Replace raw Text with Markdown renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AiChatDialog.kt')
+          text = path.read_text()
+          pattern = re.compile(
+              r'''(?m)^(?P<indent>\s*)Text\(\n'''
+              r'''\s*visible,\n'''
+              r'''\s*color = if \(message\.content\.isBlank\(\)\) colors\.textDim else colors\.textSoft,\n'''
+              r'''\s*fontSize = 15\.sp,\n'''
+              r'''\s*lineHeight = 23\.sp,\n'''
+              r'''\s*fontWeight = FontWeight\.Normal,\n'''
+              r'''\s*\)'''
+          )
+          match = pattern.search(text)
+          if not match:
+              raise SystemExit('AI reply Text block not found; refusing unsafe edit')
+          indent = match.group('indent')
+          replacement = (
+              f'{indent}ChatMarkdownText(\n'
+              f'{indent}    text = visible,\n'
+              f'{indent}    color = if (message.content.isBlank()) colors.textDim else colors.textSoft,\n'
+              f'{indent}    fontSize = 15.sp,\n'
+              f'{indent}    lineHeight = 23.sp,\n'
+              f'{indent})'
+          )
+          updated, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'unexpected replacement count: {count}')
+          path.write_text(updated)
+          PY
+
+      - name: Commit source change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AiChatDialog.kt
+          git commit -m 'fix(chat): render AI replies as Markdown'
+          git push origin HEAD:feature/v5.5.6-early-result
