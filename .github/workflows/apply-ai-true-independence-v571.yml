@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - fix/ai-true-independence-v5.7.1
-    paths:
-      - tools/patch_ai_true_independence_v571.py
-      - .github/workflows/apply-ai-true-independence-v571.yml
   workflow_dispatch:
 
 permissions:
