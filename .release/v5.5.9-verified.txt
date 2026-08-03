@@ -1,0 +1,11 @@
+Tianji formal release verification
+tag=v5.5.9
+source_commit=bac6b9d82d27c85fdc91a6dd4b4205e6959bf9a7
+version_name=5.5.9
+version_code=34
+certificate_sha256=5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed
+apk_sha256=083bea9646bccc492c5911eb34e21bee90e0baaba4d269195f5f3956f8912ce1
+aab_sha256=4d312ffa64b5246249d77ae81638f457b00340481b49d7467f71ad297cd0f74b
+release_url=https://github.com/xgl34222220-ops/tianji/releases/tag/v5.5.9
+verified_at=2026-08-03T14:47:48Z
+assets=Tianji-v5.5.9-release.apk,Tianji-v5.5.9-release.aab,Tianji-v5.5.9-SHA256.txt,Tianji-v5.5.9-VERIFY.txt
