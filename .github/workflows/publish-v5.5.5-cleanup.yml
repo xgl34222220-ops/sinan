@@ -93,14 +93,14 @@ jobs:
               | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]'
           )"
           test -n "$OLD_CERT"
+          export OLD_CERT
 
           if [[ -n "$SECRET_KEYSTORE_BASE64" && -n "$SECRET_STORE_PASSWORD" && -n "$SECRET_KEY_ALIAS" ]]; then
             printf '%s' "$SECRET_KEYSTORE_BASE64" | base64 --decode \
               > "$RUNNER_TEMP/recovered-keys/release.jks"
-            python3 - <<'PY'
-          else
-            python3 - <<'PY'
           fi
+
+          python3 - <<'PY'
           import json
           import os
           import pathlib
@@ -117,10 +117,9 @@ jobs:
           secret_alias = os.environ.get("SECRET_KEY_ALIAS", "")
           secret_key = os.environ.get("SECRET_KEY_PASSWORD", "")
 
-          def run(args, input_data=None):
+          def run(args):
               return subprocess.run(
                   args,
-                  input=input_data,
                   stdout=subprocess.PIPE,
                   stderr=subprocess.STDOUT,
                   check=False,
@@ -158,7 +157,6 @@ jobs:
           seen_blobs = set()
           for oid, path in objects:
               suffix = pathlib.Path(path).suffix.lower()
-              lower = path.lower()
               if suffix in text_suffixes:
                   size = int(subprocess.check_output(["git", "cat-file", "-s", oid], text=True))
                   if size <= 1_000_000:
@@ -239,7 +237,6 @@ jobs:
           print("Recovered a keystore whose certificate exactly matches v5.4.7; secret values were not printed.")
           PY
 
-          export OLD_CERT
           KEYSTORE_PATH="$(python3 -c 'import json,os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"signing-match.json")))["path"])')"
           STORE_PASSWORD="$(python3 -c 'import json,os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"signing-match.json")))["store_password"])')"
           KEY_ALIAS="$(python3 -c 'import json,os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"signing-match.json")))["alias"])')"
