@@ -10,7 +10,10 @@ import com.tianji.probabilitylab.nativev4.model.ForecastReport
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.EOFException
+import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.security.KeyStore
@@ -850,6 +853,18 @@ class RemoteAiAnalyzer {
                     System.currentTimeMillis() - started,
                 )
                 error("模型响应超过 ${readTimeoutMs / 1_000} 秒；本次已停止，未自动重新预测")
+            } catch (cause: EOFException) {
+                val message = transportFailureMessage(cause)
+                onProgress("$message，本次未自动重新预测", System.currentTimeMillis() - started)
+                error("$message；本次未自动重新预测")
+            } catch (cause: SocketException) {
+                val message = transportFailureMessage(cause)
+                onProgress("$message，本次未自动重新预测", System.currentTimeMillis() - started)
+                error("$message；本次未自动重新预测")
+            } catch (cause: IOException) {
+                val message = transportFailureMessage(cause)
+                onProgress("$message，本次未自动重新预测", System.currentTimeMillis() - started)
+                error("$message；本次未自动重新预测")
             } finally {
                 activeConnections -= connection
                 profileConnections[config.id]?.remove(connection)
@@ -884,50 +899,75 @@ class RemoteAiAnalyzer {
             }
         }
 
-        reader.forEachLine { rawLine ->
-            val line = rawLine.trim()
-            if (line.isBlank()) return@forEachLine
-            if (!line.startsWith("data:")) {
-                if (line.startsWith("{")) plainBody.append(line)
-                return@forEachLine
-            }
-            val payload = line.removePrefix("data:").trim()
-            if (payload == "[DONE]" || payload.isBlank()) return@forEachLine
-            val chunk = runCatching { JSONObject(payload) }.getOrNull() ?: return@forEachLine
-            responseId = chunk.optString("id").ifBlank { responseId }
-            chunk.optJSONObject("usage")?.let { usage = it }
-            val choice = chunk.optJSONArray("choices")?.optJSONObject(0) ?: return@forEachLine
-            finishReason = choice.optString("finish_reason").ifBlank { finishReason }
-            val delta = choice.optJSONObject("delta") ?: return@forEachLine
-            val reasoningPart = delta.optString("reasoning_content")
-            val contentPart = delta.optString("content")
-            if (reasoningPart.isNotEmpty()) {
-                if (firstReasoningMs < 0L) firstReasoningMs = System.currentTimeMillis() - startedAtMs
-                reasoning.append(reasoningPart)
-                report("模型正在推理 · 已收到 ${reasoning.length} 个推理字符")
-            }
-            if (contentPart.isNotEmpty()) {
-                if (firstContentMs < 0L) firstContentMs = System.currentTimeMillis() - startedAtMs
-                content.append(contentPart)
-                if (AiForecastPayloadExtractor.containsForecastCore(content.toString())) {
-                    report("已收到完整预测核心，正在校验说明与结束状态")
-                } else {
-                    report("模型正在生成结构化预测 · 已收到 ${content.length} 个结果字符")
+        var streamFailure: IOException? = null
+        try {
+            reader.forEachLine { rawLine ->
+                val line = rawLine.trim()
+                if (line.isBlank()) return@forEachLine
+                if (!line.startsWith("data:")) {
+                    if (line.startsWith("{")) plainBody.append(line)
+                    return@forEachLine
+                }
+                val payload = line.removePrefix("data:").trim()
+                if (payload == "[DONE]" || payload.isBlank()) return@forEachLine
+                val chunk = runCatching { JSONObject(payload) }.getOrNull() ?: return@forEachLine
+                responseId = chunk.optString("id").ifBlank { responseId }
+                chunk.optJSONObject("usage")?.let { usage = it }
+                val choice = chunk.optJSONArray("choices")?.optJSONObject(0) ?: return@forEachLine
+                finishReason = choice.optString("finish_reason").ifBlank { finishReason }
+                val delta = choice.optJSONObject("delta") ?: return@forEachLine
+                val reasoningPart = delta.optString("reasoning_content")
+                val contentPart = delta.optString("content")
+                if (reasoningPart.isNotEmpty()) {
+                    if (firstReasoningMs < 0L) firstReasoningMs = System.currentTimeMillis() - startedAtMs
+                    reasoning.append(reasoningPart)
+                    report("模型正在推理 · 已收到 ${reasoning.length} 个推理字符")
+                }
+                if (contentPart.isNotEmpty()) {
+                    if (firstContentMs < 0L) firstContentMs = System.currentTimeMillis() - startedAtMs
+                    content.append(contentPart)
+                    if (AiForecastPayloadExtractor.containsForecastCore(content.toString())) {
+                        report("已收到完整预测核心，正在校验说明与结束状态")
+                    } else {
+                        report("模型正在生成结构化预测 · 已收到 ${content.length} 个结果字符")
+                    }
                 }
             }
+        } catch (cause: IOException) {
+            streamFailure = cause
         }
 
-        if (content.isEmpty() && plainBody.isNotEmpty()) return JSONObject(plainBody.toString())
+        if (content.isEmpty() && reasoning.isEmpty() && plainBody.isNotEmpty()) {
+            val plainJson = runCatching { JSONObject(plainBody.toString()) }.getOrElse { parseFailure ->
+                streamFailure?.let { throw it }
+                throw parseFailure
+            }
+            streamFailure?.let { failure ->
+                plainJson.put("_tianji_stream_interrupted", true)
+                plainJson.put("_tianji_stream_error", transportFailureMessage(failure))
+                onProgress(
+                    "网络连接中断，但已恢复服务器返回内容，正在本机校验",
+                    System.currentTimeMillis() - startedAtMs,
+                )
+            }
+            return plainJson
+        }
+
         val message = JSONObject().put("content", content.toString())
         if (reasoning.isNotEmpty()) message.put("reasoning_content", reasoning.toString())
-        return JSONObject()
+        val result = JSONObject()
             .put("id", responseId)
             .put(
                 "choices",
                 JSONArray().put(
                     JSONObject()
                         .put("index", 0)
-                        .put("finish_reason", finishReason.ifBlank { "stop" })
+                        .put(
+                            "finish_reason",
+                            finishReason.ifBlank {
+                                if (streamFailure == null) "stop" else "network_interrupted"
+                            },
+                        )
                         .put("message", message),
                 ),
             )
@@ -937,6 +977,38 @@ class RemoteAiAnalyzer {
                 put("_tianji_first_content_ms", firstContentMs)
                 put("_tianji_stream_finished_ms", System.currentTimeMillis() - startedAtMs)
             }
+
+        streamFailure?.let { failure ->
+            if (content.isEmpty() && reasoning.isEmpty()) throw failure
+            result.put("_tianji_stream_interrupted", true)
+            result.put("_tianji_stream_error", transportFailureMessage(failure))
+            onProgress(
+                if (result.hasCompleteForecastContent()) {
+                    "网络连接中断，但已恢复完整预测核心，正在本机校验"
+                } else {
+                    "网络连接中断，已保留已接收内容，正在沿用同一对话补全结果"
+                },
+                System.currentTimeMillis() - startedAtMs,
+            )
+        }
+        return result
+    }
+
+    private fun transportFailureMessage(cause: Throwable): String {
+        val message = cause.message.orEmpty().lowercase()
+        return when {
+            cause is SocketTimeoutException -> "等待模型输出超时"
+            cause is EOFException -> "模型连接提前结束"
+            cause is SocketException && listOf(
+                "software caused connection abort",
+                "connection reset",
+                "broken pipe",
+                "socket closed",
+            ).any(message::contains) -> "网络连接被系统、代理或服务器中断"
+            cause is SocketException -> "网络连接异常中断"
+            cause is IOException -> "网络连接在模型输出过程中中断"
+            else -> "AI 网络请求失败"
+        }
     }
 
     private fun JSONObject.streamPhaseSummary(): String {
@@ -945,13 +1017,14 @@ class RemoteAiAnalyzer {
         val finished = optLong("_tianji_stream_finished_ms", -1L)
         if (finished < 0L) return ""
         fun seconds(value: Long): String = String.format(java.util.Locale.US, "%.1fs", value / 1000.0)
-        return when {
+        val timing = when {
             firstReasoning >= 0L && firstContent >= firstReasoning ->
                 "首个推理 ${seconds(firstReasoning)} · 推理阶段 ${seconds(firstContent - firstReasoning)} · 结果阶段 ${seconds((finished - firstContent).coerceAtLeast(0L))}"
             firstContent >= 0L ->
                 "首个结果 ${seconds(firstContent)} · 结果阶段 ${seconds((finished - firstContent).coerceAtLeast(0L))}"
             else -> "响应总耗时 ${seconds(finished)}"
         }
+        return if (optBoolean("_tianji_stream_interrupted")) "$timing · 断流后已恢复" else timing
     }
 
     private fun JSONObject.extractContent(): String = optJSONArray("choices")

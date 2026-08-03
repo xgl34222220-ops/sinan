@@ -19,6 +19,10 @@ class AiConversationTimelineTest {
             AiConversationStage.RETRY,
             AiConversationTimeline.classify("接口拒绝参数，正在切换模型默认思考协议"),
         )
+        assertEquals(
+            AiConversationStage.ERROR,
+            AiConversationTimeline.classify("网络连接中断，已保留已接收内容"),
+        )
     }
 
     @Test
@@ -39,6 +43,34 @@ class AiConversationTimelineTest {
 
         assertEquals(1, merged.size)
         assertTrue(merged.single().message.contains("500"))
+    }
+
+    @Test
+    fun compactsAlternatingReasoningAndOutputUpdates() {
+        var events = emptyList<AiConversationEvent>()
+        repeat(8) { index ->
+            events = AiConversationTimeline.merge(
+                events,
+                AiConversationTimeline.event(
+                    AiConversationStage.REASONING,
+                    "推理-$index",
+                    index.toLong(),
+                    index.toLong(),
+                ),
+            )
+            events = AiConversationTimeline.merge(
+                events,
+                AiConversationTimeline.event(
+                    AiConversationStage.OUTPUT,
+                    "结果-$index",
+                    index.toLong(),
+                    index.toLong(),
+                ),
+            )
+        }
+        assertEquals(2, events.size)
+        assertEquals("推理-7", events.first { it.stage == AiConversationStage.REASONING }.message)
+        assertEquals("结果-7", events.first { it.stage == AiConversationStage.OUTPUT }.message)
     }
 
     @Test
