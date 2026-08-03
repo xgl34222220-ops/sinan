@@ -32,12 +32,26 @@ jobs:
           ref: feature/v5.5.6-early-result
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
       - name: Apply multi-conversation refactor
         run: python3 .github/scripts/apply_chat_v2.py
@@ -45,11 +59,14 @@ jobs:
       - name: Remove one-shot helpers
         run: rm -f .github/scripts/apply_chat_v2.py .github/workflows/chat-v2-refactor.yml
 
-      - name: Grant Gradle permission
-        run: chmod +x gradlew
-
       - name: Run unit tests, lint and APK builds
-        run: ./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest lintDebug assembleDebug assembleRelease
+        run: >-
+          gradle --no-daemon --stacktrace
+          :app:testDebugUnitTest
+          :app:testReleaseUnitTest
+          :app:lintDebug
+          :app:assembleDebug
+          :app:assembleRelease
 
       - name: Commit verified sources
         run: |
