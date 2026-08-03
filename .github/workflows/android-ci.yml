@@ -28,15 +28,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -f .github/patches/chat_archive.patch.gz.b64 ]; then
+          PATCH_FILE=.github/patches/chat_archive_v2.patch.gz.b64
+          if [ ! -f "$PATCH_FILE" ]; then
+            PATCH_FILE=.github/patches/chat_archive.patch.gz.b64
+          fi
+          if [ ! -f "$PATCH_FILE" ]; then
             echo 'No pending chat archive patch.'
             exit 0
           fi
-          base64 --decode .github/patches/chat_archive.patch.gz.b64 | gzip --decompress > /tmp/chat_archive.patch
+          base64 --decode "$PATCH_FILE" | gzip --decompress > /tmp/chat_archive.patch
           git apply --check /tmp/chat_archive.patch
           git apply /tmp/chat_archive.patch
           git show f43095bdd677d9c96a79c1034376e4561bea0c75:.github/workflows/android-ci.yml > .github/workflows/android-ci.yml
           rm -f .github/patches/chat_archive.patch.gz.b64
+          rm -f .github/patches/chat_archive_v2.patch.gz.b64
           rm -f .github/patches/trigger.txt
           rm -f .github/workflows/source-export.yml
           rm -f .github/workflows/apply-chat-archive.yml
