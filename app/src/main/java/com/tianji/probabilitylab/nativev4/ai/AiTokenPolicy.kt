@@ -9,39 +9,40 @@ data class AiTokenBudget(
 )
 
 /**
- * Formal predictions keep real reasoning in AUTO/HIGH, but still use a bounded output budget.
- * The wall-clock deadline is the primary guarantee that a model cannot think until after the draw;
- * these token ceilings prevent an unexpectedly large transcript from bypassing cost controls.
+ * The output limit is only a safety ceiling; it must not be used to simulate a faster model by
+ * cutting off reasoning. Official DeepSeek V4 therefore receives its documented maximum output
+ * space in every reasoning mode. Compatible and model-dependent APIs remain uncapped by the
+ * client so the provider can apply the selected model's own maximum.
+ *
+ * Streaming completion is still terminated immediately once Tianji has received a complete
+ * position + scores core, so a high ceiling does not make a short answer wait for unused tokens.
  */
 object AiTokenPolicy {
-    const val LOW_MAX_OUTPUT_TOKENS: Int = 2048
-    const val AUTO_MAX_OUTPUT_TOKENS: Int = 8192
-    const val HIGH_MAX_OUTPUT_TOKENS: Int = 16384
+    const val DEEPSEEK_V4_MAX_OUTPUT_TOKENS: Int = 384 * 1024
+
+    // Kept as aliases for source compatibility. Reasoning mode controls thinking effort, not the
+    // amount of output space available to the model.
+    const val LOW_MAX_OUTPUT_TOKENS: Int = DEEPSEEK_V4_MAX_OUTPUT_TOKENS
+    const val AUTO_MAX_OUTPUT_TOKENS: Int = DEEPSEEK_V4_MAX_OUTPUT_TOKENS
+    const val HIGH_MAX_OUTPUT_TOKENS: Int = DEEPSEEK_V4_MAX_OUTPUT_TOKENS
 
     fun resolve(config: AiConfig, responsesApi: Boolean): AiTokenBudget {
         val host = runCatching { URL(config.endpoint.trim()).host.lowercase() }.getOrDefault("")
         val model = config.model.trim().lowercase()
-        val boundedDeepSeek = config.provider == AiProvider.DEEPSEEK ||
-            host.contains("deepseek") || model.startsWith("deepseek-")
-        val boundedOpenAiResponses = config.provider == AiProvider.OPENAI && responsesApi
+        val officialDeepSeekV4 = host.endsWith("deepseek.com") && model.startsWith("deepseek-v4")
 
-        if (!boundedDeepSeek && !boundedOpenAiResponses) {
+        if (!officialDeepSeekV4) {
             return AiTokenBudget(
                 parameter = null,
                 value = null,
-                label = "输出空间由模型/供应商上限决定（客户端不限）",
+                label = "使用所选模型/供应商的最大输出空间（客户端不限制）",
             )
         }
 
-        val (value, modeLabel) = when (config.reasoningMode) {
-            AiReasoningMode.LOW -> LOW_MAX_OUTPUT_TOKENS to "省时"
-            AiReasoningMode.AUTO -> AUTO_MAX_OUTPUT_TOKENS to "自动思考"
-            AiReasoningMode.HIGH -> HIGH_MAX_OUTPUT_TOKENS to "深度思考"
-        }
         return AiTokenBudget(
-            parameter = if (boundedOpenAiResponses) "max_output_tokens" else "max_tokens",
-            value = value,
-            label = "正式预测推理与核心输出上限 $value tokens（$modeLabel）",
+            parameter = if (responsesApi) "max_output_tokens" else "max_tokens",
+            value = DEEPSEEK_V4_MAX_OUTPUT_TOKENS,
+            label = "使用 DeepSeek V4 最大输出空间 384K tokens · 完整结果到达即结束",
         )
     }
 }
