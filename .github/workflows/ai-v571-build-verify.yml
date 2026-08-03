@@ -1,0 +1,136 @@
+name: Verify Tianji AI independence v5.7.1
+
+on:
+  push:
+    branches:
+      - fix/ai-true-independence-v5.7.1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tianji-ai-v571-build
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout branch
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/ai-true-independence-v5.7.1
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        id: java
+        continue-on-error: true
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        id: android
+        continue-on-error: true
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        id: gradle
+        continue-on-error: true
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        id: sdk
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Test lint and build
+        id: build
+        if: steps.java.outcome == 'success' && steps.android.outcome == 'success' && steps.gradle.outcome == 'success' && steps.sdk.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:testReleaseUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :app:assembleRelease \
+            2>&1 | tee ai-v571-build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Record verification result
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-v571
+          code='${{ steps.build.outputs.exit_code }}'
+          environment_ok=true
+          for outcome in \
+            '${{ steps.java.outcome }}' \
+            '${{ steps.android.outcome }}' \
+            '${{ steps.gradle.outcome }}' \
+            '${{ steps.sdk.outcome }}'; do
+            if [[ "$outcome" != 'success' ]]; then environment_ok=false; fi
+          done
+
+          if [[ "$environment_ok" != 'true' ]]; then
+            status='environment_failure'
+            summary='Android build environment setup failed.'
+          elif [[ "$code" == '0' ]]; then
+            status='success'
+            summary='AI isolation tests, Debug/Release unit tests, Android Lint, Debug APK and R8 Release APK passed.'
+          else
+            status='build_failure'
+            summary="Gradle verification exited with code ${code:-unknown}."
+          fi
+
+          {
+            echo "status=$status"
+            echo "source_sha=$(git rev-parse HEAD)"
+            echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "java=${{ steps.java.outcome }}"
+            echo "android=${{ steps.android.outcome }}"
+            echo "gradle=${{ steps.gradle.outcome }}"
+            echo "sdk=${{ steps.sdk.outcome }}"
+            echo "build=${{ steps.build.outcome }}:${code:-none}"
+            echo "$summary"
+          } > ci-v571/STATUS.txt
+
+          if [[ "$status" == 'build_failure' ]]; then
+            grep -E '(^e: |error: |FAILURE:|What went wrong:|Compilation error|Unresolved reference|Type mismatch|Missing class)' \
+              ai-v571-build.log | tail -n 240 > ci-v571/ERROR_SUMMARY.txt || true
+            tail -n 340 ai-v571-build.log > ci-v571/BUILD_TAIL.txt
+          elif [[ "$status" == 'environment_failure' ]]; then
+            printf '%s\n' \
+              "java=${{ steps.java.outcome }}" \
+              "android=${{ steps.android.outcome }}" \
+              "gradle=${{ steps.gradle.outcome }}" \
+              "sdk=${{ steps.sdk.outcome }}" \
+              > ci-v571/ERROR_SUMMARY.txt
+          else
+            rm -f ci-v571/ERROR_SUMMARY.txt ci-v571/BUILD_TAIL.txt
+            rm -f tools/patch_ai_true_independence_v571.py
+            rm -f .github/workflows/ai-v571-patch-verify.yml
+            rm -f .github/workflows/ai-v571-build-verify.yml
+          fi
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "ci: record AI independence v5.7.1 Android verification ($status)" || true
+          git push origin HEAD:fix/ai-true-independence-v5.7.1
