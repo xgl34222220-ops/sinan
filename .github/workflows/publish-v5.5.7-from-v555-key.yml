@@ -6,10 +6,16 @@ on:
       - main
     paths:
       - .github/workflows/publish-v5.5.7-from-v555-key.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-v5.5.7-from-v555-key.yml
 
 permissions:
   contents: write
   actions: read
+  pull-requests: read
 
 concurrency:
   group: tianji-v5.5.7-formal-release
@@ -164,5 +170,3 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 30
-
-      # Trigger marker: 2026-08-03T18:50+08:00
