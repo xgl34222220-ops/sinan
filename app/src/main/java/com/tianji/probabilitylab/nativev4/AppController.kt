@@ -466,7 +466,26 @@ class AppController(context: Context) {
                     require(!database.hasAiForecast(snapshot.lottery, config.id, report.targetPeriod)) {
                         "本目标期已有冻结结果，未重复调用计费接口"
                     }
-                    val forecast = remoteAiAnalyzer.analyze(config, snapshot, report)
+                    val forecast = remoteAiAnalyzer.analyze(config, snapshot, report) { message, elapsedMs ->
+                        mainHandler.post {
+                            if (
+                                aiGeneration.get() == token &&
+                                state.report?.targetPeriod == report.targetPeriod &&
+                                state.aiStatuses[config.id]?.state == AiConnectionState.ANALYZING
+                            ) {
+                                state = state.copy(
+                                    aiStatuses = state.aiStatuses + (
+                                        config.id to AiRunStatus(
+                                            profileId = config.id,
+                                            state = AiConnectionState.ANALYZING,
+                                            message = "$message · ${elapsedMs / 1_000}s",
+                                            checkedAtEpochMs = System.currentTimeMillis(),
+                                        )
+                                    ),
+                                )
+                            }
+                        }
+                    }
                     require(aiGeneration.get() == token && !Thread.currentThread().isInterrupted) {
                         "数据已经刷新，本次 AI 结果已作废"
                     }
