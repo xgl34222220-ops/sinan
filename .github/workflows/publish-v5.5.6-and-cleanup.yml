@@ -1,0 +1,135 @@
+name: Publish v5.5.6 and clean repository
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - RELEASE_NOTES_v5.5.6.md
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: tianji-v5.5.6-publish
+  cancel-in-progress: false
+
+jobs:
+  publish-and-clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release target
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
+          test "$VERSION" = '5.5.6'
+          test "$VERSION_CODE" = '31'
+          test -f RELEASE_NOTES_v5.5.6.md
+          test "${GITHUB_REF_NAME}" = 'main'
+
+      - name: Create protected release tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main --tags --force
+          if git ls-remote --exit-code --tags origin refs/tags/v5.5.6 >/dev/null 2>&1; then
+            REMOTE_TAG_SHA="$(git ls-remote --tags --refs origin refs/tags/v5.5.6 | awk '{print $1}')"
+            test "$REMOTE_TAG_SHA" = "$GITHUB_SHA"
+          else
+            git tag -a v5.5.6 "$GITHUB_SHA" -m '天机 v5.5.6 正式版'
+            git push origin refs/tags/v5.5.6
+          fi
+
+      - name: Dispatch signed release workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG_SHA="$(git rev-list -n1 v5.5.6)"
+          gh workflow run release.yml --ref v5.5.6
+          RUN_ID=''
+          for _ in $(seq 1 40); do
+            RUN_ID="$(
+              gh run list \
+                --workflow release.yml \
+                --commit "$TAG_SHA" \
+                --event workflow_dispatch \
+                --limit 1 \
+                --json databaseId \
+                --jq '.[0].databaseId // empty'
+            )"
+            if [[ -n "$RUN_ID" ]]; then break; fi
+            sleep 3
+          done
+          test -n "$RUN_ID"
+          printf 'Release workflow run: %s\n' "$RUN_ID"
+          gh run watch "$RUN_ID" --exit-status
+
+      - name: Verify v5.5.6 release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view v5.5.6 --json tagName,isDraft,isPrerelease \
+            --jq 'select(.tagName == "v5.5.6" and (.isDraft | not) and (.isPrerelease | not)) | .tagName' \
+            | grep -Fxq 'v5.5.6'
+          ASSETS="$(gh release view v5.5.6 --json assets --jq '.assets[].name')"
+          grep -Fxq 'Tianji-v5.5.6-release.apk' <<<"$ASSETS"
+          grep -Fxq 'Tianji-v5.5.6-SHA256.txt' <<<"$ASSETS"
+          grep -Fxq 'APK_VERIFY.txt' <<<"$ASSETS"
+          grep -Fxq 'APK_BADGING.txt' <<<"$ASSETS"
+          grep -Fxq 'SIGNING_CERT_SHA256.txt' <<<"$ASSETS"
+
+      - name: Delete all previous releases and tags
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r OLD_RELEASE; do
+            [[ -z "$OLD_RELEASE" || "$OLD_RELEASE" == 'v5.5.6' ]] && continue
+            gh release delete "$OLD_RELEASE" --yes
+          done < <(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+
+          while IFS= read -r REF; do
+            TAG="${REF#refs/tags/}"
+            [[ -z "$TAG" || "$TAG" == 'v5.5.6' ]] && continue
+            git push origin ":refs/tags/$TAG"
+          done < <(git ls-remote --tags --refs origin | awk '{print $2}')
+
+      - name: Delete all non-default branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r REF; do
+            BRANCH="${REF#refs/heads/}"
+            [[ -z "$BRANCH" || "$BRANCH" == 'main' ]] && continue
+            git push origin --delete "$BRANCH"
+          done < <(git ls-remote --heads origin | awk '{print $2}')
+
+      - name: Final repository assertions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh release list --limit 1000 --json tagName --jq 'length')" = '1'
+          test "$(gh release list --limit 1000 --json tagName --jq '.[0].tagName')" = 'v5.5.6'
+          test "$(git ls-remote --tags --refs origin | wc -l | tr -d ' ')" = '1'
+          test "$(git ls-remote --tags --refs origin refs/tags/v5.5.6 | wc -l | tr -d ' ')" = '1'
+          test "$(git ls-remote --heads origin | wc -l | tr -d ' ')" = '1'
+          test "$(git ls-remote --heads origin refs/heads/main | wc -l | tr -d ' ')" = '1'
