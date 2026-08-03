@@ -12,11 +12,6 @@ if command -v sdkmanager >/dev/null 2>&1; then
   sdkmanager 'platforms;android-36' 'build-tools;36.0.0' >/dev/null
 fi
 
-if command -v gradle >/dev/null 2>&1; then
-  gradle "$@"
-  exit $?
-fi
-
 gradle_version="8.13"
 gradle_root="${RUNNER_TEMP:-/tmp}/tianji-gradle-${gradle_version}"
 gradle_zip="${gradle_root}/gradle-${gradle_version}-bin.zip"
@@ -29,4 +24,4 @@ if [[ ! -x "$gradle_bin" ]]; then
   unzip -q -o "$gradle_zip" -d "$gradle_root"
 fi
 
-"$gradle_bin" "$@"
+"$gradle_bin" --no-daemon "$@"
