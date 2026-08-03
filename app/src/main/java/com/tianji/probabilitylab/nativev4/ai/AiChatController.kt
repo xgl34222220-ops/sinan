@@ -45,19 +45,24 @@ class AiChatController(context: Context) {
     fun settleCandidates(snapshot: DrawSnapshot) {
         val drawsByPeriod = snapshot.history.associateBy(Draw::period)
         archiveData.filter { it.lotteryKey == snapshot.lottery.apiKey }.forEach { archive ->
-            archive.candidates.filter { it.actualNumber == null }.forEach { record ->
-                val draw = drawsByPeriod[record.targetPeriod] ?: return@forEach
+            archive.candidates.forEach candidateLoop@ { record ->
                 val position = record.prediction.position
-                if (position !in draw.numbers.indices) return@forEach
+                val actualNumber = record.actualNumber
+                    ?: drawsByPeriod[record.targetPeriod]?.numbers?.getOrNull(position)
+                    ?: return@candidateLoop
                 learningStore.learnChatCandidate(
                     outcomeId = record.id,
                     lotteryKey = archive.lotteryKey,
                     profileId = archive.profileId,
-                    model = archive.model,
+                    model = AiLearningStrategy.chat(
+                        archive.model,
+                        archive.personaId,
+                        archive.judgementMode,
+                    ),
                     position = position,
                     top6 = record.prediction.top6,
                     targetPeriod = record.targetPeriod,
-                    actualNumber = draw.numbers[position],
+                    actualNumber = actualNumber,
                     draws = snapshot.history,
                 )
             }
@@ -204,6 +209,16 @@ class AiChatController(context: Context) {
     ) {
         val text = question.trim()
         if (text.isBlank() || session.isRunning) return
+        if (AiChatProtocol.wantsPrediction(text)) {
+            AiPredictionFreshnessGuard.error(snapshot, report)?.let { message ->
+                session = session.copy(
+                    error = message,
+                    progress = "",
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                )
+                return
+            }
+        }
         val activeModel = session.model.ifBlank { config.model }.trim()
         settleCandidates(snapshot)
         selectContext(
@@ -231,19 +246,20 @@ class AiChatController(context: Context) {
         )
         val persona = AiChatPersona.fromId(session.personaId)
         val judgementMode = session.judgementMode
+        val learningStrategy = AiLearningStrategy.chat(activeModel, persona.id, judgementMode)
         val requestedPosition = AiAdaptiveSignalEngine.extractRequestedPosition(text)
             ?: report.selectedPosition
         val learningProfile = learningStore.profile(
             snapshot.lottery.apiKey,
             config.id,
-            activeModel,
+            learningStrategy,
             requestedPosition,
         )
         val learningContext = learningStore.snapshot(
             snapshot.history,
             snapshot.lottery.apiKey,
             config.id,
-            activeModel,
+            learningStrategy,
             requestedPosition,
         )
         val token = generation.incrementAndGet()
@@ -312,7 +328,7 @@ class AiChatController(context: Context) {
                             learningStore.profile(
                                 snapshot.lottery.apiKey,
                                 config.id,
-                                activeModel,
+                                learningStrategy,
                                 prediction.position,
                             )
                         } ?: learningProfile
@@ -592,6 +608,23 @@ class AiChatController(context: Context) {
         )
     }
 }
+
+
+
+internal object AiPredictionFreshnessGuard {
+    fun error(snapshot: DrawSnapshot, report: ForecastReport): String? = when {
+        !snapshot.sourceHealth.isFresh ->
+            "开奖数据不是最新状态，预测类问题已拦截。请先刷新成功后再分析"
+        report.targetPeriod.isBlank() || report.targetPeriod == "待同步" ->
+            "目标期尚未同步，不能使用旧历史生成预测"
+        snapshot.nextPeriod != report.targetPeriod ->
+            "当前目标期已经变化，请刷新后重新提问"
+        report.trainedThroughPeriod != snapshot.latest.period ->
+            "分析历史没有训练到最新期开奖，请刷新后重新提问"
+        else -> null
+    }
+}
+
 
 
 internal data class AiPositionStatistics(

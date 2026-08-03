@@ -767,13 +767,16 @@ class AppController(context: Context) {
         }
 
         val latest = online?.latest ?: modelHistory.last()
+        val snapshotHistory = settlementHistory
+            .distinctBy { it.period }
+            .sortedBy { it.period.padStart(32, '0') }
         val snapshot = online?.copy(
-            history = modelHistory,
+            history = snapshotHistory,
             latest = latest,
             sourceHealth = online!!.sourceHealth.copy(message = integrity.message + backfillMessage),
         ) ?: DrawSnapshot(
             lottery = lottery,
-            history = modelHistory,
+            history = snapshotHistory,
             latest = latest,
             nextPeriod = "待同步",
             sourceHealth = SourceHealth(
@@ -822,7 +825,8 @@ class AppController(context: Context) {
             database.lockForecast(lottery, report)
         }
         val aiRecords = database.loadAiForecasts(lottery)
-        aiLearningStore.learnOfficialRecords(lottery.apiKey, settlementHistory, aiRecords)
+        val learningRecords = database.loadSettledAiForecastsForLearning(lottery)
+        aiLearningStore.learnOfficialRecords(lottery.apiKey, settlementHistory, learningRecords)
         return AppUiState(
             lottery = lottery,
             snapshot = snapshot,
