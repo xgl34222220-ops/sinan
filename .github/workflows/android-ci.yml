@@ -8,121 +8,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: tianji-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  patch_v559_formal_reasoning:
-    if: github.event_name == 'pull_request' && github.event.pull_request.number == 32
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout PR branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-
-      - name: Keep formal deep reasoning with a hard deadline
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt')
-          text = path.read_text(encoding='utf-8')
-
-          old = '''                continuedConversation = true
-                onProgress(
-                    "首次推理已完成，正在沿用同一对话补全最终 JSON",
-                    System.currentTimeMillis() - started,
-                )
-                response = runCatching {
-                    post(
-                        config = config,
-                        temperature = if (reasoningDecision.expectsReasoning) 0.1 else 0.2,
-                        systemPrompt = SYSTEM_PROMPT,
-                        userPrompt = prompt,
-                        reasoningDecision = reasoningDecision,
-                        readTimeoutMs = 8_000,
-'''
-          new = '''                continuedConversation = true
-                val finalizationDecision = when (reasoningDecision.protocol) {
-                    AiReasoningProtocol.DEEPSEEK,
-                    AiReasoningProtocol.OPENROUTER,
-                    AiReasoningProtocol.ENABLE_THINKING,
-                    -> reasoningDecision.copy(
-                        sendControl = true,
-                        enableThinking = false,
-                        effort = null,
-                        displayLabel = "${reasoningDecision.protocol.label} · 保留思考后快速收口",
-                    )
-                    AiReasoningProtocol.OPENAI,
-                    AiReasoningProtocol.AUTO,
-                    AiReasoningProtocol.NONE,
-                    -> reasoningDecision.copy(
-                        sendControl = false,
-                        enableThinking = false,
-                        effort = null,
-                        displayLabel = "保留思考后快速收口",
-                    )
-                }
-                onProgress(
-                    "已保留本次深度思考，正在沿用同一对话关闭额外思考并补全最终 JSON",
-                    System.currentTimeMillis() - started,
-                )
-                response = runCatching {
-                    post(
-                        config = config,
-                        temperature = 0.2,
-                        systemPrompt = SYSTEM_PROMPT,
-                        userPrompt = prompt,
-                        reasoningDecision = finalizationDecision,
-                        readTimeoutMs = 8_000,
-'''
-          if old in text:
-              text = text.replace(old, new, 1)
-
-          old = '''        val primary = runCatching {
-            execute(
-                reasoningDecision = primaryDecision,
-                readTimeoutMs = if (config.analysisMode == AiAnalysisMode.DEEP) 40_000 else 30_000,
-                executionNote = "${config.analysisMode.label} · ${primaryDecision.displayLabel} · 核心矩阵优先",
-            )
-        }
-'''
-          new = '''        val primaryDeadlineMs = when (config.reasoningMode) {
-            AiReasoningMode.LOW -> if (config.analysisMode == AiAnalysisMode.DEEP) 30_000 else 25_000
-            AiReasoningMode.AUTO -> if (config.analysisMode == AiAnalysisMode.DEEP) 50_000 else 40_000
-            AiReasoningMode.HIGH -> if (config.analysisMode == AiAnalysisMode.DEEP) 60_000 else 50_000
-        }
-        val primary = runCatching {
-            execute(
-                reasoningDecision = primaryDecision,
-                readTimeoutMs = primaryDeadlineMs,
-                executionNote = "${config.analysisMode.label} · ${primaryDecision.displayLabel} · ${primaryDeadlineMs / 1_000}秒总时长上限 · 核心矩阵优先",
-            )
-        }
-'''
-          if old in text:
-              text = text.replace(old, new, 1)
-
-          path.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Commit patch to PR branch
-        run: |
-          if git diff --quiet; then
-            echo "Patch already applied"
-            exit 0
-          fi
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt
-          git commit -m "fix: keep formal deep reasoning with hard deadline"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
