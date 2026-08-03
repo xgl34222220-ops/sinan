@@ -1,0 +1,209 @@
+name: Recover v5.5.6 with protected signing backup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/recover-v5.5.6-from-v555-key.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: tianji-v5.5.6-publish
+  cancel-in-progress: false
+
+jobs:
+  recover-publish-clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Restore protected v5.5.5 signing backup
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .signing-backup .signing
+          gh run download 30777002592 \
+            --name Tianji-v5.5.5-signing-backup-PRIVATE \
+            --dir .signing-backup
+          test -s .signing-backup/tianji-release-v5.5.5.jks
+          test -s .signing-backup/SIGNING-CREDENTIALS.txt
+          cp .signing-backup/tianji-release-v5.5.5.jks .signing/tianji-release.jks
+
+          while IFS='=' read -r KEY VALUE; do
+            case "$KEY" in
+              TIANJI_KEYSTORE_PASSWORD|TIANJI_KEY_ALIAS|TIANJI_KEY_PASSWORD)
+                printf '%s=%s\n' "$KEY" "$VALUE" >> "$GITHUB_ENV"
+                ;;
+            esac
+          done < .signing-backup/SIGNING-CREDENTIALS.txt
+          printf 'TIANJI_KEYSTORE_FILE=%s/.signing/tianji-release.jks\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Verify certificate continuity and release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
+          test "$VERSION" = '5.5.6'
+          test "$VERSION_CODE" = '31'
+          test -n "${TIANJI_KEYSTORE_PASSWORD:-}"
+          test -n "${TIANJI_KEY_ALIAS:-}"
+          test -n "${TIANJI_KEY_PASSWORD:-}"
+
+          keytool -list \
+            -keystore "$TIANJI_KEYSTORE_FILE" \
+            -storepass "$TIANJI_KEYSTORE_PASSWORD" \
+            -alias "$TIANJI_KEY_ALIAS" >/dev/null
+          keytool -exportcert -rfc \
+            -keystore "$TIANJI_KEYSTORE_FILE" \
+            -storepass "$TIANJI_KEYSTORE_PASSWORD" \
+            -alias "$TIANJI_KEY_ALIAS" \
+            -file .signing/tianji-release-cert.pem
+          ACTUAL_CERT_SHA256="$(
+            openssl x509 -in .signing/tianji-release-cert.pem -noout -fingerprint -sha256 \
+              | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]'
+          )"
+          EXPECTED_CERT_SHA256='5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed'
+          test "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          printf 'SHA256 certificate digest: %s\n' "$ACTUAL_CERT_SHA256" > .signing/CERT_SHA256.txt
+
+      - name: Test and build signed formal APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:testReleaseUnitTest \
+            :app:lintDebug \
+            :app:lintRelease \
+            :app:assembleRelease
+
+          mkdir -p dist
+          APK='dist/Tianji-v5.5.6-release.apk'
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" \
+            verify --verbose --print-certs "$APK" | tee dist/APK_VERIFY.txt
+          grep -q 'Verified using v2 scheme.*true' dist/APK_VERIFY.txt
+          grep -q 'Verified using v3 scheme.*true' dist/APK_VERIFY.txt
+          grep -qi '5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed' dist/APK_VERIFY.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" \
+            dump badging "$APK" | head -n 5 | tee dist/APK_BADGING.txt
+          grep -q "package: name='com.tianji.probabilitylab.nativev4'" dist/APK_BADGING.txt
+          grep -q "versionCode='31'" dist/APK_BADGING.txt
+          grep -q "versionName='5.5.6'" dist/APK_BADGING.txt
+          cp .signing/CERT_SHA256.txt dist/SIGNING_CERT_SHA256.txt
+          sha256sum "$APK" > dist/Tianji-v5.5.6-SHA256.txt
+          unzip -t "$APK" >/dev/null
+
+      - name: Publish or repair v5.5.6 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags --force
+          if ! git ls-remote --exit-code --tags origin refs/tags/v5.5.6 >/dev/null 2>&1; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a v5.5.6 origin/main -m '天机 v5.5.6 正式版'
+            git push origin refs/tags/v5.5.6
+          fi
+
+          if gh release view v5.5.6 >/dev/null 2>&1; then
+            gh release edit v5.5.6 \
+              --title '天机 v5.5.6' \
+              --notes-file RELEASE_NOTES_v5.5.6.md \
+              --draft=false \
+              --prerelease=false
+            gh release upload v5.5.6 dist/* --clobber
+          else
+            gh release create v5.5.6 \
+              --verify-tag \
+              --title '天机 v5.5.6' \
+              --notes-file RELEASE_NOTES_v5.5.6.md \
+              dist/*
+          fi
+
+      - name: Delete every previous release and tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r OLD_RELEASE; do
+            [[ -z "$OLD_RELEASE" || "$OLD_RELEASE" == 'v5.5.6' ]] && continue
+            gh release delete "$OLD_RELEASE" --yes
+          done < <(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+
+          while IFS= read -r REF; do
+            TAG="${REF#refs/tags/}"
+            [[ -z "$TAG" || "$TAG" == 'v5.5.6' ]] && continue
+            git push origin ":refs/tags/$TAG"
+          done < <(git ls-remote --tags --refs origin | awk '{print $2}')
+
+      - name: Delete every non-main branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r REF; do
+            BRANCH="${REF#refs/heads/}"
+            [[ -z "$BRANCH" || "$BRANCH" == 'main' ]] && continue
+            git push origin --delete "$BRANCH"
+          done < <(git ls-remote --heads origin | awk '{print $2}')
+
+      - name: Assert final repository state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ASSETS="$(gh release view v5.5.6 --json assets --jq '.assets[].name')"
+          grep -Fxq 'Tianji-v5.5.6-release.apk' <<<"$ASSETS"
+          grep -Fxq 'Tianji-v5.5.6-SHA256.txt' <<<"$ASSETS"
+          grep -Fxq 'APK_VERIFY.txt' <<<"$ASSETS"
+          grep -Fxq 'APK_BADGING.txt' <<<"$ASSETS"
+          grep -Fxq 'SIGNING_CERT_SHA256.txt' <<<"$ASSETS"
+          test "$(gh release list --limit 1000 --json tagName --jq 'length')" = '1'
+          test "$(gh release list --limit 1000 --json tagName --jq '.[0].tagName')" = 'v5.5.6'
+          test "$(git ls-remote --tags --refs origin | wc -l | tr -d ' ')" = '1'
+          test "$(git ls-remote --tags --refs origin refs/tags/v5.5.6 | wc -l | tr -d ' ')" = '1'
+          test "$(git ls-remote --heads origin | wc -l | tr -d ' ')" = '1'
+          test "$(git ls-remote --heads origin refs/heads/main | wc -l | tr -d ' ')" = '1'
+
+      - name: Upload formal release verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tianji-v5.5.6-formal-release-verification
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
