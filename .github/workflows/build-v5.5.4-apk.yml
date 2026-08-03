@@ -1,0 +1,63 @@
+name: Build Tianji v5.5.4 APK
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Verify and build v5.5.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "5.5.4"' app/build.gradle.kts
+          grep -q 'versionCode = 29' app/build.gradle.kts
+          gradle --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:testReleaseUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :app:assembleRelease
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Tianji-v5.5.4-debug.apk
+          sha256sum dist/Tianji-v5.5.4-debug.apk > dist/Tianji-v5.5.4-debug-SHA256.txt
+          unzip -t dist/Tianji-v5.5.4-debug.apk >/dev/null
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tianji-v5.5.4-APK
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
