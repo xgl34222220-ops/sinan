@@ -74,8 +74,8 @@ patch(
             "deadline metadata",
         ),
         (
-            "        streamFailure?.let { failure ->",
-            "        if (hardDeadlineReached && content.isEmpty() && reasoning.isEmpty()) {\n            error(\"正式预测达到总时长上限，模型尚未生成可补全内容\")\n        }\n\n        streamFailure?.let { failure ->",
+            "                put(\"_tianji_hard_deadline\", hardDeadlineReached)\n            }\n\n        streamFailure?.let { failure ->",
+            "                put(\"_tianji_hard_deadline\", hardDeadlineReached)\n            }\n\n        if (hardDeadlineReached && content.isEmpty() && reasoning.isEmpty()) {\n            error(\"正式预测达到总时长上限，模型尚未生成可补全内容\")\n        }\n\n        streamFailure?.let { failure ->",
             "empty deadline failure",
         ),
         (
@@ -86,7 +86,6 @@ patch(
     ],
 )
 
-# Avoid a nested interpolation that is hard to read and fragile across Kotlin versions.
 patch(
     "app/src/main/java/com/tianji/probabilitylab/nativev4/ui/Screens.kt",
     [
