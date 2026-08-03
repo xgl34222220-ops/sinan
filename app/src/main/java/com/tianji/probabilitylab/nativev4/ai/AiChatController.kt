@@ -10,6 +10,7 @@ import com.tianji.probabilitylab.nativev4.model.DrawSnapshot
 import com.tianji.probabilitylab.nativev4.model.ForecastReport
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedReader
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
@@ -33,12 +34,30 @@ class AiChatController {
 
     fun selectProfile(profileId: String, targetPeriod: String?) {
         if (profileId.isBlank()) {
-            if (session.profileId.isNotBlank()) session = AiChatSession(profileId = "")
+            if (session.profileId.isNotBlank()) {
+                session = AiChatSession(
+                    profileId = "",
+                    personaId = session.personaId,
+                    targetPeriod = targetPeriod,
+                )
+            }
             return
         }
         if (session.profileId == profileId && session.targetPeriod == targetPeriod) return
         cancel()
-        session = AiChatSession(profileId = profileId, targetPeriod = targetPeriod)
+        session = AiChatSession(
+            profileId = profileId,
+            personaId = session.personaId,
+            targetPeriod = targetPeriod,
+        )
+    }
+
+    fun selectPersona(personaId: String) {
+        if (session.isRunning) return
+        val persona = AiChatPersona.fromId(personaId)
+        if (session.personaId != persona.id) {
+            session = session.copy(personaId = persona.id, error = null)
+        }
     }
 
     fun send(
@@ -52,13 +71,16 @@ class AiChatController {
         selectProfile(config.id, report.targetPeriod)
         val previousMessages = AiChatProtocol.trimHistory(session.messages)
         val userMessage = AiChatMessage(role = AiChatRole.USER, content = text)
+        val assistantMessage = AiChatMessage(role = AiChatRole.ASSISTANT, content = "")
+        val persona = AiChatPersona.fromId(session.personaId)
         val token = generation.incrementAndGet()
         session = session.copy(
-            messages = session.messages + userMessage,
+            messages = session.messages + userMessage + assistantMessage,
             isRunning = true,
             progress = "正在整理当前接口历史…",
             error = null,
             prediction = null,
+            streamingMessageId = assistantMessage.id,
         )
         executor.execute {
             val result = runCatching {
@@ -68,10 +90,20 @@ class AiChatController {
                     report = report,
                     previousMessages = previousMessages,
                     question = text,
+                    persona = persona,
                     onProgress = { progress ->
                         mainHandler.post {
                             if (generation.get() == token && session.isRunning) {
                                 session = session.copy(progress = progress)
+                            }
+                        }
+                    },
+                    onStreamText = { content ->
+                        mainHandler.post {
+                            if (generation.get() == token && session.isRunning) {
+                                replaceMessage(assistantMessage.id) { current ->
+                                    current.copy(content = content)
+                                }
                             }
                         }
                     },
@@ -81,12 +113,10 @@ class AiChatController {
                 if (generation.get() != token) return@post
                 result.fold(
                     onSuccess = { reply ->
+                        replaceMessage(assistantMessage.id) { current ->
+                            current.copy(content = reply.content, latencyMs = reply.latencyMs)
+                        }
                         session = session.copy(
-                            messages = session.messages + AiChatMessage(
-                                role = AiChatRole.ASSISTANT,
-                                content = reply.content,
-                                latencyMs = reply.latencyMs,
-                            ),
                             isRunning = false,
                             progress = if (reply.reasoningVerified) {
                                 reply.reasoningTokens?.let { "回答完成 · 推理 $it tokens" }
@@ -96,13 +126,23 @@ class AiChatController {
                             },
                             error = null,
                             prediction = reply.prediction,
+                            streamingMessageId = null,
                         )
                     },
                     onFailure = { cause ->
+                        val partial = session.messages
+                            .firstOrNull { it.id == assistantMessage.id }
+                            ?.content.orEmpty()
                         session = session.copy(
+                            messages = if (partial.isBlank()) {
+                                session.messages.filterNot { it.id == assistantMessage.id }
+                            } else {
+                                session.messages
+                            },
                             isRunning = false,
                             progress = "",
                             error = cause.message ?: "对话分析失败",
+                            streamingMessageId = null,
                         )
                     },
                 )
@@ -114,10 +154,18 @@ class AiChatController {
         generation.incrementAndGet()
         client.cancel()
         if (session.isRunning) {
+            val streamingId = session.streamingMessageId
+            val partial = session.messages.firstOrNull { it.id == streamingId }?.content.orEmpty()
             session = session.copy(
+                messages = if (streamingId != null && partial.isBlank()) {
+                    session.messages.filterNot { it.id == streamingId }
+                } else {
+                    session.messages
+                },
                 isRunning = false,
-                progress = "已取消本次对话",
+                progress = if (partial.isBlank()) "已取消本次对话" else "已停止继续生成",
                 error = null,
+                streamingMessageId = null,
             )
         }
     }
@@ -126,6 +174,7 @@ class AiChatController {
         cancel()
         session = AiChatSession(
             profileId = session.profileId,
+            personaId = session.personaId,
             targetPeriod = session.targetPeriod,
         )
     }
@@ -133,6 +182,14 @@ class AiChatController {
     fun close() {
         cancel()
         executor.shutdownNow()
+    }
+
+    private fun replaceMessage(id: String, transform: (AiChatMessage) -> AiChatMessage) {
+        session = session.copy(
+            messages = session.messages.map { message ->
+                if (message.id == id) transform(message) else message
+            },
+        )
     }
 }
 
@@ -268,7 +325,9 @@ private class RemoteAiChatClient {
         report: ForecastReport,
         previousMessages: List<AiChatMessage>,
         question: String,
+        persona: AiChatPersona,
         onProgress: (String) -> Unit,
+        onStreamText: (String) -> Unit,
     ): AiChatReply {
         require(config.isComplete) { "AI 配置不完整" }
         val endpoint = URL(config.endpoint.trim())
@@ -283,14 +342,24 @@ private class RemoteAiChatClient {
             previousMessages = previousMessages,
             question = question,
             wantsPrediction = wantsPrediction,
+            persona = persona,
         )
+        val publisher = VisibleStreamPublisher(onStreamText)
         val primary = requestBody(config, responsesApi, messages, decision)
 
-        onProgress("正在连接 ${config.displayName}…")
+        onProgress("正在连接 ${config.displayName} · ${persona.displayName}…")
         val response = try {
-            execute(endpoint, config, primary, timeoutFor(decision), onProgress)
+            execute(
+                endpoint = endpoint,
+                config = config,
+                request = primary,
+                timeoutMs = timeoutFor(decision),
+                onProgress = onProgress,
+                publisher = publisher,
+            )
         } catch (cause: AiChatProtocolRejectedException) {
             if (!decision.sendControl) throw cause
+            publisher.reset()
             onProgress("接口拒绝显式思考参数，正在使用模型默认协议重发一次…")
             val fallback = requestBody(
                 config = config,
@@ -298,16 +367,24 @@ private class RemoteAiChatClient {
                 messages = messages,
                 decision = decision.copy(sendControl = false, enableThinking = false, effort = null),
             )
-            execute(endpoint, config, fallback, timeoutFor(decision), onProgress)
+            execute(
+                endpoint = endpoint,
+                config = config,
+                request = fallback,
+                timeoutMs = timeoutFor(decision),
+                onProgress = onProgress,
+                publisher = publisher,
+            )
         }
         val rawContent = extractContent(response)
         require(rawContent.isNotBlank()) { "模型没有返回可显示的回答" }
         val prediction = if (wantsPrediction) AiChatProtocol.parsePrediction(rawContent) else null
         val content = AiChatProtocol.visibleText(rawContent, prediction != null)
+        publisher.finish(content)
         val usage = extractUsage(response)
         val reasoningVerified = extractReasoning(response).isNotBlank() ||
             (usage.reasoningTokens ?: 0) > 0
-        onProgress("回答已生成，正在整理可视化结果…")
+        onProgress("回答完成，正在整理候选卡片…")
         return AiChatReply(
             content = content,
             prediction = prediction,
@@ -323,11 +400,12 @@ private class RemoteAiChatClient {
         previousMessages: List<AiChatMessage>,
         question: String,
         wantsPrediction: Boolean,
+        persona: AiChatPersona,
     ): JSONArray = JSONArray().apply {
         put(
             JSONObject()
                 .put("role", "system")
-                .put("content", systemPrompt(wantsPrediction)),
+                .put("content", systemPrompt(wantsPrediction, persona)),
         )
         put(
             JSONObject()
@@ -347,13 +425,16 @@ private class RemoteAiChatClient {
         put(JSONObject().put("role", "user").put("content", question))
     }
 
-    private fun systemPrompt(wantsPrediction: Boolean): String = buildString {
+    private fun systemPrompt(wantsPrediction: Boolean, persona: AiChatPersona): String = buildString {
         append(
-            "你是天机内置的开奖记录分析助手。使用简体中文直接回答用户，可连续追问。" +
+            "你是天机内置的开奖记录分析助手，当前分析人设为【${persona.displayName}】。" +
+                "人设要求：${persona.instruction}" +
+                "使用简体中文直接、自然地回答，支持连续追问。" +
                 "只能引用客户端提供的当前开奖接口历史、逐期统计和本机模型参考；不得虚构期号、次数或数据来源。" +
                 "用户问某名次多少期、某号码出现多少次、遗漏多少期、当前号码之后常接哪些号时，必须从已核验字段计算并明确窗口。" +
                 "用户说出现几率大时，应解释为历史样本中的相对频次或模型相对评分，不得称为真实中奖概率。" +
-                "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小。",
+                "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小。" +
+                "回答采用适合聊天阅读的短段落，先回应问题，再给依据，不要堆砌无关术语。",
         )
         if (wantsPrediction) {
             append(
@@ -371,12 +452,13 @@ private class RemoteAiChatClient {
         decision: AiReasoningDecision,
     ): JSONObject = JSONObject().apply {
         put("model", config.model.trim())
-        put("stream", false)
+        put("stream", true)
         if (responsesApi) {
             put("store", false)
             put("input", messages)
         } else {
             put("messages", messages)
+            put("stream_options", JSONObject().put("include_usage", true))
         }
         if (!decision.expectsReasoning && decision.protocol != AiReasoningProtocol.OPENAI) {
             put("temperature", 0.2)
@@ -423,9 +505,11 @@ private class RemoteAiChatClient {
         request: JSONObject,
         timeoutMs: Int,
         onProgress: (String) -> Unit,
+        publisher: VisibleStreamPublisher,
     ): JSONObject {
         var lastFailure: Throwable? = null
         repeat(2) { attempt ->
+            var deliveredVisibleText = false
             val connection = endpoint.openConnection() as HttpURLConnection
             activeConnection = connection
             try {
@@ -435,24 +519,31 @@ private class RemoteAiChatClient {
                 connection.doOutput = true
                 connection.useCaches = false
                 connection.setRequestProperty("Content-Type", "application/json")
-                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("Accept", "text/event-stream, application/json")
                 connection.setRequestProperty("Authorization", "Bearer ${config.apiKey.trim()}")
                 connection.outputStream.use { output ->
                     output.write(request.toString().toByteArray(Charsets.UTF_8))
                 }
-                onProgress("模型正在分析当前接口历史…")
+                onProgress("模型正在分析，回答开始后会实时显示…")
                 val code = connection.responseCode
-                val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
-                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 if (code in 200..299) {
-                    return JSONObject(body)
+                    val reader = connection.inputStream.bufferedReader(Charsets.UTF_8)
+                    return readSuccessResponse(
+                        reader = reader,
+                        contentType = connection.contentType.orEmpty(),
+                        publisher = publisher,
+                        isCancelled = { activeConnection !== connection },
+                        onVisibleDelivered = { deliveredVisibleText = true },
+                    )
                 }
+                val body = connection.errorStream
+                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 if (
                     code in listOf(400, 404, 422) &&
-                    listOf("reasoning", "thinking", "enable_thinking", "reasoning_effort")
+                    listOf("reasoning", "thinking", "enable_thinking", "reasoning_effort", "stream_options")
                         .any { body.contains(it, ignoreCase = true) }
                 ) {
-                    throw AiChatProtocolRejectedException("AI 接口拒绝当前思考参数：${body.take(140)}")
+                    throw AiChatProtocolRejectedException("AI 接口拒绝当前参数：${body.take(140)}")
                 }
                 if (attempt == 0 && (code == 429 || code in 500..599)) {
                     onProgress(if (code == 429) "供应商限流，正在重连一次…" else "供应商暂时异常，正在重连一次…")
@@ -462,16 +553,184 @@ private class RemoteAiChatClient {
                 error("AI 接口 HTTP $code：${body.take(180)}")
             } catch (cause: SocketTimeoutException) {
                 lastFailure = cause
-                if (attempt == 0) {
+                if (attempt == 0 && !deliveredVisibleText) {
                     onProgress("模型响应超时，正在进行一次网络重连…")
                     return@repeat
                 }
+                throw IllegalStateException(
+                    if (deliveredVisibleText) "流式回答中断，已保留已生成内容" else "模型响应超时",
+                    cause,
+                )
             } finally {
-                activeConnection = null
+                if (activeConnection === connection) activeConnection = null
                 connection.disconnect()
             }
         }
         throw IllegalStateException("模型对话超过 ${timeoutMs / 1_000} 秒或重连后仍失败", lastFailure)
+    }
+
+    private fun readSuccessResponse(
+        reader: BufferedReader,
+        contentType: String,
+        publisher: VisibleStreamPublisher,
+        isCancelled: () -> Boolean,
+        onVisibleDelivered: () -> Unit,
+    ): JSONObject = reader.use {
+        val prefix = mutableListOf<String>()
+        var firstMeaningful: String? = null
+        while (firstMeaningful == null) {
+            val line = it.readLine() ?: break
+            prefix += line
+            if (line.isNotBlank()) firstMeaningful = line
+        }
+        val looksLikeSse = contentType.contains("text/event-stream", ignoreCase = true) ||
+            firstMeaningful?.trimStart()?.let { line ->
+                line.startsWith("data:") || line.startsWith("event:") || line.startsWith(":")
+            } == true
+        if (looksLikeSse) {
+            readSse(it, prefix, publisher, isCancelled, onVisibleDelivered)
+        } else {
+            val body = buildString {
+                prefix.forEachIndexed { index, line ->
+                    if (index > 0) append('\n')
+                    append(line)
+                }
+                val remainder = it.readText()
+                if (remainder.isNotEmpty()) {
+                    if (isNotEmpty()) append('\n')
+                    append(remainder)
+                }
+            }
+            val root = JSONObject(body)
+            val content = extractContent(root)
+            emitBufferedFallback(content, publisher, isCancelled, onVisibleDelivered)
+            root
+        }
+    }
+
+    private fun readSse(
+        reader: BufferedReader,
+        initialLines: List<String>,
+        publisher: VisibleStreamPublisher,
+        isCancelled: () -> Boolean,
+        onVisibleDelivered: () -> Unit,
+    ): JSONObject {
+        val rawContent = StringBuilder()
+        val reasoning = StringBuilder()
+        var responseId = ""
+        var usage: JSONObject? = null
+        var eventName = ""
+        val eventData = mutableListOf<String>()
+
+        fun appendVisible(delta: String) {
+            if (delta.isEmpty()) return
+            rawContent.append(delta)
+            if (publisher.append(delta)) onVisibleDelivered()
+        }
+
+        fun consumeEvent() {
+            if (eventData.isEmpty()) {
+                eventName = ""
+                return
+            }
+            val data = eventData.joinToString("\n").trim()
+            eventData.clear()
+            if (data.isBlank() || data == "[DONE]") {
+                eventName = ""
+                return
+            }
+            val root = runCatching { JSONObject(data) }.getOrNull()
+                ?: run {
+                    eventName = ""
+                    return
+                }
+            root.optJSONObject("error")?.let { error ->
+                throw IllegalStateException(
+                    error.optString("message").ifBlank { "模型流式接口返回错误" },
+                )
+            }
+            responseId = root.optString("id").ifBlank { responseId }
+            root.optJSONObject("usage")?.let { usage = it }
+
+            val type = root.optString("type").ifBlank { eventName }
+            when {
+                type == "response.output_text.delta" -> appendVisible(root.optString("delta"))
+                type == "response.output_text.done" && rawContent.isEmpty() -> {
+                    appendVisible(root.optString("text"))
+                }
+                type.contains("reasoning", ignoreCase = true) && type.endsWith(".delta") -> {
+                    reasoning.append(root.optString("delta"))
+                }
+                type == "response.completed" -> {
+                    root.optJSONObject("response")?.let { completed ->
+                        responseId = completed.optString("id").ifBlank { responseId }
+                        completed.optJSONObject("usage")?.let { usage = it }
+                        if (rawContent.isEmpty()) appendVisible(extractContent(completed))
+                        reasoning.append(extractReasoning(completed))
+                    }
+                }
+            }
+
+            val choice = root.optJSONArray("choices")?.optJSONObject(0)
+            val delta = choice?.optJSONObject("delta")
+            extractTextNode(delta?.opt("content"))
+                .takeIf(String::isNotEmpty)
+                ?.let(::appendVisible)
+            extractTextNode(delta?.opt("reasoning_content"))
+                .takeIf(String::isNotEmpty)
+                ?.let(reasoning::append)
+            if (rawContent.isEmpty()) {
+                val message = choice?.optJSONObject("message")
+                extractTextNode(message?.opt("content"))
+                    .takeIf(String::isNotEmpty)
+                    ?.let(::appendVisible)
+                extractTextNode(message?.opt("reasoning_content"))
+                    .takeIf(String::isNotEmpty)
+                    ?.let(reasoning::append)
+            }
+            eventName = ""
+        }
+
+        fun processLine(line: String) {
+            if (isCancelled()) throw IllegalStateException("已取消本次对话")
+            when {
+                line.isBlank() -> consumeEvent()
+                line.startsWith("event:") -> eventName = line.substringAfter(':').trim()
+                line.startsWith("data:") -> eventData += line.substringAfter(':').trimStart()
+                line.startsWith(":") -> Unit
+            }
+        }
+
+        initialLines.forEach(::processLine)
+        while (true) {
+            val line = reader.readLine() ?: break
+            processLine(line)
+        }
+        consumeEvent()
+        publisher.flush()
+        require(rawContent.isNotBlank()) { "模型没有返回可显示的流式回答" }
+        return JSONObject()
+            .put("id", responseId)
+            .put("output_text", rawContent.toString())
+            .put("_tianji_reasoning", reasoning.toString())
+            .put("usage", usage ?: JSONObject())
+    }
+
+    private fun emitBufferedFallback(
+        content: String,
+        publisher: VisibleStreamPublisher,
+        isCancelled: () -> Boolean,
+        onVisibleDelivered: () -> Unit,
+    ) {
+        if (content.isBlank()) return
+        content.chunked(8).forEach { chunk ->
+            if (isCancelled() || Thread.currentThread().isInterrupted) {
+                throw IllegalStateException("已取消本次对话")
+            }
+            if (publisher.append(chunk)) onVisibleDelivered()
+            Thread.sleep(12L)
+        }
+        publisher.flush()
     }
 
     private fun timeoutFor(decision: AiReasoningDecision): Int = when {
@@ -486,32 +745,39 @@ private class RemoteAiChatClient {
             ?.optJSONObject(0)
             ?.optJSONObject("message")
             ?.opt("content")
-        when (chatContent) {
-            is String -> chatContent.trim().takeIf(String::isNotBlank)?.let { return it }
-            is JSONArray -> {
-                val joined = (0 until chatContent.length()).mapNotNull { index ->
-                    val item = chatContent.optJSONObject(index) ?: return@mapNotNull null
-                    item.optString("text").ifBlank { item.optString("content") }
-                        .takeIf(String::isNotBlank)
-                }.joinToString("\n")
-                if (joined.isNotBlank()) return joined
-            }
-        }
+        extractTextNode(chatContent).trim().takeIf(String::isNotBlank)?.let { return it }
         val output = root.optJSONArray("output") ?: return ""
         return (0 until output.length()).flatMap { index ->
             val content = output.optJSONObject(index)?.optJSONArray("content") ?: return@flatMap emptyList()
             (0 until content.length()).mapNotNull { contentIndex ->
                 val item = content.optJSONObject(contentIndex) ?: return@mapNotNull null
-                item.optString("text").takeIf(String::isNotBlank)
+                item.optString("text").ifBlank { item.optString("content") }
+                    .takeIf(String::isNotBlank)
             }
         }.joinToString("\n")
     }
 
-    private fun extractReasoning(root: JSONObject): String = root.optJSONArray("choices")
-        ?.optJSONObject(0)
-        ?.optJSONObject("message")
-        ?.optString("reasoning_content")
-        .orEmpty()
+    private fun extractTextNode(value: Any?): String = when (value) {
+        null, JSONObject.NULL -> ""
+        is String -> value
+        is JSONObject -> value.optString("text").ifBlank {
+            value.optString("content").ifBlank { value.optString("value") }
+        }
+        is JSONArray -> (0 until value.length()).mapNotNull { index ->
+            extractTextNode(value.opt(index)).takeIf(String::isNotBlank)
+        }.joinToString("")
+        else -> ""
+    }
+
+    private fun extractReasoning(root: JSONObject): String = root
+        .optString("_tianji_reasoning")
+        .ifBlank {
+            root.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?.optString("reasoning_content")
+                .orEmpty()
+        }
 
     private fun extractUsage(root: JSONObject): AiTokenUsage {
         val usage = root.optJSONObject("usage") ?: return AiTokenUsage()
@@ -527,6 +793,52 @@ private class RemoteAiChatClient {
             outputTokens = firstPositive("completion_tokens", "output_tokens"),
             reasoningTokens = reasoning,
         )
+    }
+
+    private class VisibleStreamPublisher(
+        private val onText: (String) -> Unit,
+    ) {
+        private val raw = StringBuilder()
+        private var lastVisible = ""
+        private var lastEmitAt = 0L
+
+        fun append(delta: String): Boolean {
+            if (delta.isEmpty()) return false
+            raw.append(delta)
+            val visible = AiChatProtocol.visibleStreamingText(raw.toString())
+            if (visible == lastVisible) return false
+            val now = System.currentTimeMillis()
+            val urgent = delta.any { it == '\n' || it in "。！？；：" } ||
+                visible.length - lastVisible.length >= 12
+            if (urgent || now - lastEmitAt >= 35L) {
+                lastVisible = visible
+                lastEmitAt = now
+                onText(visible)
+                return visible.isNotBlank()
+            }
+            return false
+        }
+
+        fun flush() {
+            val visible = AiChatProtocol.visibleStreamingText(raw.toString())
+            if (visible != lastVisible) {
+                lastVisible = visible
+                lastEmitAt = System.currentTimeMillis()
+                onText(visible)
+            }
+        }
+
+        fun finish(finalText: String) {
+            lastVisible = finalText
+            onText(finalText)
+        }
+
+        fun reset() {
+            raw.clear()
+            lastVisible = ""
+            lastEmitAt = 0L
+            onText("")
+        }
     }
 
     private class AiChatProtocolRejectedException(message: String) : IllegalStateException(message)
