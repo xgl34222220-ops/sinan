@@ -1,0 +1,28 @@
+name: Tianji Source Export
+
+on:
+  push:
+    branches: ['feature/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tianji-source-${{ github.sha }}
+          path: |
+            app/src/main/java/com/tianji/probabilitylab/nativev4/AppController.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiFreeChat.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AiChatDialog.kt
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/TianjiApp.kt
+          retention-days: 1
