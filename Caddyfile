@@ -1,0 +1,17 @@
+{$TIANJI_DOMAIN:tianji-xgl.duckdns.org} {
+    encode zstd gzip
+
+    @health path /health
+    header @health Cache-Control "no-store"
+
+    reverse_proxy api:8000 {
+        health_uri /health
+        health_interval 30s
+        health_timeout 5s
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}
