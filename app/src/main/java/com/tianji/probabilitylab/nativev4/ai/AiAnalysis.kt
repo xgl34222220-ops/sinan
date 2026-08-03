@@ -875,32 +875,40 @@ class RemoteAiAnalyzer {
         var lastProgressAt = 0L
         var firstReasoningMs = -1L
         var firstContentMs = -1L
+        var earlyComplete = false
 
-        fun report(message: String) {
+        fun report(message: String, force: Boolean = false) {
             val now = System.currentTimeMillis()
-            if (now - lastProgressAt >= 1_000L) {
+            if (force || now - lastProgressAt >= 1_000L) {
                 lastProgressAt = now
                 onProgress(message, now - startedAtMs)
             }
         }
 
-        reader.forEachLine { rawLine ->
+        while (true) {
+            val rawLine = reader.readLine() ?: break
             val line = rawLine.trim()
-            if (line.isBlank()) return@forEachLine
+            if (line.isBlank()) continue
             if (!line.startsWith("data:")) {
                 if (line.startsWith("{")) plainBody.append(line)
-                return@forEachLine
+                continue
             }
             val payload = line.removePrefix("data:").trim()
-            if (payload == "[DONE]" || payload.isBlank()) return@forEachLine
-            val chunk = runCatching { JSONObject(payload) }.getOrNull() ?: return@forEachLine
+            if (payload == "[DONE]" || payload.isBlank()) continue
+            val chunk = runCatching { JSONObject(payload) }.getOrNull() ?: continue
             responseId = chunk.optString("id").ifBlank { responseId }
             chunk.optJSONObject("usage")?.let { usage = it }
-            val choice = chunk.optJSONArray("choices")?.optJSONObject(0) ?: return@forEachLine
+            val choice = chunk.optJSONArray("choices")?.optJSONObject(0) ?: continue
             finishReason = choice.optString("finish_reason").ifBlank { finishReason }
-            val delta = choice.optJSONObject("delta") ?: return@forEachLine
-            val reasoningPart = delta.optString("reasoning_content")
-            val contentPart = delta.optString("content")
+            val delta = choice.optJSONObject("delta") ?: continue
+            val reasoningPart = delta.opt("reasoning_content")
+                ?.takeUnless { it == JSONObject.NULL }
+                ?.toString()
+                .orEmpty()
+            val contentPart = delta.opt("content")
+                ?.takeUnless { it == JSONObject.NULL }
+                ?.toString()
+                .orEmpty()
             if (reasoningPart.isNotEmpty()) {
                 if (firstReasoningMs < 0L) firstReasoningMs = System.currentTimeMillis() - startedAtMs
                 reasoning.append(reasoningPart)
@@ -910,10 +918,12 @@ class RemoteAiAnalyzer {
                 if (firstContentMs < 0L) firstContentMs = System.currentTimeMillis() - startedAtMs
                 content.append(contentPart)
                 if (AiForecastPayloadExtractor.containsForecastCore(content.toString())) {
-                    report("已收到完整预测核心，正在校验说明与结束状态")
-                } else {
-                    report("模型正在生成结构化预测 · 已收到 ${content.length} 个结果字符")
+                    earlyComplete = true
+                    finishReason = "stop"
+                    report("已取得完整预测结果，已主动结束剩余输出", force = true)
+                    break
                 }
+                report("模型正在生成结构化预测 · 已收到 ${content.length} 个结果字符")
             }
         }
 
@@ -936,6 +946,7 @@ class RemoteAiAnalyzer {
                 put("_tianji_first_reasoning_ms", firstReasoningMs)
                 put("_tianji_first_content_ms", firstContentMs)
                 put("_tianji_stream_finished_ms", System.currentTimeMillis() - startedAtMs)
+                put("_tianji_early_complete", earlyComplete)
             }
     }
 
@@ -943,15 +954,17 @@ class RemoteAiAnalyzer {
         val firstReasoning = optLong("_tianji_first_reasoning_ms", -1L)
         val firstContent = optLong("_tianji_first_content_ms", -1L)
         val finished = optLong("_tianji_stream_finished_ms", -1L)
+        val earlyComplete = optBoolean("_tianji_early_complete", false)
         if (finished < 0L) return ""
         fun seconds(value: Long): String = String.format(java.util.Locale.US, "%.1fs", value / 1000.0)
-        return when {
+        val phases = when {
             firstReasoning >= 0L && firstContent >= firstReasoning ->
                 "首个推理 ${seconds(firstReasoning)} · 推理阶段 ${seconds(firstContent - firstReasoning)} · 结果阶段 ${seconds((finished - firstContent).coerceAtLeast(0L))}"
             firstContent >= 0L ->
                 "首个结果 ${seconds(firstContent)} · 结果阶段 ${seconds((finished - firstContent).coerceAtLeast(0L))}"
             else -> "响应总耗时 ${seconds(finished)}"
         }
+        return if (earlyComplete) "$phases · 完整结果到达后主动收口" else phases
     }
 
     private fun JSONObject.extractContent(): String = optJSONArray("choices")

@@ -5,10 +5,19 @@
 
 ## 当前版本
 
-- 版本：5.5.5
+- 版本：5.5.6
 - Android：原生 Kotlin + Jetpack Compose
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 签名：正式版使用稳定 Release 证书
+
+## v5.5.6 完整结果立即返回
+
+- 保留模型自身最大 Token 空间、真实 thinking 和完整 60/120 期历史。
+- 流式响应一旦出现有效 position 与 10 项 scores，立即主动结束剩余输出并进入本机校验。
+- 不再等待供应商继续生成长篇说明或最终 `[DONE]`，避免结果已出仍持续几十秒到数分钟。
+- 修复流式 `content=null` / `reasoning_content=null` 被错误拼接成 `nullnull…` 的问题。
+- 提前收口导致供应商未返回最终 usage 时，只显示已验证思考，不伪造 Token 数量。
+- 说明字段尚未完成时保留有效预测矩阵，并使用本机逐期核验摘要，不重新请求模型。
 
 ## v5.5.4 流式结果恢复
 
