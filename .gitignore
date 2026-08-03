@@ -3,3 +3,10 @@
 local.properties
 .idea/
 *.iml
+
+.env
+data/
+backups/
+__pycache__/
+*.py[cod]
+.pytest_cache/
