@@ -588,7 +588,7 @@ class RemoteAiAnalyzer {
                         systemPrompt = SYSTEM_PROMPT,
                         userPrompt = prompt,
                         reasoningDecision = reasoningDecision,
-                        readTimeoutMs = 30_000,
+                        readTimeoutMs = 8_000,
                         jsonOutput = true,
                         explainOutput = false,
                         streamResponse = true,
@@ -656,7 +656,7 @@ class RemoteAiAnalyzer {
         val primary = runCatching {
             execute(
                 reasoningDecision = primaryDecision,
-                readTimeoutMs = if (config.analysisMode == AiAnalysisMode.DEEP) 60_000 else 45_000,
+                readTimeoutMs = if (config.analysisMode == AiAnalysisMode.DEEP) 40_000 else 30_000,
                 executionNote = "${config.analysisMode.label} · ${primaryDecision.displayLabel} · 核心矩阵优先",
             )
         }
@@ -682,7 +682,7 @@ class RemoteAiAnalyzer {
         return runCatching {
             execute(
                 reasoningDecision = defaultThinkingDecision,
-                readTimeoutMs = 45_000,
+                readTimeoutMs = 30_000,
                 executionNote = "${config.analysisMode.label} · 限时参数兼容回退",
                 fallback = true,
                 prompt = userPrompt,
@@ -804,7 +804,12 @@ class RemoteAiAnalyzer {
                         ?.bufferedReader(Charsets.UTF_8)
                         ?.use { reader ->
                             if (useStreaming) {
-                                readChatStream(reader, started, onProgress)
+                                readChatStream(
+                                    reader = reader,
+                                    startedAtMs = started,
+                                    hardDeadlineMs = readTimeoutMs.toLong(),
+                                    onProgress = onProgress,
+                                )
                             } else {
                                 JSONObject(reader.readText())
                             }
@@ -877,6 +882,7 @@ class RemoteAiAnalyzer {
     private fun readChatStream(
         reader: java.io.BufferedReader,
         startedAtMs: Long,
+        hardDeadlineMs: Long,
         onProgress: (String, Long) -> Unit,
     ): JSONObject {
         val content = StringBuilder()
@@ -888,6 +894,7 @@ class RemoteAiAnalyzer {
         var lastProgressAt = 0L
         var firstReasoningMs = -1L
         var firstContentMs = -1L
+        var hardDeadlineReached = false
 
         fun report(message: String) {
             val now = System.currentTimeMillis()
@@ -900,6 +907,9 @@ class RemoteAiAnalyzer {
         var streamFailure: IOException? = null
         try {
             reader.forEachLine { rawLine ->
+                if (System.currentTimeMillis() - startedAtMs >= hardDeadlineMs) {
+                    throw ForecastHardDeadlineException()
+                }
                 val line = rawLine.trim()
                 if (line.isBlank()) return@forEachLine
                 if (!line.startsWith("data:")) {
@@ -934,6 +944,13 @@ class RemoteAiAnalyzer {
             }
         } catch (_: ForecastCoreReadyException) {
             finishReason = "tianji_core_ready"
+        } catch (_: ForecastHardDeadlineException) {
+            hardDeadlineReached = true
+            finishReason = "tianji_hard_deadline"
+            onProgress(
+                "正式预测达到总时长上限，正在抢救已接收内容",
+                System.currentTimeMillis() - startedAtMs,
+            )
         } catch (cause: IOException) {
             streamFailure = cause
         }
@@ -977,7 +994,12 @@ class RemoteAiAnalyzer {
                 put("_tianji_first_reasoning_ms", firstReasoningMs)
                 put("_tianji_first_content_ms", firstContentMs)
                 put("_tianji_stream_finished_ms", System.currentTimeMillis() - startedAtMs)
+                put("_tianji_hard_deadline", hardDeadlineReached)
             }
+
+        if (hardDeadlineReached && content.isEmpty() && reasoning.isEmpty()) {
+            error("正式预测达到总时长上限，模型尚未生成可补全内容")
+        }
 
         streamFailure?.let { failure ->
             if (content.isEmpty() && reasoning.isEmpty()) throw failure
@@ -1463,6 +1485,7 @@ class RemoteAiAnalyzer {
     )
 
     private class ForecastCoreReadyException : RuntimeException()
+    private class ForecastHardDeadlineException : RuntimeException()
 
     private class AiConversationFinalizationException(
         message: String,

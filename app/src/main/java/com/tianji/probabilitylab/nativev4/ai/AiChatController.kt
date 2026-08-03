@@ -595,7 +595,7 @@ object AiChatContextBuilder {
     }
 
     private fun extractPosition(question: String): Int? {
-        val token = Regex("第\s*([一二三四五六七八九十0-9]{1,2})\s*名")
+        val token = Regex("""第\s*([一二三四五六七八九十0-9]{1,2})\s*名""")
             .find(question)?.groupValues?.getOrNull(1) ?: return null
         val value = token.toIntOrNull() ?: when (token) {
             "一" -> 1; "二" -> 2; "三" -> 3; "四" -> 4; "五" -> 5

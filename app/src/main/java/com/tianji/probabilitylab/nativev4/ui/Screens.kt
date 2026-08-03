@@ -1637,7 +1637,10 @@ private fun AiProfileAuditRow(audit: AiProfileAudit) {
                     append(" · ")
                     append(if (audit.settled < 30) "样本不足" else "LogLoss ${audit.meanLogLoss?.format2() ?: "--"}")
                     audit.meanLatencyMs?.let { append(" · ${it.toLong()}ms") }
-                    audit.meanEstimatedCost?.let { append(" · 均价 $${"%.5f".format(Locale.US, it)}") }
+                    audit.meanEstimatedCost?.let { cost ->
+                        append(" · 均价 $")
+                        append("%.5f".format(Locale.US, cost))
+                    }
                 },
                 color = colors.textDim,
                 fontSize = 6.8.sp,
