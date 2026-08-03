@@ -1,0 +1,309 @@
+name: Apply v5.6.1 recency learning
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.head_ref == 'fix/v5.6.1-recency-learning'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply remaining v5.6.1 fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_required(path, old, new, count=1):
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              found = text.count(old)
+              if found < count:
+                  raise SystemExit(f"missing replacement in {path}: expected {count}, found {found}\n{old[:240]}")
+              file.write_text(text.replace(old, new, count), encoding="utf-8")
+
+          app_db = Path("app/src/main/java/com/tianji/probabilitylab/nativev4/data/AppDatabase.kt")
+          app_db_text = app_db.read_text(encoding="utf-8")
+          db_marker = "\n    fun loadAiLiveAudit(lottery: LotteryType): AiLiveAudit ="
+          db_method = '''
+              /**
+               * Learning must not inherit the archive screen's display limit. Records are returned
+               * from the oldest settled target to the newest for correct online updates.
+               */
+              fun loadSettledAiForecastsForLearning(lottery: LotteryType): List<AiForecastRecord> =
+                  readableDatabase.rawQuery(
+                      """SELECT id, profile_id, profile_name, target_period, trained_through_period,
+                          position_index, top6, top7, probabilities, analysis, risk_note, self_rating, model,
+                          analysis_mode, reasoning_mode, reasoning_protocol, reasoning_state,
+                          reasoning_tokens, input_tokens, output_tokens, estimated_cost,
+                          execution_note, created_at, latency_ms, response_id,
+                          forecast_hash, previous_hash, actual_number, top6_hit, top7_hit,
+                          brier_score, log_loss, actual_rank
+                          FROM ai_forecast_records
+                          WHERE lottery_type = ? AND settled_at IS NOT NULL
+                          ORDER BY id ASC""".trimIndent(),
+                      arrayOf(lottery.apiKey),
+                  ).use { cursor ->
+                      buildList { while (cursor.moveToNext()) add(cursor.toAiRecord(lottery)) }
+                  }
+
+          '''
+          if db_marker not in app_db_text:
+              raise SystemExit("AppDatabase marker missing")
+          if "loadSettledAiForecastsForLearning" not in app_db_text:
+              app_db_text = app_db_text.replace(db_marker, db_method + db_marker, 1)
+          app_db.write_text(app_db_text, encoding="utf-8")
+
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/AppController.kt",
+              """        val latest = online?.latest ?: modelHistory.last()
+                  val snapshot = online?.copy(
+                      history = modelHistory,
+          """,
+              """        val latest = online?.latest ?: modelHistory.last()
+                  val snapshotHistory = settlementHistory
+                      .distinctBy { it.period }
+                      .sortedBy { it.period.padStart(32, '0') }
+                  val snapshot = online?.copy(
+                      history = snapshotHistory,
+          """,
+          )
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/AppController.kt",
+              """        ) ?: DrawSnapshot(
+                      lottery = lottery,
+                      history = modelHistory,
+          """,
+              """        ) ?: DrawSnapshot(
+                      lottery = lottery,
+                      history = snapshotHistory,
+          """,
+          )
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/AppController.kt",
+              """        val aiRecords = database.loadAiForecasts(lottery)
+                  aiLearningStore.learnOfficialRecords(lottery.apiKey, settlementHistory, aiRecords)
+          """,
+              """        val aiRecords = database.loadAiForecasts(lottery)
+                  val learningRecords = database.loadSettledAiForecastsForLearning(lottery)
+                  aiLearningStore.learnOfficialRecords(lottery.apiKey, settlementHistory, learningRecords)
+          """,
+          )
+
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt",
+              """        val learningContext = learningStore.snapshotAll(
+                      snapshot.history,
+                      snapshot.lottery.apiKey,
+                      config.id,
+                      config.model.trim(),
+                  )
+          """,
+              """        val learningContext = learningStore.snapshotAll(
+                      snapshot.history,
+                      snapshot.lottery.apiKey,
+                      config.id,
+                      AiLearningStrategy.official(config),
+                  )
+          """,
+          )
+
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt",
+              """        val text = question.trim()
+                  if (text.isBlank() || session.isRunning) return
+                  val activeModel = session.model.ifBlank { config.model }.trim()
+          """,
+              """        val text = question.trim()
+                  if (text.isBlank() || session.isRunning) return
+                  if (AiChatProtocol.wantsPrediction(text)) {
+                      AiPredictionFreshnessGuard.error(snapshot, report)?.let { message ->
+                          session = session.copy(
+                              error = message,
+                              progress = "",
+                              updatedAtEpochMs = System.currentTimeMillis(),
+                          )
+                          return
+                      }
+                  }
+                  val activeModel = session.model.ifBlank { config.model }.trim()
+          """,
+          )
+
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt",
+              """        archiveData.filter { it.lotteryKey == snapshot.lottery.apiKey }.forEach { archive ->
+                      archive.candidates.filter { it.actualNumber == null }.forEach { record ->
+                          val draw = drawsByPeriod[record.targetPeriod] ?: return@forEach
+                          val position = record.prediction.position
+                          if (position !in draw.numbers.indices) return@forEach
+                          learningStore.learnChatCandidate(
+                              outcomeId = record.id,
+                              lotteryKey = archive.lotteryKey,
+                              profileId = archive.profileId,
+                              model = archive.model,
+                              position = position,
+                              top6 = record.prediction.top6,
+                              targetPeriod = record.targetPeriod,
+                              actualNumber = draw.numbers[position],
+                              draws = snapshot.history,
+                          )
+                      }
+                  }
+          """,
+              """        archiveData.filter { it.lotteryKey == snapshot.lottery.apiKey }.forEach { archive ->
+                      archive.candidates.forEach { record ->
+                          val position = record.prediction.position
+                          val actualNumber = record.actualNumber
+                              ?: drawsByPeriod[record.targetPeriod]?.numbers?.getOrNull(position)
+                              ?: return@forEach
+                          learningStore.learnChatCandidate(
+                              outcomeId = record.id,
+                              lotteryKey = archive.lotteryKey,
+                              profileId = archive.profileId,
+                              model = AiLearningStrategy.chat(
+                                  archive.model,
+                                  archive.personaId,
+                                  archive.judgementMode,
+                              ),
+                              position = position,
+                              top6 = record.prediction.top6,
+                              targetPeriod = record.targetPeriod,
+                              actualNumber = actualNumber,
+                              draws = snapshot.history,
+                          )
+                      }
+                  }
+          """,
+          )
+
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt",
+              """        val persona = AiChatPersona.fromId(session.personaId)
+                  val judgementMode = session.judgementMode
+                  val requestedPosition = AiAdaptiveSignalEngine.extractRequestedPosition(text)
+          """,
+              """        val persona = AiChatPersona.fromId(session.personaId)
+                  val judgementMode = session.judgementMode
+                  val learningStrategy = AiLearningStrategy.chat(activeModel, persona.id, judgementMode)
+                  val requestedPosition = AiAdaptiveSignalEngine.extractRequestedPosition(text)
+          """,
+          )
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt",
+              """        val learningProfile = learningStore.profile(
+                      snapshot.lottery.apiKey,
+                      config.id,
+                      activeModel,
+                      requestedPosition,
+                  )
+                  val learningContext = learningStore.snapshot(
+                      snapshot.history,
+                      snapshot.lottery.apiKey,
+                      config.id,
+                      activeModel,
+                      requestedPosition,
+                  )
+          """,
+              """        val learningProfile = learningStore.profile(
+                      snapshot.lottery.apiKey,
+                      config.id,
+                      learningStrategy,
+                      requestedPosition,
+                  )
+                  val learningContext = learningStore.snapshot(
+                      snapshot.history,
+                      snapshot.lottery.apiKey,
+                      config.id,
+                      learningStrategy,
+                      requestedPosition,
+                  )
+          """,
+          )
+          replace_required(
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt",
+              """                            learningStore.profile(
+                                      snapshot.lottery.apiKey,
+                                      config.id,
+                                      activeModel,
+                                      prediction.position,
+                                  )
+          """,
+              """                            learningStore.profile(
+                                      snapshot.lottery.apiKey,
+                                      config.id,
+                                      learningStrategy,
+                                      prediction.position,
+                                  )
+          """,
+          )
+
+          chat = Path("app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt")
+          chat_text = chat.read_text(encoding="utf-8")
+          guard_marker = "\n\ninternal data class AiPositionStatistics("
+          guard = '''
+          internal object AiPredictionFreshnessGuard {
+              fun error(snapshot: DrawSnapshot, report: ForecastReport): String? = when {
+                  !snapshot.sourceHealth.isFresh ->
+                      "开奖数据不是最新状态，预测类问题已拦截。请先刷新成功后再分析"
+                  report.targetPeriod.isBlank() || report.targetPeriod == "待同步" ->
+                      "目标期尚未同步，不能使用旧历史生成预测"
+                  snapshot.nextPeriod != report.targetPeriod ->
+                      "当前目标期已经变化，请刷新后重新提问"
+                  report.trainedThroughPeriod != snapshot.latest.period ->
+                      "分析历史没有训练到最新期开奖，请刷新后重新提问"
+                  else -> null
+              }
+          }
+
+          '''
+          if guard_marker not in chat_text:
+              raise SystemExit("AiChat guard marker missing")
+          if "internal object AiPredictionFreshnessGuard" not in chat_text:
+              chat_text = chat_text.replace(guard_marker, "\n\n" + guard + guard_marker, 1)
+          chat.write_text(chat_text, encoding="utf-8")
+
+          replace_required(
+              "app/build.gradle.kts",
+              '        versionCode = 35\n        versionName = "5.6.0"',
+              '        versionCode = 36\n        versionName = "5.6.1"',
+          )
+
+          readme = Path("README.md")
+          readme_text = readme.read_text(encoding="utf-8")
+          readme_text = readme_text.replace(
+              "5.6.0 持续学习正式候选",
+              "5.6.1 时效自适应学习正式候选",
+          )
+          readme.write_text(readme_text, encoding="utf-8")
+          PY
+
+      - name: Verify debug and release builds
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease --stacktrace
+
+      - name: Commit verified changes
+        run: |
+          rm -f .github/workflows/apply-v5.6.1-recency-learning.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: complete recency-aware learning safeguards"
+          git push origin HEAD:${{ github.head_ref }}
