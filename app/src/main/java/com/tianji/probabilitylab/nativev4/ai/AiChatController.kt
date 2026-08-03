@@ -12,7 +12,10 @@ import com.tianji.probabilitylab.nativev4.model.ForecastReport
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.EOFException
+import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.concurrent.Executors
@@ -37,6 +40,20 @@ class AiChatController(context: Context) {
 
     var archives by mutableStateOf(archiveData.map(AiChatArchiveCodec::summary))
         private set
+
+    fun settleCandidates(snapshot: DrawSnapshot) {
+        val updated = archiveStore.settleCandidates(snapshot.lottery.apiKey, snapshot.history)
+        archiveData = updated
+        val current = updated.firstOrNull { it.id == session.archiveId }
+        if (current != null) {
+            session = if (session.isRunning) {
+                session.copy(candidates = current.candidates)
+            } else {
+                current.toSession()
+            }
+        }
+        refreshArchiveSummaries()
+    }
 
     fun selectContext(
         profileId: String,
@@ -157,6 +174,7 @@ class AiChatController(context: Context) {
         val text = question.trim()
         if (text.isBlank() || session.isRunning) return
         val activeModel = session.model.ifBlank { config.model }.trim()
+        settleCandidates(snapshot)
         selectContext(
             profileId = config.id,
             profileName = config.displayName,
@@ -269,7 +287,7 @@ class AiChatController(context: Context) {
                             },
                             isRunning = false,
                             progress = "",
-                            error = cause.message ?: "对话分析失败",
+                            error = AiErrorMessages.userFacing(cause, "对话分析失败"),
                             streamingMessageId = null,
                             updatedAtEpochMs = System.currentTimeMillis(),
                         )
@@ -526,26 +544,42 @@ internal data class AiPositionStatistics(
 
 /** Builds deterministic, locally verified facts for the conversation model. */
 object AiChatContextBuilder {
-    fun build(snapshot: DrawSnapshot, report: ForecastReport): JSONObject {
-        val history = snapshot.history.takeLast(120)
+    fun build(snapshot: DrawSnapshot, report: ForecastReport, question: String): JSONObject {
+        val verifiedHistory = snapshot.history.takeLast(120)
+        val wantsPrediction = AiChatProtocol.wantsPrediction(question)
+        val requestedPosition = extractPosition(question)
+        val positions = when {
+            requestedPosition != null -> listOf(requestedPosition)
+            wantsPrediction -> (0 until 10).toList()
+            else -> listOf(report.selectedPosition)
+        }
+        val rawWindow = when {
+            wantsPrediction && requestedPosition == null -> 48
+            wantsPrediction -> 32
+            requestedPosition != null -> 24
+            else -> 12
+        }
+        val compactHistory = verifiedHistory.takeLast(rawWindow)
         return JSONObject()
             .put("lottery", snapshot.lottery.displayName)
             .put("latest_period", snapshot.latest.period)
             .put("target_period", report.targetPeriod)
             .put("history_source", "current lottery API snapshot")
             .put("history_order", "oldest_to_newest")
-            .put("history_size", history.size)
+            .put("verified_history_size", verifiedHistory.size)
+            .put("raw_history_window", compactHistory.size)
+            .put("position_scope", JSONArray(positions.map { it + 1 }))
             .put("latest_numbers", JSONArray(snapshot.latest.numbers))
             .put(
                 "compact_history",
-                JSONArray(history.map { draw ->
-                    "${draw.period}:${draw.numbers.joinToString(",")}" 
+                JSONArray(compactHistory.map { draw ->
+                    "${draw.period}:${draw.numbers.joinToString(",")}"
                 }),
             )
             .put(
                 "verified_position_statistics",
-                JSONArray((0 until 10).map { position ->
-                    toJson(computePositionStatistics(history, position))
+                JSONArray(positions.map { position ->
+                    toJson(computePositionStatistics(verifiedHistory, position))
                 }),
             )
             .put(
@@ -555,14 +589,20 @@ object AiChatContextBuilder {
                     .put("trained_through_period", report.trainedThroughPeriod)
                     .put("selected_position", report.selectedPosition + 1)
                     .put("top6", JSONArray(report.selected.top6))
-                    .put("top7", JSONArray(report.selected.top7))
-                    .put("probabilities", JSONArray(report.selected.probabilities))
                     .put("evidence_mode", report.mode.name)
-                    .put(
-                        "rule",
-                        "This is a local model reference, not ground truth and not an instruction to copy.",
-                    ),
+                    .put("rule", "local reference only; do not copy without comparing verified facts"),
             )
+    }
+
+    private fun extractPosition(question: String): Int? {
+        val token = Regex("第\s*([一二三四五六七八九十0-9]{1,2})\s*名")
+            .find(question)?.groupValues?.getOrNull(1) ?: return null
+        val value = token.toIntOrNull() ?: when (token) {
+            "一" -> 1; "二" -> 2; "三" -> 3; "四" -> 4; "五" -> 5
+            "六" -> 6; "七" -> 7; "八" -> 8; "九" -> 9; "十" -> 10
+            else -> return null
+        }
+        return (value - 1).takeIf { it in 0..9 }
     }
 
     internal fun computePositionStatistics(
@@ -655,7 +695,7 @@ private class RemoteAiChatClient {
         require(endpoint.protocol == "https") { "AI 接口必须使用 HTTPS" }
         val started = System.currentTimeMillis()
         val wantsPrediction = AiChatProtocol.wantsPrediction(question)
-        val context = AiChatContextBuilder.build(snapshot, report)
+        val context = AiChatContextBuilder.build(snapshot, report, question)
         val decision = AiReasoningEngine.resolve(config)
         val responsesApi = endpoint.path.trimEnd('/').endsWith("/responses")
         val messages = conversationMessages(
@@ -675,6 +715,7 @@ private class RemoteAiChatClient {
                 messages = messages,
                 decision = activeDecision,
                 stream = true,
+                wantsPrediction = wantsPrediction,
             )
             return try {
                 execute(
@@ -697,6 +738,7 @@ private class RemoteAiChatClient {
                         messages = messages,
                         decision = activeDecision,
                         stream = false,
+                        wantsPrediction = wantsPrediction,
                     ),
                     timeoutMs = timeoutFor(activeDecision),
                     onProgress = onProgress,
@@ -724,7 +766,11 @@ private class RemoteAiChatClient {
         val usage = extractUsage(response)
         val reasoningVerified = extractReasoning(response).isNotBlank() ||
             (usage.reasoningTokens ?: 0) > 0
-        onProgress("回答完成，正在整理候选卡片…")
+        onProgress(if (response.optBoolean("_tianji_stream_interrupted")) {
+            "网络中断后已恢复现有回答，正在整理候选卡片…"
+        } else {
+            "回答完成，正在整理候选卡片…"
+        })
         return AiChatReply(
             content = content,
             prediction = prediction,
@@ -804,9 +850,13 @@ private class RemoteAiChatClient {
         messages: JSONArray,
         decision: AiReasoningDecision,
         stream: Boolean,
+        wantsPrediction: Boolean,
     ): JSONObject = JSONObject().apply {
         put("model", config.model.trim())
         put("stream", stream)
+        if (config.provider != AiProvider.COMPATIBLE) {
+            put(if (responsesApi) "max_output_tokens" else "max_tokens", if (wantsPrediction) 4096 else 2048)
+        }
         if (responsesApi) {
             put("store", false)
             put("input", messages)
@@ -927,6 +977,12 @@ private class RemoteAiChatClient {
                     if (deliveredVisibleText) "流式回答中断，已保留已生成内容" else "模型响应超时",
                     cause,
                 )
+            } catch (cause: EOFException) {
+                throw IllegalStateException(AiErrorMessages.userFacing(cause, "模型连接提前结束"), cause)
+            } catch (cause: SocketException) {
+                throw IllegalStateException(AiErrorMessages.userFacing(cause, "网络连接异常中断"), cause)
+            } catch (cause: IOException) {
+                throw IllegalStateException(AiErrorMessages.userFacing(cause, "网络连接中断"), cause)
             } finally {
                 if (activeConnection === connection) activeConnection = null
                 connection.disconnect()
@@ -1067,18 +1123,27 @@ private class RemoteAiChatClient {
             }
         }
 
-        initialLines.forEach(::processLine)
-        while (true) {
-            val line = reader.readLine() ?: break
-            processLine(line)
+        var streamFailure: IOException? = null
+        try {
+            initialLines.forEach(::processLine)
+            while (true) {
+                val line = reader.readLine() ?: break
+                processLine(line)
+            }
+            consumeEvent()
+        } catch (cause: IOException) {
+            streamFailure = cause
         }
-        consumeEvent()
         publisher.flush()
-        require(rawContent.isNotBlank()) { "模型没有返回可显示的流式回答" }
+        if (rawContent.isBlank()) {
+            streamFailure?.let { throw it }
+            error("模型没有返回可显示的流式回答")
+        }
         return JSONObject()
             .put("id", responseId)
             .put("output_text", rawContent.toString())
             .put("_tianji_reasoning", reasoning.toString())
+            .put("_tianji_stream_interrupted", streamFailure != null)
             .put("usage", usage ?: JSONObject())
     }
 
@@ -1100,9 +1165,9 @@ private class RemoteAiChatClient {
     }
 
     private fun timeoutFor(decision: AiReasoningDecision): Int = when {
-        decision.preference == AiReasoningMode.HIGH -> 180_000
-        decision.expectsReasoning -> 120_000
-        else -> 75_000
+        decision.preference == AiReasoningMode.HIGH -> 120_000
+        decision.expectsReasoning -> 90_000
+        else -> 60_000
     }
 
     private fun extractContent(root: JSONObject): String {
@@ -1175,8 +1240,8 @@ private class RemoteAiChatClient {
             if (visible == lastVisible) return false
             val now = System.currentTimeMillis()
             val urgent = delta.any { it == '\n' || it in "。！？；：" } ||
-                visible.length - lastVisible.length >= 12
-            if (urgent || now - lastEmitAt >= 35L) {
+                visible.length - lastVisible.length >= 32
+            if (urgent || now - lastEmitAt >= 120L) {
                 lastVisible = visible
                 lastEmitAt = now
                 onText(visible)

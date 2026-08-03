@@ -19,8 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,8 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import com.tianji.probabilitylab.nativev4.AppController
-import com.tianji.probabilitylab.nativev4.ai.AiChatController
+import com.tianji.probabilitylab.nativev4.TianjiRuntime
+import com.tianji.probabilitylab.nativev4.service.AiForegroundService
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceStore
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import com.tianji.probabilitylab.nativev4.ui.theme.PaletteMode
@@ -48,12 +48,38 @@ import kotlinx.coroutines.launch
 @Composable
 fun TianjiApp() {
     val context = LocalContext.current
-    val controller = remember { AppController(context) }
-    val chatController = remember { AiChatController(context.applicationContext) }
+    val runtime = remember(context.applicationContext) { TianjiRuntime.from(context.applicationContext) }
+    val controller = runtime.appController
+    val chatController = runtime.chatController
     val appearance = remember { AppearanceStore(context.applicationContext) }
     val paletteMode by appearance.palette.collectAsState(initial = PaletteMode.MONET)
     val scope = rememberCoroutineScope()
     val state = controller.state
+    val refreshSafely: () -> Unit = {
+        if (!state.isAiAnalyzing) controller.refresh()
+    }
+    val chatRunning = chatController.session.isRunning
+    LaunchedEffect(state.isAiAnalyzing, chatRunning, chatController.session.progress) {
+        if (state.isAiAnalyzing || chatRunning) {
+            val title = when {
+                state.isAiAnalyzing && chatRunning -> "天机 AI 任务正在运行"
+                state.isAiAnalyzing -> "天机正式预测正在运行"
+                else -> "天机分析对话正在运行"
+            }
+            val detail = if (chatRunning) {
+                chatController.session.progress.ifBlank { "切出页面后仍会继续生成" }
+            } else {
+                state.aiStatuses.values.firstOrNull { it.state.name == "ANALYZING" }
+                    ?.message.orEmpty().ifBlank { "切出页面后仍会继续预测" }
+            }
+            AiForegroundService.show(context, title, detail)
+        } else {
+            AiForegroundService.hide(context)
+        }
+    }
+    LaunchedEffect(state.snapshot?.latest?.period, state.snapshot?.history?.size) {
+        state.snapshot?.let(chatController::settleCandidates)
+    }
     var destination by rememberSaveable { mutableStateOf(NavDestination.FORECAST) }
     var showChat by rememberSaveable { mutableStateOf(false) }
     val density = LocalDensity.current
@@ -61,12 +87,6 @@ fun TianjiApp() {
         Density(density.density, density.fontScale)
     }
 
-    DisposableEffect(controller, chatController) {
-        onDispose {
-            chatController.close()
-            controller.close()
-        }
-    }
     BackHandler(enabled = showChat || destination != NavDestination.FORECAST) {
         if (showChat) showChat = false else destination = NavDestination.FORECAST
     }
@@ -98,7 +118,7 @@ fun TianjiApp() {
                         )
                     }
                     Column(Modifier.fillMaxSize()) {
-                        AppHeader(state.isRefreshing, controller::refresh)
+                        AppHeader(state.isRefreshing, refreshSafely)
                         Box(Modifier.weight(1f)) {
                             AnimatedContent(
                                 targetState = destination,
@@ -113,7 +133,7 @@ fun TianjiApp() {
                                         state = state,
                                         aiConfigs = controller.aiConfigs,
                                         onSelectLottery = controller::selectLottery,
-                                        onRefresh = controller::refresh,
+                                        onRefresh = refreshSafely,
                                         onAnalyzeAllAi = { controller.analyzeWithAi() },
                                         onCancelAi = controller::cancelAi,
                                         modifier = Modifier.fillMaxSize(),
@@ -178,7 +198,7 @@ fun TianjiApp() {
                         modelCatalogs = controller.aiAvailableModels,
                         snapshot = state.snapshot,
                         report = state.report,
-                        onRefresh = controller::refresh,
+                        onRefresh = refreshSafely,
                         onDismiss = { showChat = false },
                     )
                 }

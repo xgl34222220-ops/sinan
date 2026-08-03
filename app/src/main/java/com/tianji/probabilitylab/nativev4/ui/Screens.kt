@@ -125,6 +125,7 @@ fun ForecastScreen(
                         lottery = state.lottery,
                         isRefreshing = state.isRefreshing,
                         error = state.error,
+                        aiRunning = state.isAiAnalyzing,
                         onRefresh = onRefresh,
                     )
                 }
@@ -155,6 +156,7 @@ private fun LiveDrawCard(
     lottery: LotteryType,
     isRefreshing: Boolean,
     error: String?,
+    aiRunning: Boolean,
     onRefresh: () -> Unit,
 ) {
     val colors = LocalTianjiColors.current
@@ -246,6 +248,7 @@ private fun LiveDrawCard(
                     snapshot = snapshot,
                     deadline = deadline,
                     isRefreshing = isRefreshing,
+                    aiRunning = aiRunning,
                     onRefresh = onRefresh,
                     modifier = Modifier.weight(1f),
                 )
@@ -279,6 +282,7 @@ private fun NextDrawCountdown(
     snapshot: com.tianji.probabilitylab.nativev4.model.DrawSnapshot,
     deadline: ForecastDeadline?,
     isRefreshing: Boolean,
+    aiRunning: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -291,6 +295,7 @@ private fun NextDrawCountdown(
         snapshot.serverTimeEpochMs,
         snapshot.sourceHealth.syncedAtEpochMs,
         isRefreshing,
+        aiRunning,
     ) {
         val target = deadline?.epochMs
         if (target == null) {
@@ -306,6 +311,10 @@ private fun NextDrawCountdown(
                 localNowEpochMs = System.currentTimeMillis(),
             )
             if (remaining <= 0) {
+                if (aiRunning) {
+                    delay(1_000L)
+                    continue
+                }
                 val delays = listOf(
                     2_000L,
                     3_000L,
@@ -704,7 +713,7 @@ private fun AiStatusRow(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    "${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}",
+                    "${config.analysisMode.label} · ${AiReasoningEngine.resolveForecast(config).displayLabel}",
                     color = colors.textDim,
                     fontSize = 6.5.sp,
                     maxLines = 1,
@@ -1039,7 +1048,7 @@ private fun ReasoningBadge(state: AiReasoningState, reasoningTokens: Int?) {
             "已请求推理 · 供应商未返回可核验用量" to colors.amber
         AiReasoningState.FALLBACK ->
             "保留真实思考后的重试结果（不代表本期好坏）" to colors.amber
-        AiReasoningState.DISABLED -> "可控推理已关闭" to colors.textDim
+        AiReasoningState.DISABLED -> "正式预测限时模式 · 长思考已关闭" to colors.textDim
         AiReasoningState.DEFAULT -> "模型默认推理" to colors.textDim
         AiReasoningState.UNSUPPORTED -> "普通分析接口 · 未检测到可控推理" to colors.textDim
     }
@@ -1611,17 +1620,24 @@ private fun AiProfileAuditRow(audit: AiProfileAudit) {
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                "${audit.settled}期 · 六码 ${(audit.top6Rate * 100).format1()}%",
+                "${audit.settled}期 · 六码 ${(audit.top6Rate * 100).format1()}% · 较随机 ${if (audit.top6Lift >= 0) "+" else ""}${(audit.top6Lift * 100).format1()}%",
                 color = colors.accent,
                 fontSize = 7.6.sp,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                if (audit.settled < 100) {
-                    "前向 ${audit.settled}/100 · 基础权重"
-                } else {
-                    "LogLoss ${audit.meanLogLoss?.format2() ?: "--"} · 权重 ${audit.forwardWeight.format2()}"
+                buildString {
+                    append("近20/50/100：")
+                    append(audit.recent20Top6Rate?.let { "${(it * 100).format1()}%" } ?: "--")
+                    append(" / ")
+                    append(audit.recent50Top6Rate?.let { "${(it * 100).format1()}%" } ?: "--")
+                    append(" / ")
+                    append(audit.recent100Top6Rate?.let { "${(it * 100).format1()}%" } ?: "--")
+                    append(" · ")
+                    append(if (audit.settled < 30) "样本不足" else "LogLoss ${audit.meanLogLoss?.format2() ?: "--"}")
+                    audit.meanLatencyMs?.let { append(" · ${it.toLong()}ms") }
+                    audit.meanEstimatedCost?.let { append(" · 均价 $${"%.5f".format(Locale.US, it)}") }
                 },
                 color = colors.textDim,
                 fontSize = 6.8.sp,
@@ -2127,7 +2143,7 @@ private fun AiConfigPanel(
                                 )
                                 Spacer(Modifier.height(3.dp))
                                 Text(
-                                    "${config.analysisMode.label} · ${AiReasoningEngine.resolve(config).displayLabel}",
+                                    "${config.analysisMode.label} · ${AiReasoningEngine.resolveForecast(config).displayLabel}",
                                     color = colors.textDim,
                                     fontSize = 6.8.sp,
                                     maxLines = 1,

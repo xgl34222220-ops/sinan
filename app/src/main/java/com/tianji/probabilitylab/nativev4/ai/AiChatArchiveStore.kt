@@ -1,58 +1,139 @@
 package com.tianji.probabilitylab.nativev4.ai
 
 import android.content.Context
-import android.util.AtomicFile
+import android.content.ContentValues
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
+import com.tianji.probabilitylab.nativev4.model.Draw
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
 /** App-private multi-conversation store, deliberately separate from official forecast records. */
 class AiChatArchiveStore(context: Context) {
-    private val file = AtomicFile(File(context.filesDir, FILE_NAME))
+    private val appContext = context.applicationContext
+    private val helper = ArchiveDb(appContext)
+    private val legacyFile = File(appContext.filesDir, LEGACY_FILE_NAME)
+
+    init {
+        migrateLegacyJson()
+    }
 
     @Synchronized
-    fun loadAll(): List<AiChatArchive> = runCatching {
-        if (!file.baseFile.exists()) return emptyList()
-        val text = file.openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
-        AiChatArchiveCodec.decode(text)
-    }.getOrDefault(emptyList())
+    fun loadAll(): List<AiChatArchive> = helper.readableDatabase.rawQuery(
+        "SELECT payload FROM chat_archives ORDER BY updated_at DESC LIMIT $MAX_CONVERSATIONS",
+        null,
+    ).use { cursor ->
+        buildList {
+            while (cursor.moveToNext()) {
+                AiChatArchiveCodec.decode(cursor.getString(0)).firstOrNull()?.let(::add)
+            }
+        }
+    }
 
     @Synchronized
     fun upsert(archive: AiChatArchive): List<AiChatArchive> {
-        val normalized = archive.copy(
-            messages = archive.messages.filter { it.content.isNotBlank() }.takeLast(MAX_MESSAGES),
-            candidates = archive.candidates.takeLast(MAX_CANDIDATES),
-            memorySummary = archive.memorySummary.take(MAX_MEMORY_CHARS),
-            updatedAtEpochMs = System.currentTimeMillis(),
-        )
-        val all = (loadAll().filterNot { it.id == normalized.id } + normalized)
-            .sortedByDescending(AiChatArchive::updatedAtEpochMs)
-            .take(MAX_CONVERSATIONS)
-        writeAll(all)
-        return all
+        val normalized = normalize(archive)
+        put(normalized)
+        trimOldRows()
+        return loadAll()
     }
 
     @Synchronized
     fun delete(id: String): List<AiChatArchive> {
-        val all = loadAll().filterNot { it.id == id }
-        writeAll(all)
-        return all
+        helper.writableDatabase.delete("chat_archives", "id = ?", arrayOf(id))
+        return loadAll()
     }
 
-    private fun writeAll(archives: List<AiChatArchive>) {
-        val output = file.startWrite()
+    @Synchronized
+    fun settleCandidates(lotteryKey: String, draws: List<Draw>): List<AiChatArchive> {
+        if (lotteryKey.isBlank() || draws.isEmpty()) return loadAll()
+        val byPeriod = draws.asSequence()
+            .filter { it.lottery.apiKey == lotteryKey && it.numbers.size == 10 }
+            .associateBy(Draw::period)
+        if (byPeriod.isEmpty()) return loadAll()
+        loadAll().filter { it.lotteryKey == lotteryKey }.forEach { archive ->
+            var changed = false
+            val candidates = archive.candidates.map { record ->
+                if (record.actualNumber != null) return@map record
+                val draw = byPeriod[record.targetPeriod] ?: return@map record
+                val position = record.prediction.position
+                if (position !in draw.numbers.indices) return@map record
+                changed = true
+                record.copy(
+                    actualNumber = draw.numbers[position],
+                    resolvedPeriod = draw.period,
+                )
+            }
+            if (changed) put(normalize(archive.copy(candidates = candidates)))
+        }
+        return loadAll()
+    }
+
+    private fun normalize(archive: AiChatArchive): AiChatArchive = archive.copy(
+        messages = archive.messages.filter { it.content.isNotBlank() }.takeLast(MAX_MESSAGES),
+        candidates = archive.candidates.takeLast(MAX_CANDIDATES),
+        memorySummary = archive.memorySummary.take(MAX_MEMORY_CHARS),
+        updatedAtEpochMs = System.currentTimeMillis(),
+    )
+
+    private fun put(archive: AiChatArchive) {
+        val values = ContentValues().apply {
+            put("id", archive.id)
+            put("updated_at", archive.updatedAtEpochMs)
+            put("payload", AiChatArchiveCodec.encode(listOf(archive)))
+        }
+        helper.writableDatabase.insertWithOnConflict(
+            "chat_archives",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+
+    private fun trimOldRows() {
+        helper.writableDatabase.execSQL(
+            "DELETE FROM chat_archives WHERE id NOT IN " +
+                "(SELECT id FROM chat_archives ORDER BY updated_at DESC LIMIT $MAX_CONVERSATIONS)",
+        )
+    }
+
+    private fun migrateLegacyJson() {
+        val count = helper.readableDatabase.rawQuery("SELECT COUNT(*) FROM chat_archives", null)
+            .use { if (it.moveToFirst()) it.getInt(0) else 0 }
+        if (count > 0 || !legacyFile.exists()) return
+        val archives = runCatching {
+            AiChatArchiveCodec.decode(legacyFile.readText(Charsets.UTF_8))
+        }.getOrDefault(emptyList())
+        helper.writableDatabase.beginTransaction()
         try {
-            output.write(AiChatArchiveCodec.encode(archives).toByteArray(Charsets.UTF_8))
-            output.flush()
-            file.finishWrite(output)
-        } catch (cause: Throwable) {
-            file.failWrite(output)
-            throw cause
+            archives.forEach { put(normalize(it)) }
+            helper.writableDatabase.setTransactionSuccessful()
+        } finally {
+            helper.writableDatabase.endTransaction()
+        }
+        if (archives.isNotEmpty()) {
+            legacyFile.renameTo(File(legacyFile.parentFile, "$LEGACY_FILE_NAME.migrated"))
         }
     }
 
+    private class ArchiveDb(context: Context) :
+        SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
+        override fun onCreate(db: SQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE chat_archives (" +
+                    "id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, payload TEXT NOT NULL)",
+            )
+            db.execSQL("CREATE INDEX chat_archives_updated ON chat_archives(updated_at DESC)")
+        }
+
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    }
+
     private companion object {
-        const val FILE_NAME = "ai_chat_archive_v1.json"
+        const val DATABASE_NAME = "ai_chat_archive_v2.db"
+        const val DATABASE_VERSION = 1
+        const val LEGACY_FILE_NAME = "ai_chat_archive_v1.json"
         const val MAX_CONVERSATIONS = 240
         const val MAX_MESSAGES = 240
         const val MAX_CANDIDATES = 80

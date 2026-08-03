@@ -5,7 +5,7 @@ import java.net.URL
 enum class AiReasoningMode(val label: String, val detail: String) {
     AUTO("自动", "对话沿用模型思考；正式预测自动压缩长思考"),
     LOW("省时", "关闭可控长思考，优先速度与费用"),
-    HIGH("深入", "请求供应商高强度推理，可能更慢且更贵"),
+    HIGH("深入", "分析对话可使用高推理；正式预测仍采用限时核心矩阵"),
 }
 
 enum class AiReasoningProtocol(val label: String) {
@@ -105,20 +105,30 @@ object AiReasoningEngine {
      */
     fun resolveForecast(config: AiConfig): AiReasoningDecision {
         val resolved = resolve(config)
-        if (resolved.protocol != AiReasoningProtocol.DEEPSEEK) return resolved
-        return when (config.reasoningMode) {
-            AiReasoningMode.HIGH -> resolved
-            AiReasoningMode.AUTO -> resolved.copy(
+        return when (resolved.protocol) {
+            AiReasoningProtocol.DEEPSEEK -> resolved.copy(
                 sendControl = true,
                 enableThinking = false,
                 effort = null,
-                displayLabel = "${resolved.protocol.label} · 自动省时",
+                displayLabel = "${resolved.protocol.label} · 正式预测限时",
             )
-            AiReasoningMode.LOW -> resolved.copy(
+            AiReasoningProtocol.ENABLE_THINKING, AiReasoningProtocol.OPENROUTER -> resolved.copy(
                 sendControl = true,
                 enableThinking = false,
                 effort = null,
-                displayLabel = "${resolved.protocol.label} · 省时模式",
+                displayLabel = "${resolved.protocol.label} · 正式预测限时",
+            )
+            AiReasoningProtocol.OPENAI -> resolved.copy(
+                sendControl = false,
+                enableThinking = false,
+                effort = null,
+                displayLabel = "${resolved.protocol.label} · 正式预测限时结构化",
+            )
+            AiReasoningProtocol.AUTO, AiReasoningProtocol.NONE -> resolved.copy(
+                sendControl = false,
+                enableThinking = false,
+                effort = null,
+                displayLabel = "正式预测限时结构化",
             )
         }
     }
