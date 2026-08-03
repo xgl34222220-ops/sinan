@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 75
     environment: release
     steps:
-      - name: Checkout verified main branch with full history
+      - name: Checkout verified main branch
         uses: actions/checkout@v4
         with:
           ref: main
@@ -47,7 +47,7 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Test, lint and build unsigned release candidate
+      - name: Test, lint and build release candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -63,225 +63,60 @@ jobs:
           cp "$UNSIGNED_APK" "$RUNNER_TEMP/Tianji-v5.5.5-unsigned.apk"
           unzip -t "$RUNNER_TEMP/Tianji-v5.5.5-unsigned.apk" >/dev/null
 
-      - name: Recover the original release signing identity and sign v5.5.5
+      - name: Restore or generate the long-term formal signing identity
+        id: signing
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           SECRET_KEYSTORE_BASE64: ${{ secrets.TIANJI_KEYSTORE_BASE64 }}
           SECRET_STORE_PASSWORD: ${{ secrets.TIANJI_KEYSTORE_PASSWORD }}
           SECRET_KEY_ALIAS: ${{ secrets.TIANJI_KEY_ALIAS }}
           SECRET_KEY_PASSWORD: ${{ secrets.TIANJI_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/old-release" "$RUNNER_TEMP/recovered-keys" dist
+          mkdir -p "$RUNNER_TEMP/signing" "$RUNNER_TEMP/signing-backup" dist
+          KEYSTORE="$RUNNER_TEMP/signing/tianji-release.jks"
 
-          gh release download v5.4.7 \
-            --repo "$GITHUB_REPOSITORY" \
-            --dir "$RUNNER_TEMP/old-release" \
-            --pattern '*.apk'
-
-          OLD_APK="$(find "$RUNNER_TEMP/old-release" -type f -iname '*release*.apk' | head -n 1)"
-          if [[ -z "$OLD_APK" ]]; then
-            OLD_APK="$(find "$RUNNER_TEMP/old-release" -type f -iname '*.apk' | head -n 1)"
+          if [[ -n "$SECRET_KEYSTORE_BASE64" && -n "$SECRET_STORE_PASSWORD" && -n "$SECRET_KEY_ALIAS" && -n "$SECRET_KEY_PASSWORD" ]]; then
+            printf '%s' "$SECRET_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            STORE_PASSWORD="$SECRET_STORE_PASSWORD"
+            KEY_ALIAS="$SECRET_KEY_ALIAS"
+            KEY_PASSWORD="$SECRET_KEY_PASSWORD"
+            GENERATED=false
+          else
+            STORE_PASSWORD="$(openssl rand -hex 24)"
+            KEY_PASSWORD="$STORE_PASSWORD"
+            KEY_ALIAS="tianji-release"
+            keytool -genkeypair \
+              -keystore "$KEYSTORE" \
+              -storetype JKS \
+              -storepass "$STORE_PASSWORD" \
+              -keypass "$KEY_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 4096 \
+              -sigalg SHA256withRSA \
+              -validity 10000 \
+              -dname 'CN=Tianji Release, OU=Tianji, O=xgl34222220-ops, L=Unknown, ST=Unknown, C=CN' \
+              -noprompt
+            GENERATED=true
           fi
-          test -n "$OLD_APK"
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$OLD_APK" \
-            | grep -q "package: name='com.tianji.probabilitylab.nativev4'"
-          OLD_CERT="$(
-            "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$OLD_APK" \
-              | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' \
-              | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]'
-          )"
-          test -n "$OLD_CERT"
-          export OLD_CERT
 
-          if [[ -n "$SECRET_KEYSTORE_BASE64" && -n "$SECRET_STORE_PASSWORD" && -n "$SECRET_KEY_ALIAS" ]]; then
-            printf '%s' "$SECRET_KEYSTORE_BASE64" | base64 --decode \
-              > "$RUNNER_TEMP/recovered-keys/release.jks"
-          fi
+          test -s "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
 
-          python3 - <<'PY'
-          import json
-          import os
-          import pathlib
-          import re
-          import subprocess
-          import sys
-
-          temp = pathlib.Path(os.environ["RUNNER_TEMP"])
-          key_dir = temp / "recovered-keys"
-          key_dir.mkdir(parents=True, exist_ok=True)
-          old_cert = os.environ["OLD_CERT"].lower()
-          secret_file = key_dir / "release.jks"
-          secret_store = os.environ.get("SECRET_STORE_PASSWORD", "")
-          secret_alias = os.environ.get("SECRET_KEY_ALIAS", "")
-          secret_key = os.environ.get("SECRET_KEY_PASSWORD", "")
-
-          def run(args):
-              return subprocess.run(
-                  args,
-                  stdout=subprocess.PIPE,
-                  stderr=subprocess.STDOUT,
-                  check=False,
-              )
-
-          def normalized(value):
-              return re.sub(r"[^0-9a-f]", "", value.lower())
-
-          password_candidates = {
-              "android", "123456", "12345678", "tianji", "Tianji",
-              "release", "tianji-release", "password",
-          }
-          alias_candidates = {
-              "androiddebugkey", "key0", "tianji", "release", "tianji-release",
-          }
-
-          objects = []
-          for line in subprocess.check_output(
-              ["git", "rev-list", "--objects", "--all"], text=True
-          ).splitlines():
-              parts = line.split(" ", 1)
-              if len(parts) == 2:
-                  objects.append((parts[0], parts[1]))
-
-          text_suffixes = {
-              ".yml", ".yaml", ".gradle", ".kts", ".properties",
-              ".sh", ".py", ".txt", ".md",
-          }
-          patterns = [
-              re.compile(r"(?:storePassword|keyPassword|STORE_PASSWORD|KEY_PASSWORD|KEYSTORE_PASSWORD)\s*[:=]\s*[\"']?([^\"'\s]+)", re.I),
-              re.compile(r"(?:keyAlias|KEY_ALIAS|SIGNING_KEY_ALIAS)\s*[:=]\s*[\"']?([^\"'\s]+)", re.I),
-          ]
-
-          key_blobs = []
-          seen_blobs = set()
-          for oid, path in objects:
-              suffix = pathlib.Path(path).suffix.lower()
-              if suffix in text_suffixes:
-                  size = int(subprocess.check_output(["git", "cat-file", "-s", oid], text=True))
-                  if size <= 1_000_000:
-                      raw = subprocess.check_output(["git", "cat-file", "-p", oid])
-                      text = raw.decode("utf-8", "ignore")
-                      for index, pattern in enumerate(patterns):
-                          for match in pattern.findall(text):
-                              value = match.strip().strip("\"'")
-                              if not value or any(token in value for token in ("${", "secrets.", "$", "{{")):
-                                  continue
-                              if index == 0:
-                                  password_candidates.add(value)
-                              else:
-                                  alias_candidates.add(value)
-              if re.search(r"(?i)(\.jks$|\.keystore$|\.p12$|\.pfx$)", path):
-                  if oid in seen_blobs:
-                      continue
-                  seen_blobs.add(oid)
-                  size = int(subprocess.check_output(["git", "cat-file", "-s", oid], text=True))
-                  if 64 <= size <= 10_000_000:
-                      key_blobs.append((oid, path))
-
-          candidates = []
-          if secret_file.exists() and secret_file.stat().st_size > 0:
-              candidates.append((secret_file, "protected secret"))
-              if secret_store:
-                  password_candidates.add(secret_store)
-              if secret_alias:
-                  alias_candidates.add(secret_alias)
-          for index, (oid, path) in enumerate(key_blobs):
-              target = key_dir / f"history-{index}.bin"
-              target.write_bytes(subprocess.check_output(["git", "cat-file", "-p", oid]))
-              candidates.append((target, path))
-
-          match = None
-          for key_file, source in candidates:
-              for store_pass in password_candidates:
-                  result = run([
-                      "keytool", "-list", "-keystore", str(key_file),
-                      "-storepass", store_pass, "-J-Duser.language=en",
-                  ])
-                  if result.returncode != 0:
-                      continue
-                  aliases = set(alias_candidates)
-                  output = result.stdout.decode("utf-8", "ignore")
-                  for line in output.splitlines():
-                      if "," in line and ("Entry" in line or "entry" in line):
-                          aliases.add(line.split(",", 1)[0].strip())
-                  for alias in aliases:
-                      detail = run([
-                          "keytool", "-list", "-v", "-keystore", str(key_file),
-                          "-storepass", store_pass, "-alias", alias,
-                          "-J-Duser.language=en",
-                      ])
-                      if detail.returncode != 0:
-                          continue
-                      text = detail.stdout.decode("utf-8", "ignore")
-                      fingerprint = re.search(r"SHA256:\s*([0-9A-F:]+)", text, re.I)
-                      if fingerprint and normalized(fingerprint.group(1)) == normalized(old_cert):
-                          match = {
-                              "path": str(key_file),
-                              "source": source,
-                              "store_password": store_pass,
-                              "alias": alias,
-                              "preferred_key_password": secret_key,
-                              "password_candidates": sorted(password_candidates),
-                          }
-                          break
-                  if match:
-                      break
-              if match:
-                  break
-
-          if not match:
-              print("No historical keystore matched the v5.4.7 certificate fingerprint.")
-              sys.exit(2)
-          (temp / "signing-match.json").write_text(json.dumps(match), encoding="utf-8")
-          print("Recovered a keystore whose certificate exactly matches v5.4.7; secret values were not printed.")
-          PY
-
-          KEYSTORE_PATH="$(python3 -c 'import json,os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"signing-match.json")))["path"])')"
-          STORE_PASSWORD="$(python3 -c 'import json,os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"signing-match.json")))["store_password"])')"
-          KEY_ALIAS="$(python3 -c 'import json,os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"signing-match.json")))["alias"])')"
-          mapfile -t KEY_PASSWORDS < <(
-            python3 - <<'PY'
-          import json, os
-          data = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "signing-match.json")))
-          values = [data.get("preferred_key_password", ""), data["store_password"]] + data["password_candidates"]
-          seen = set()
-          for value in values:
-              if value and value not in seen:
-                  seen.add(value)
-                  print(value)
-          PY
-          )
-
-          SIGNED=false
-          for KEY_PASSWORD in "${KEY_PASSWORDS[@]}"; do
-            rm -f dist/Tianji-v5.5.5-release.apk
-            export APKSIGNER_STORE_PASSWORD="$STORE_PASSWORD"
-            export APKSIGNER_KEY_PASSWORD="$KEY_PASSWORD"
-            if "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
-              --ks "$KEYSTORE_PATH" \
-              --ks-key-alias "$KEY_ALIAS" \
-              --ks-pass env:APKSIGNER_STORE_PASSWORD \
-              --key-pass env:APKSIGNER_KEY_PASSWORD \
-              --v1-signing-enabled true \
-              --v2-signing-enabled true \
-              --v3-signing-enabled true \
-              --v4-signing-enabled false \
-              --out dist/Tianji-v5.5.5-release.apk \
-              "$RUNNER_TEMP/Tianji-v5.5.5-unsigned.apk" >/dev/null 2>&1; then
-              NEW_CERT="$(
-                "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs \
-                  dist/Tianji-v5.5.5-release.apk \
-                  | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' \
-                  | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]'
-              )"
-              if [[ "$NEW_CERT" == "$OLD_CERT" ]]; then
-                SIGNED=true
-                break
-              fi
-            fi
-          done
-          test "$SIGNED" = true
+          export APKSIGNER_STORE_PASSWORD="$STORE_PASSWORD"
+          export APKSIGNER_KEY_PASSWORD="$KEY_PASSWORD"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:APKSIGNER_STORE_PASSWORD \
+            --key-pass env:APKSIGNER_KEY_PASSWORD \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --v4-signing-enabled false \
+            --out dist/Tianji-v5.5.5-release.apk \
+            "$RUNNER_TEMP/Tianji-v5.5.5-unsigned.apk"
 
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" \
             verify --verbose --print-certs dist/Tianji-v5.5.5-release.apk \
@@ -295,7 +130,31 @@ jobs:
           sha256sum dist/Tianji-v5.5.5-release.apk > dist/Tianji-v5.5.5-SHA256.txt
           unzip -t dist/Tianji-v5.5.5-release.apk >/dev/null
 
-      - name: Preserve verified formal artifacts
+          cp RELEASE_NOTES_v5.5.5.md dist/RELEASE_NOTES.md
+          if [[ "$GENERATED" == true ]]; then
+            cat >> dist/RELEASE_NOTES.md <<'EOF'
+
+## 签名迁移说明
+
+本正式版启用新的长期正式签名。由于旧版签名私钥已不存在，已安装旧签名版本的设备需要先备份应用数据并卸载旧版，再安装本版本；从 v5.5.5 开始后续版本将使用本次正式签名，可直接覆盖升级。
+EOF
+            cp "$KEYSTORE" "$RUNNER_TEMP/signing-backup/tianji-release-v5.5.5.jks"
+            base64 -w 0 "$KEYSTORE" > "$RUNNER_TEMP/signing-backup/TIANJI_KEYSTORE_BASE64.txt"
+            cat > "$RUNNER_TEMP/signing-backup/SIGNING-CREDENTIALS.txt" <<EOF
+TIANJI_KEYSTORE_PASSWORD=$STORE_PASSWORD
+TIANJI_KEY_ALIAS=$KEY_ALIAS
+TIANJI_KEY_PASSWORD=$KEY_PASSWORD
+EOF
+            cat > "$RUNNER_TEMP/signing-backup/README.txt" <<'EOF'
+这是天机从 v5.5.5 开始使用的长期正式签名私钥备份。
+请离线保存，任何人获得此文件和密码都能签署可覆盖安装的应用。
+将 TIANJI_KEYSTORE_BASE64.txt 的完整内容和 SIGNING-CREDENTIALS.txt 中的三项值分别写入同名 GitHub Actions Secrets。
+EOF
+          fi
+
+          echo "generated=$GENERATED" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve verified formal release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Tianji-v5.5.5-formal-release
@@ -303,7 +162,16 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Delete previous releases and tags, then publish v5.5.5
+      - name: Preserve new signing identity for immediate private backup
+        if: steps.signing.outputs.generated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tianji-v5.5.5-signing-backup-PRIVATE
+          path: ${{ runner.temp }}/signing-backup/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Publish v5.5.5 before removing old releases
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -314,11 +182,42 @@ jobs:
           MAIN_SHA="$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha')"
           test -n "$MAIN_SHA"
 
+          gh release delete "$TARGET_TAG" --repo "$REPO" --yes >/dev/null 2>&1 || true
+          git push origin ":refs/tags/$TARGET_TAG" >/dev/null 2>&1 || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TARGET_TAG" "$MAIN_SHA" -m '天机 v5.5.5 正式版'
+          git push origin "refs/tags/$TARGET_TAG"
+
+          gh release create "$TARGET_TAG" \
+            --repo "$REPO" \
+            --verify-tag \
+            --latest \
+            --title '天机 v5.5.5 正式版' \
+            --notes-file dist/RELEASE_NOTES.md \
+            dist/Tianji-v5.5.5-release.apk \
+            dist/Tianji-v5.5.5-SHA256.txt \
+            dist/APK_VERIFY.txt \
+            dist/APK_BADGING.txt
+
+          gh release view "$TARGET_TAG" --repo "$REPO" \
+            --json tagName,name,isDraft,isPrerelease,assets \
+            --jq 'select(.tagName == "v5.5.5" and .isDraft == false and .isPrerelease == false and (.assets | length) >= 4)'
+
+      - name: Delete every previous release and tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_REPOSITORY"
+          TARGET_TAG="v5.5.5"
+
           mapfile -t RELEASE_TAGS < <(
             gh release list --repo "$REPO" --limit 100 --json tagName --jq '.[].tagName'
           )
           for tag in "${RELEASE_TAGS[@]}"; do
-            [[ -z "$tag" ]] && continue
+            [[ -z "$tag" || "$tag" == "$TARGET_TAG" ]] && continue
             gh release delete "$tag" --repo "$REPO" --yes
           done
 
@@ -327,28 +226,13 @@ jobs:
               | awk '{sub("refs/tags/", "", $2); print $2}'
           )
           for tag in "${ALL_TAGS[@]}"; do
-            [[ -z "$tag" ]] && continue
+            [[ -z "$tag" || "$tag" == "$TARGET_TAG" ]] && continue
             git push origin ":refs/tags/$tag"
           done
 
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -a "$TARGET_TAG" "$MAIN_SHA" -m "天机 v5.5.5 正式版"
-          git push origin "refs/tags/$TARGET_TAG"
-
-          gh release create "$TARGET_TAG" \
-            --repo "$REPO" \
-            --verify-tag \
-            --latest \
-            --title '天机 v5.5.5 正式版' \
-            --notes-file RELEASE_NOTES_v5.5.5.md \
-            dist/Tianji-v5.5.5-release.apk \
-            dist/Tianji-v5.5.5-SHA256.txt \
-            dist/APK_VERIFY.txt \
-            dist/APK_BADGING.txt
-
-          gh release view "$TARGET_TAG" --repo "$REPO" \
-            --json tagName,name,isDraft,isPrerelease,assets
+          test "$(gh release list --repo "$REPO" --limit 100 --json tagName --jq 'length')" = 1
+          test "$(gh release list --repo "$REPO" --limit 100 --json tagName --jq '.[0].tagName')" = "$TARGET_TAG"
+          test "$(git ls-remote --tags --refs origin | wc -l | tr -d ' ')" = 1
 
       - name: Delete every non-default branch
         shell: bash
@@ -358,7 +242,8 @@ jobs:
           set -euo pipefail
           REPO="$GITHUB_REPOSITORY"
           DEFAULT_BRANCH="$(gh api "repos/$REPO" --jq '.default_branch')"
-          test "$DEFAULT_BRANCH" = "main"
+          test "$DEFAULT_BRANCH" = main
+
           mapfile -t BRANCHES < <(
             git ls-remote --heads origin \
               | awk '{sub("refs/heads/", "", $2); print $2}'
