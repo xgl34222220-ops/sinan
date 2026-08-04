@@ -22,7 +22,17 @@ from .admin_auth import (
 from .config import settings
 from .db import database
 from .models import ForecastModel, HealthModel, LOTTERIES, SnapshotModel
-from .runtime_config import RuntimeAiConfig, load_ai_config, save_ai_config
+from .runtime_config import (
+    RuntimeAiConfig,
+    activate_ai_profile,
+    delete_ai_profile,
+    load_ai_config,
+    load_ai_profile,
+    load_ai_registry,
+    save_ai_config,
+    save_ai_profile,
+    set_ai_auto_predict,
+)
 from .service import SERVICE_VERSION, run_all_cycles, snapshot
 from .web_console import admin_page, login_page, public_page
 
@@ -42,10 +52,25 @@ class LoginPayload(BaseModel):
 
 class AiConfigPayload(BaseModel):
     enabled: bool = True
+    profile_id: str | None = Field(default=None, max_length=64)
+    name: str = Field(default="", max_length=80)
     endpoint: str = Field(default="", max_length=500)
     model: str = Field(default="", max_length=200)
     api_key: str | None = Field(default=None, max_length=1000)
     timeout_seconds: int = Field(default=120, ge=20, le=300)
+
+
+class AiProfilePayload(BaseModel):
+    name: str = Field(default="", max_length=80)
+    endpoint: str = Field(default="", max_length=500)
+    model: str = Field(default="", max_length=200)
+    api_key: str | None = Field(default=None, max_length=1000)
+    timeout_seconds: int = Field(default=120, ge=20, le=300)
+    activate: bool = False
+
+
+class AiAutoPayload(BaseModel):
+    enabled: bool
 
 
 class PasswordPayload(BaseModel):
@@ -108,6 +133,11 @@ def _decode_state(key: str) -> dict[str, Any] | None:
         return {"value": value[0], "updated_at_epoch_ms": value[1]}
 
 
+def _clear_ai_errors() -> None:
+    for key in LOTTERIES:
+        database.delete_state(f"ai_error:{key}")
+
+
 def _lottery_overview(key: str) -> dict[str, Any]:
     spec = LOTTERIES[key]
     latest = database.latest_draw(key)
@@ -137,14 +167,17 @@ def _records_overview(limit_each: int = 80) -> list[dict[str, Any]]:
 
 
 def _config_from_payload(payload: AiConfigPayload) -> RuntimeAiConfig:
-    current = load_ai_config()
+    selected = load_ai_profile(payload.profile_id) or load_ai_registry().active_profile
+    current_key = selected.api_key if selected else ""
     return RuntimeAiConfig(
-        enabled=payload.enabled,
+        enabled=True,
         endpoint=payload.endpoint.strip().rstrip("/"),
         model=payload.model.strip(),
-        api_key=current.api_key if payload.api_key is None else payload.api_key.strip(),
+        api_key=current_key if payload.api_key is None else payload.api_key.strip(),
         timeout_seconds=payload.timeout_seconds,
-        updated_at_epoch_ms=current.updated_at_epoch_ms,
+        updated_at_epoch_ms=selected.updated_at_epoch_ms if selected else None,
+        profile_id=selected.profile_id if selected else payload.profile_id,
+        profile_name=payload.name.strip() or (selected.name if selected else ""),
     )
 
 
@@ -156,9 +189,11 @@ def health() -> HealthModel:
 @app.get("/v1/public/overview")
 def public_overview() -> dict[str, Any]:
     runtime_ai = load_ai_config()
+    registry = load_ai_registry()
     return {
         "health": health_value().model_dump(),
         "ai": runtime_ai.public_dict(),
+        "ai_profile_count": len(registry.profiles),
         "lotteries": [_lottery_overview(key) for key in LOTTERIES],
     }
 
@@ -244,6 +279,7 @@ def admin_logout(response: Response) -> dict[str, bool]:
 @app.get("/admin/api/state", dependencies=[Depends(require_admin_session)])
 def admin_state() -> dict[str, Any]:
     runtime_ai = load_ai_config()
+    registry = load_ai_registry()
     errors = {
         key: _decode_state(f"ai_error:{key}")
         for key in LOTTERIES
@@ -252,6 +288,7 @@ def admin_state() -> dict[str, Any]:
     return {
         "health": health_value().model_dump(),
         "ai": runtime_ai.public_dict(),
+        "ai_registry": registry.public_dict(),
         "heartbeat": _decode_state("worker_heartbeat"),
         "ai_errors": errors,
         "lotteries": [_lottery_overview(key) for key in LOTTERIES],
@@ -274,12 +311,74 @@ def update_ai(payload: AiConfigPayload) -> dict[str, object]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.post("/admin/api/ai/profiles", dependencies=[Depends(require_admin_action)])
+def create_ai_profile(payload: AiProfilePayload) -> dict[str, object]:
+    try:
+        profile = save_ai_profile(
+            profile_id=None,
+            name=payload.name,
+            endpoint=payload.endpoint,
+            model=payload.model,
+            api_key=payload.api_key,
+            timeout_seconds=payload.timeout_seconds,
+            activate=payload.activate,
+        )
+        return {"profile": profile.public_dict(active=payload.activate), "registry": load_ai_registry().public_dict()}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.put("/admin/api/ai/profiles/{profile_id}", dependencies=[Depends(require_admin_action)])
+def update_ai_profile(profile_id: str, payload: AiProfilePayload) -> dict[str, object]:
+    try:
+        profile = save_ai_profile(
+            profile_id=profile_id,
+            name=payload.name,
+            endpoint=payload.endpoint,
+            model=payload.model,
+            api_key=payload.api_key,
+            timeout_seconds=payload.timeout_seconds,
+            activate=payload.activate,
+        )
+        return {"profile": profile.public_dict(active=payload.activate), "registry": load_ai_registry().public_dict()}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.delete("/admin/api/ai/profiles/{profile_id}", dependencies=[Depends(require_admin_action)])
+def remove_ai_profile(profile_id: str) -> dict[str, object]:
+    try:
+        return load_ai_registry().public_dict() if False else delete_ai_profile(profile_id).public_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/admin/api/ai/profiles/{profile_id}/activate", dependencies=[Depends(require_admin_action)])
+def use_ai_profile(profile_id: str) -> dict[str, object]:
+    try:
+        registry = activate_ai_profile(profile_id)
+        _clear_ai_errors()
+        return registry.public_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.put("/admin/api/ai/auto", dependencies=[Depends(require_admin_action)])
+def update_ai_auto(payload: AiAutoPayload) -> dict[str, object]:
+    try:
+        registry = set_ai_auto_predict(payload.enabled)
+        if not payload.enabled:
+            _clear_ai_errors()
+        return registry.public_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.post("/admin/api/ai/test", dependencies=[Depends(require_admin_action)])
 def test_ai(payload: AiConfigPayload) -> dict[str, object]:
     try:
         result = ai.test_connection(_config_from_payload(payload))
-        for key in LOTTERIES:
-            database.delete_state(f"ai_error:{key}")
+        _clear_ai_errors()
         return {
             "ok": True,
             "message": result.message,
@@ -306,10 +405,8 @@ def list_ai_models(payload: AiConfigPayload) -> dict[str, object]:
 
 @app.post("/admin/api/run", dependencies=[Depends(require_admin_action)])
 def admin_run(background_tasks: BackgroundTasks) -> dict[str, object]:
-    # 网页手动刷新只做同步、结算和本机预测；AI 由唯一 Worker 调度。
-    # 这样 API 进程和 Worker 不会同时为同一期重复调用模型。
     background_tasks.add_task(run_all_cycles, False)
-    return {"accepted": True, "message": "同步任务已开始，AI 由后台 Worker 自动执行"}
+    return {"accepted": True, "message": "同步任务已开始；AI 自动预测由独立开关控制"}
 
 
 @app.put("/admin/api/password", dependencies=[Depends(require_admin_action)])
