@@ -10,7 +10,7 @@ class RecordsUiTests(unittest.TestCase):
     def test_archive_workspace_is_injected(self) -> None:
         html = enhance_admin_html(admin_page())
         for marker in (
-            'id="recordsV2"',
+            "workspace.id='recordsV2'",
             'data-source="ai"',
             'data-source="native"',
             'data-source="all"',
