@@ -1,0 +1,46 @@
+name: Diagnose nativev5 v5.7.2 finalizer
+
+on:
+  push:
+    branches: [main]
+    paths: [DIAG_FINALIZE_NATIVEV5_V572_TRIGGER.txt]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record finalizer state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-nativev5
+          gh run list --workflow finalize-nativev5-v5.7.2.yml --limit 5 \
+            --json databaseId,status,conclusion,event,headSha,url,createdAt \
+            > ci-nativev5/FINALIZER_RUNS.json || true
+          RUN_ID="$(jq -r '.[0].databaseId // empty' ci-nativev5/FINALIZER_RUNS.json)"
+          if [[ -n "$RUN_ID" ]]; then
+            gh run view "$RUN_ID" --json databaseId,status,conclusion,event,headSha,url,jobs \
+              > ci-nativev5/FINALIZER_DETAIL.json
+            if [[ "$(jq -r '.status' ci-nativev5/FINALIZER_DETAIL.json)" == completed && \
+                  "$(jq -r '.conclusion' ci-nativev5/FINALIZER_DETAIL.json)" != success ]]; then
+              gh run view "$RUN_ID" --log-failed > ci-nativev5/FINALIZER_FAILED_LOG.txt || true
+            fi
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-nativev5/FINALIZER_RUNS.json
+          for file in ci-nativev5/FINALIZER_DETAIL.json ci-nativev5/FINALIZER_FAILED_LOG.txt; do
+            [[ -f "$file" ]] && git add "$file"
+          done
+          git commit -m 'ci: record nativev5 v5.7.2 finalizer diagnostics'
+          git push origin HEAD:main
