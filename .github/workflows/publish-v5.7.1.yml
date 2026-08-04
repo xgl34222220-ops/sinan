@@ -39,7 +39,7 @@ jobs:
           grep -q 'displayName = "走势分析"' app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiFreeChat.kt
           grep -q 'displayName = "综合预测"' app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiFreeChat.kt
           test -f server/app/web_console.py
-          test -f server/tests/test_service_responsiveness.py
+          test -f server/tests/test_sync_regressions.py
 
       - name: Create immutable release tag
         shell: bash
@@ -51,8 +51,8 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git fetch origin main --tags --force
           if git ls-remote --exit-code --tags origin refs/tags/v5.7.1 >/dev/null 2>&1; then
-            REMOTE_TAG_SHA="$(git ls-remote --tags --refs origin refs/tags/v5.7.1 | awk '{print $1}')"
-            test "$REMOTE_TAG_SHA" = "$GITHUB_SHA"
+            REMOTE_TAG_COMMIT="$(git ls-remote --tags origin 'refs/tags/v5.7.1^{}' | awk '{print $1}')"
+            test "$REMOTE_TAG_COMMIT" = "$GITHUB_SHA"
           else
             git tag -a v5.7.1 "$GITHUB_SHA" -m '天机 v5.7.1 正式版'
             git push origin refs/tags/v5.7.1
