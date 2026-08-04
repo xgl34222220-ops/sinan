@@ -1,0 +1,43 @@
+name: Watch Tianji v5.7.3 unsigned build
+
+on:
+  push:
+    branches: [main]
+    paths: [WATCH_V573_UNSIGNED_TRIGGER.txt]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Wait for unsigned build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-v573
+          for i in $(seq 1 80); do
+            JSON="$(gh run list --repo '${{ github.repository }}' --workflow 'build-v5.7.3-unsigned-tools.yml' --limit 1 --json databaseId,status,conclusion,headSha,event,createdAt,updatedAt,url 2>/dev/null || true)"
+            if [ "$JSON" != "[]" ] && [ -n "$JSON" ]; then
+              printf '%s\n' "$JSON" > ci-v573/UNSIGNED_RUN.json
+              STATUS="$(jq -r '.[0].status' ci-v573/UNSIGNED_RUN.json)"
+              if [ "$STATUS" = completed ]; then
+                break
+              fi
+            fi
+            sleep 15
+          done
+          test -s ci-v573/UNSIGNED_RUN.json
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git pull --rebase origin main
+          git add ci-v573/UNSIGNED_RUN.json
+          git commit -m 'ci: record Tianji v5.7.3 unsigned build status' || true
+          git push origin HEAD:main
