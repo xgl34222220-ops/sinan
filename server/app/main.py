@@ -19,7 +19,9 @@ from .admin_auth import (
     verify_admin_password,
     verify_session,
 )
+from .admin_insights import operations_overview, records_insights, records_page
 from .config import settings
+from .console_v3 import enhance_console_html
 from .db import database
 from .models import ForecastModel, HealthModel, LOTTERIES, SnapshotModel
 from .records_ui import enhance_admin_html
@@ -150,6 +152,8 @@ def _lottery_overview(key: str) -> dict[str, Any]:
         "latest_period": latest.period if latest else None,
         "numbers": latest.numbers if latest else [],
         "next_period": cycle.get("next_period", "待同步"),
+        "next_draw_at_epoch_ms": cycle.get("next_draw_at_epoch_ms"),
+        "remaining_to_draw_ms": cycle.get("remaining_to_draw_ms"),
         "synced_at_epoch_ms": cycle.get("completed_at_epoch_ms"),
         "draw_count": len(database.list_draws(key, spec.history_target)),
         "forecasts": [record.model_dump() for record in records],
@@ -248,7 +252,7 @@ def dashboard() -> str:
 @app.get("/admin", response_class=HTMLResponse)
 def admin(request: Request) -> str:
     if verify_session(request.cookies.get(SESSION_COOKIE)):
-        return enhance_admin_html(admin_page())
+        return enhance_console_html(enhance_admin_html(admin_page()))
     return login_page(admin_password_configured())
 
 
@@ -297,6 +301,53 @@ def admin_state() -> dict[str, Any]:
     }
 
 
+@app.get("/admin/api/records", dependencies=[Depends(require_admin_session)])
+def admin_records(
+    lottery: str = Query(default="all", max_length=40),
+    source: str = Query(default="all", max_length=20),
+    status: str = Query(default="all", max_length=20),
+    model: str = Query(default="", max_length=200),
+    days: int = Query(default=0, ge=0, le=3650),
+    limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    try:
+        return records_page(
+            lottery=lottery,
+            source=source,
+            status=status,
+            model=model,
+            days=days,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/admin/api/insights", dependencies=[Depends(require_admin_session)])
+def admin_insights(
+    lottery: str = Query(default="all", max_length=40),
+    source: str = Query(default="all", max_length=20),
+    model: str = Query(default="", max_length=200),
+    days: int = Query(default=0, ge=0, le=3650),
+) -> dict[str, Any]:
+    try:
+        return records_insights(
+            lottery=lottery,
+            source=source,
+            model=model,
+            days=days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/admin/api/operations", dependencies=[Depends(require_admin_session)])
+def admin_operations() -> dict[str, Any]:
+    return operations_overview()
+
+
 @app.put("/admin/api/ai", dependencies=[Depends(require_admin_action)])
 def update_ai(payload: AiConfigPayload) -> dict[str, object]:
     try:
@@ -324,7 +375,10 @@ def create_ai_profile(payload: AiProfilePayload) -> dict[str, object]:
             timeout_seconds=payload.timeout_seconds,
             activate=payload.activate,
         )
-        return {"profile": profile.public_dict(active=payload.activate), "registry": load_ai_registry().public_dict()}
+        return {
+            "profile": profile.public_dict(active=payload.activate),
+            "registry": load_ai_registry().public_dict(),
+        }
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -341,7 +395,10 @@ def update_ai_profile(profile_id: str, payload: AiProfilePayload) -> dict[str, o
             timeout_seconds=payload.timeout_seconds,
             activate=payload.activate,
         )
-        return {"profile": profile.public_dict(active=payload.activate), "registry": load_ai_registry().public_dict()}
+        return {
+            "profile": profile.public_dict(active=payload.activate),
+            "registry": load_ai_registry().public_dict(),
+        }
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -349,7 +406,7 @@ def update_ai_profile(profile_id: str, payload: AiProfilePayload) -> dict[str, o
 @app.delete("/admin/api/ai/profiles/{profile_id}", dependencies=[Depends(require_admin_action)])
 def remove_ai_profile(profile_id: str) -> dict[str, object]:
     try:
-        return load_ai_registry().public_dict() if False else delete_ai_profile(profile_id).public_dict()
+        return delete_ai_profile(profile_id).public_dict()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
