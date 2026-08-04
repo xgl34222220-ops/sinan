@@ -109,7 +109,7 @@ fun RefinedArchiveScreen(
         if (state.aiConsensusRecords.isNotEmpty()) {
             item { ArchiveLabelV2("AI 共识", "多个独立模型形成的冻结结果") }
             state.aiConsensusRecords.take(maxItems).forEach { record ->
-                item("consensus-${record.id}") {
+                item("consensus-${record.consensusHash}") {
                     ArchiveRecordCompactV2(
                         title = "目标期 ${record.targetPeriod}",
                         detail = "AI 共识 · 第${positionNameV2(record.position)}名 · " +
@@ -127,7 +127,7 @@ fun RefinedArchiveScreen(
         if (state.records.isNotEmpty()) {
             item { ArchiveLabelV2("本机模型", "11 模型集成冻结结果") }
             state.records.take(maxItems).forEach { record ->
-                item("native-${record.id}") {
+                item("native-${record.reportHash}") {
                     ArchiveRecordCompactV2(
                         title = "目标期 ${record.targetPeriod}",
                         detail = "第${positionNameV2(record.position)}名 · 训练至 ${record.trainedThroughPeriod}",
@@ -144,7 +144,7 @@ fun RefinedArchiveScreen(
         if (state.aiRecords.isNotEmpty()) {
             item { ArchiveLabelV2("独立 AI", "每个 AI 调用单独冻结和结算") }
             state.aiRecords.take(maxItems).forEach { record ->
-                item("ai-${record.id}") {
+                item("ai-${record.forecastHash}") {
                     ArchiveRecordCompactV2(
                         title = "目标期 ${record.targetPeriod}",
                         detail = "${record.profileName} · ${record.model} · 第${positionNameV2(record.position)}名",
