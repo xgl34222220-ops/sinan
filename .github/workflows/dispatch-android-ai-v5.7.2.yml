@@ -1,0 +1,84 @@
+name: Dispatch Android AI v5.7.2 hotfix
+
+on:
+  push:
+    branches: [main]
+    paths: [RUN_ANDROID_AI_V572.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.event.head_commit.message == 'ci: run Android AI v5.7.2 hotfix verification'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout hotfix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/android-ai-runtime-v5.7.2
+          fetch-depth: 0
+
+      - name: Apply hotfix patch
+        run: python3 tools/patch_android_ai_v572.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Verify Android hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:testReleaseUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :app:assembleRelease
+
+      - name: Commit verified hotfix branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-v572
+          cat > ci-v572/STATUS.txt <<EOF
+          status=success
+          version_name=5.7.2
+          version_code=39
+          base_sha=523e53450ddd8a5d95621783809349c7b355a05b
+          chat_reasoning_only_finalization=enabled
+          chat_empty_stream_fallback=enabled
+          formal_same_model_bounded_closure=enabled
+          deepseek_auto_forecast_thinking=disabled
+          debug_unit_tests=passed
+          release_unit_tests=passed
+          android_lint=passed
+          debug_apk=passed
+          release_apk=passed
+          checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          rm -f tools/patch_android_ai_v572.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'fix: recover DeepSeek chat output and formal forecast completion'
+          git push origin HEAD:fix/android-ai-runtime-v5.7.2
