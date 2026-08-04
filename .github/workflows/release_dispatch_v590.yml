@@ -1,6 +1,10 @@
 name: Tianji v5.9.0 Release Dispatcher
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release_dispatch_v590.yml'
   issue_comment:
     types: [created]
   schedule:
