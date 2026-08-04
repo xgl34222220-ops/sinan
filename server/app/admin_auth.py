@@ -86,10 +86,13 @@ def change_admin_password(new_password: str) -> None:
 
 
 def _session_secret() -> bytes:
+    # The password hash fingerprint makes a password change revoke all old sessions immediately.
     source = settings.api_token or settings.admin_password
     if not source:
         source = "tianji-unconfigured-session-secret"
-    return hashlib.sha256(("tianji-admin-session:" + source).encode("utf-8")).digest()
+    password_fingerprint = _read_password_hash()
+    material = "tianji-admin-session:" + source + ":" + password_fingerprint
+    return hashlib.sha256(material.encode("utf-8")).digest()
 
 
 def create_session() -> str:
