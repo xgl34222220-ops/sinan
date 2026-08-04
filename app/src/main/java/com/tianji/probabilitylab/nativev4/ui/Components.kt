@@ -282,11 +282,11 @@ fun SectionTitle(
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                eyebrow,
+                localizedSectionEyebrow(eyebrow),
                 color = colors.accent,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.1.sp,
+                letterSpacing = 0.6.sp,
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -555,6 +555,25 @@ fun EmptyState(title: String, detail: String, loading: Boolean = false) {
 fun SelectedCheck() {
     val colors = LocalTianjiColors.current
     Icon(Icons.Rounded.Check, null, tint = colors.text, modifier = Modifier.size(14.dp))
+}
+
+private fun localizedSectionEyebrow(value: String): String = when (value) {
+    "NEXT DRAW FORECAST" -> "下期预测"
+    "MULTI-PROVIDER AI" -> "多模型 AI"
+    "PROBABILITY MATRIX" -> "概率矩阵"
+    "MODEL COMPETITION" -> "模型竞赛"
+    "ROLLING LAB" -> "滚动实验"
+    "LOCKED TICKET" -> "冻结结果"
+    "RISK GATE" -> "风险闸门"
+    "TIME HOLDOUT TEST" -> "时间留出验证"
+    "EVIDENCE GATES" -> "证据闸门"
+    "ALL MODELS" -> "全部模型"
+    "FORWARD ARCHIVE" -> "前向档案"
+    "DATA HEALTH" -> "数据健康"
+    "MIUIX APPEARANCE" -> "界面外观"
+    "RECENT HISTORY" -> "最近开奖"
+    "AI PROFILES" -> "AI 配置"
+    else -> value
 }
 
 private fun ballColors(number: Int): Pair<Color, Color> = when (number) {
