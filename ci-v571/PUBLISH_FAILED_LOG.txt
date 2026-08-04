@@ -1,0 +1,304 @@
+publish	Dispatch signed release workflow	﻿2026-08-04T01:05:44.2033586Z ##[group]Run set -euo pipefail
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2034926Z ^[[36;1mset -euo pipefail^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2037578Z ^[[36;1mRUN_ID="$(gh run list --workflow release.yml --commit "$TAG_COMMIT" --event workflow_dispatch --limit 1 --json databaseId,status --jq '.[0].databaseId // empty')"^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2040366Z ^[[36;1mif [[ -z "$RUN_ID" ]]; then^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2041748Z ^[[36;1m  gh workflow run release.yml --ref v5.7.1^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2043583Z ^[[36;1mfi^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2044876Z ^[[36;1mfor _ in $(seq 1 60); do^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2047991Z ^[[36;1m  RUN_ID="$(gh run list --workflow release.yml --commit "$TAG_COMMIT" --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')"^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2051040Z ^[[36;1m  [[ -n "$RUN_ID" ]] && break^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2052462Z ^[[36;1m  sleep 3^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2053484Z ^[[36;1mdone^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2054483Z ^[[36;1mtest -n "$RUN_ID"^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2055861Z ^[[36;1mgh run watch "$RUN_ID" --exit-status^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2136824Z ^[[36;1mecho "RELEASE_RUN_ID=$RUN_ID" >> "$GITHUB_ENV"^[[0m
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2188235Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2189625Z env:
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2190652Z   TAG_COMMIT: 5ccd81fe530aef375c12e182ea89fcd1f7f3650c
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2199193Z   GH_TOKEN: ***
+publish	Dispatch signed release workflow	2026-08-04T01:05:44.2200130Z ##[endgroup]
+publish	Dispatch signed release workflow	2026-08-04T01:05:46.1934688Z https://github.com/xgl34222220-ops/tianji/actions/runs/30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:05:50.9260836Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:05:50.9261377Z 
+publish	Dispatch signed release workflow	2026-08-04T01:05:50.9261788Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:05:50.9262353Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:05:50.9262738Z 
+publish	Dispatch signed release workflow	2026-08-04T01:05:50.9262839Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:05:50.9263045Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:05:54.3544795Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:05:54.3545342Z 
+publish	Dispatch signed release workflow	2026-08-04T01:05:54.3545915Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:05:54.3546993Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:05:54.3547370Z 
+publish	Dispatch signed release workflow	2026-08-04T01:05:54.3547485Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:05:54.3547766Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:05:57.8277857Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:05:57.8278336Z 
+publish	Dispatch signed release workflow	2026-08-04T01:05:57.8278733Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:05:57.8279245Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:05:57.8279554Z 
+publish	Dispatch signed release workflow	2026-08-04T01:05:57.8279707Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:05:57.8279956Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:05:57.8280258Z   * Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:01.3671042Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:01.3671444Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:01.3671814Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:01.3672457Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:01.3672704Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:01.3673101Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:01.3673498Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:01.3673836Z   * Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8439386Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8439916Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8440318Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8440651Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8440880Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8440961Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8441155Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8441409Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8441634Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8441859Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8442332Z   * Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8442623Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8442833Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8443109Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8443450Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:04.8443740Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2759599Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2760123Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2760455Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2760755Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2761011Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2761386Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2761710Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2761933Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2762256Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2762453Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2762721Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2762946Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2763171Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2763377Z   * Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2763588Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2763796Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2764060Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2764377Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2764665Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2764928Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2765195Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:08.2765415Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7184275Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7184762Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7185129Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7185460Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7185698Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7185776Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7185999Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7186260Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7186481Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7186747Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7186956Z   * Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7187176Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7187385Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7187653Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7187984Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7188314Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7188998Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7189258Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:11.7189479Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1851441Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1851937Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1852584Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1852923Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1853158Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1853236Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1853425Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1853714Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1853939Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1854162Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1854371Z   * Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1854588Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1854811Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1855095Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1855481Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1855788Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1856033Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1856296Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:15.1856514Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6067890Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6068356Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6068730Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6069063Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6069300Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6069382Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6069577Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6069836Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6070055Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6070280Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6070487Z   * Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6070702Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6070911Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6071174Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6072268Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6072594Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6072847Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6073109Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:18.6073326Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0829401Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0829749Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0830121Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0830450Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0830682Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0830757Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0830953Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0831207Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0831424Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0831647Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0831857Z   * Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0832342Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0832558Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0832963Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0833311Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0833598Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0833859Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0834127Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:22.0834345Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5291024Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5291413Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5291792Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5292323Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5292552Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5292638Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5292835Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5293096Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5293322Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5293548Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5293755Z   * Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5293968Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5294216Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5294485Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5295293Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5295585Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5295836Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5296096Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:25.5296313Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9500565Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9500936Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9501308Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9501633Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9501859Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9501943Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9502366Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9502642Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9502866Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9503088Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9503315Z   ✓ Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9503570Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9503781Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9504063Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9504397Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9504687Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9504935Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9505199Z   * Post Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9505425Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:28.9505636Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4458863Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4459298Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4459730Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4460152Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4460468Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4460569Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4460836Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4461155Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4461472Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4462479Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4462713Z   ✓ Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4462951Z   * Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4463164Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4463434Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4463763Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4464051Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4464299Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4464566Z   * Post Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4464797Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:32.4465014Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8635549Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8635904Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8636277Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8636616Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8636844Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8636928Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8637121Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8637424Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8637650Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8637888Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8638116Z   ✓ Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8638356Z   ✓ Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8638567Z   * Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8638831Z   * Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8639168Z   * Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8639457Z   * Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8639702Z   * Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8639972Z   * Post Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8640210Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:35.8640428Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3346241Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3346602Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3346965Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3347292Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3347562Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3347639Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3347830Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3348534Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3348755Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3348980Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3349204Z   ✓ Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3349442Z   ✓ Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3349681Z   ✓ Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3349945Z   X Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3350307Z   - Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3350644Z   - Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3350896Z   - Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3351162Z   * Post Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3351394Z   * Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:39.3351611Z   * Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7803812Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7804348Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7804732Z * v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7805112Z Triggered via workflow_dispatch less than a minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7805353Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7805436Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7805628Z * release (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7805895Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7806119Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7806340Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7806568Z   ✓ Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7806807Z   ✓ Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7807038Z   ✓ Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7807303Z   X Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7807642Z   - Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7807933Z   - Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7808186Z   - Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7808483Z   ✓ Post Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7808743Z   ✓ Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7808980Z   ✓ Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:42.7809209Z   ✓ Complete job
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2246569Z X v5.7.1 Tianji Release · 30867674053
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2247880Z Triggered via workflow_dispatch about 1 minute ago
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2248443Z 
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2248584Z JOBS
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2248877Z X release in 47s (ID 91862933184)
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2249320Z   ✓ Set up job
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2249646Z   ✓ Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2249875Z   ✓ Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2250104Z   ✓ Set up Android SDK
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2250345Z   ✓ Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2250584Z   ✓ Install Android SDK 36
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2250858Z   X Restore and verify protected signing identity
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2251205Z   - Verify version, test and build signed APK
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2251501Z   - Publish GitHub Release
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2251751Z   - Upload verified release artifacts
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2252303Z   ✓ Post Set up Gradle 8.13
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2252563Z   ✓ Post Set up Java 17
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2252803Z   ✓ Post Checkout tag
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2253033Z   ✓ Complete job
+publish	Dispatch signed release workflow	2026-08-04T01:06:46.2279433Z ##[error]Process completed with exit code 1.

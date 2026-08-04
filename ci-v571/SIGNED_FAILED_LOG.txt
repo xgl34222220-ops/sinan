@@ -1,0 +1,45 @@
+release	Restore and verify protected signing identity	﻿2026-08-04T01:06:37.6037971Z ##[group]Run set -euo pipefail
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6038385Z ^[[36;1mset -euo pipefail^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6038781Z ^[[36;1mtest -n "$TIANJI_KEYSTORE_BASE64"^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6039168Z ^[[36;1mtest -n "$TIANJI_KEYSTORE_PASSWORD"^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6039588Z ^[[36;1mtest -n "$TIANJI_KEY_ALIAS"^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6039940Z ^[[36;1mtest -n "$TIANJI_KEY_PASSWORD"^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6040330Z ^[[36;1mmkdir -p .signing^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6040807Z ^[[36;1mprintf '%s' "$TIANJI_KEYSTORE_BASE64" | base64 --decode > .signing/tianji-release.jks^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6041334Z ^[[36;1mtest -s .signing/tianji-release.jks^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6041702Z ^[[36;1mkeytool -list \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6042067Z ^[[36;1m  -keystore .signing/tianji-release.jks \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6042494Z ^[[36;1m  -storepass "$TIANJI_KEYSTORE_PASSWORD" \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6042926Z ^[[36;1m  -alias "$TIANJI_KEY_ALIAS" >/dev/null^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6043309Z ^[[36;1mkeytool -exportcert -rfc \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6043771Z ^[[36;1m  -keystore .signing/tianji-release.jks \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6044173Z ^[[36;1m  -storepass "$TIANJI_KEYSTORE_PASSWORD" \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6044597Z ^[[36;1m  -alias "$TIANJI_KEY_ALIAS" \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6044969Z ^[[36;1m  -file .signing/tianji-release-cert.pem^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6045724Z ^[[36;1mEXPECTED_CERT_SHA256='5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed'^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6046234Z ^[[36;1mACTUAL_CERT_SHA256="$(^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6046755Z ^[[36;1m  openssl x509 -in .signing/tianji-release-cert.pem -noout -fingerprint -sha256 \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6047272Z ^[[36;1m    | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]'^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6047680Z ^[[36;1m)"^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6048140Z ^[[36;1mtest "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6048630Z ^[[36;1mprintf 'SHA256 certificate digest: %s\n' "$ACTUAL_CERT_SHA256" \^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6049063Z ^[[36;1m  > .signing/CERT_SHA256.txt^[[0m
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6074029Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6074505Z env:
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6074905Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.19-10/x64
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6075775Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.19-10/x64
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6076240Z   ANDROID_HOME: /usr/local/lib/android/sdk
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6076662Z   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6077046Z   GRADLE_ACTION_ID: gradle/actions/setup-gradle
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6077451Z   GRADLE_USER_HOME: /home/runner/.gradle
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6077834Z   GRADLE_BUILD_ACTION_SETUP_COMPLETED: true
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6078234Z   GRADLE_BUILD_ACTION_CACHE_RESTORED: true
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6078743Z   DEVELOCITY_INJECTION_INIT_SCRIPT_NAME: gradle-actions.inject-develocity.init.gradle
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6079308Z   DEVELOCITY_INJECTION_CUSTOM_VALUE: gradle-actions
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6079714Z   GITHUB_DEPENDENCY_GRAPH_ENABLED: false
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6080102Z   TIANJI_KEYSTORE_BASE64: 
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6080447Z   TIANJI_KEYSTORE_PASSWORD: 
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6080787Z   TIANJI_KEY_ALIAS: 
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6081112Z   TIANJI_KEY_PASSWORD: 
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6081439Z ##[endgroup]
+release	Restore and verify protected signing identity	2026-08-04T01:06:37.6135937Z ##[error]Process completed with exit code 1.
