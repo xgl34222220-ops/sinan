@@ -6,6 +6,7 @@ import threading
 import time
 
 from .config import settings
+from .runtime_config import load_ai_config
 from .service import run_all_cycles
 
 
@@ -25,10 +26,11 @@ def _stop(signum: int, _frame: object) -> None:
 def main() -> None:
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
+    active = load_ai_config()
     logger.info(
         "天机 Worker 启动：轮询 %s 秒，AI=%s",
         settings.poll_seconds,
-        "启用" if settings.ai_enabled else "未配置",
+        active.model if active.complete else "未配置",
     )
     while not stop_event.is_set():
         cycle_started = time.monotonic()
