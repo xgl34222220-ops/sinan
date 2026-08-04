@@ -1,0 +1,3 @@
+branch=fix/android-ai-runtime-v5.7.2
+base_sha=523e53450ddd8a5d95621783809349c7b355a05b
+reported_at=2026-08-04T03:13:05Z
