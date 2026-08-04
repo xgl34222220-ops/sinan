@@ -40,24 +40,25 @@ jobs:
           test -s .signing-backup/tianji-release-v5.5.5.jks
           test -s .signing-backup/SIGNING-CREDENTIALS.txt
           cp .signing-backup/tianji-release-v5.5.5.jks .signing/tianji-release.jks
-          python3 - <<'PY' >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import os
           from pathlib import Path
           allowed = {
               'TIANJI_KEYSTORE_PASSWORD',
               'TIANJI_KEY_ALIAS',
               'TIANJI_KEY_PASSWORD',
           }
-          for raw in Path('.signing-backup/SIGNING-CREDENTIALS.txt').read_text().splitlines():
-              if not raw or '=' not in raw:
-                  continue
-              key, value = raw.split('=', 1)
-              if key not in allowed:
-                  continue
-              print(f'::{"add-mask"}::{value}')
-              marker = f'__TIANJI_{key}__'
-              print(f'{key}<<{marker}')
-              print(value)
-              print(marker)
+          env_path = Path(os.environ['GITHUB_ENV'])
+          with env_path.open('a', encoding='utf-8') as output:
+              for raw in Path('.signing-backup/SIGNING-CREDENTIALS.txt').read_text().splitlines():
+                  if not raw or '=' not in raw:
+                      continue
+                  key, value = raw.split('=', 1)
+                  if key not in allowed:
+                      continue
+                  print(f'::add-mask::{value}')
+                  marker = f'__TIANJI_{key}__'
+                  output.write(f'{key}<<{marker}\n{value}\n{marker}\n')
           PY
           rm -rf .signing-backup .signing-backup.zip
 
@@ -173,8 +174,8 @@ jobs:
         run: |
           set -euo pipefail
           RELEASE_SOURCE_SHA="$(git rev-list -n1 v5.7.1)"
-          git checkout main
-          git pull --ff-only origin main
+          git fetch origin main --force
+          git checkout -B main origin/main
           mkdir -p ci-v571
           cat > ci-v571/RELEASE_STATUS.txt <<EOF
           status=success
