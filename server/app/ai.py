@@ -138,44 +138,55 @@ def discover_models(config: RuntimeAiConfig | None = None) -> AiConnectionResult
 
 
 def test_connection(config: RuntimeAiConfig | None = None) -> AiConnectionResult:
+    """真实调用当前模型，而不是只验证 /models 列表接口。"""
     active = config or load_ai_config()
+    if not active.complete:
+        raise RuntimeError("请先完整配置 HTTPS 接口、模型和 API Key")
+
+    models: list[str] = []
+    models_note = "模型列表未读取"
     try:
-        return discover_models(active)
-    except Exception as model_error:
-        if not active.complete:
-            raise
-        is_responses = active.endpoint.rstrip("/").endswith("/responses")
-        if is_responses:
-            body: dict[str, Any] = {
-                "model": active.model,
-                "input": "只回复：OK",
-                "max_output_tokens": 8,
-            }
-        else:
-            body = {
-                "model": active.model,
-                "messages": [{"role": "user", "content": "只回复：OK"}],
-                "temperature": 0,
-                "stream": False,
-                "max_tokens": 8,
-            }
-        started = time.monotonic()
-        with httpx.Client(
-            timeout=httpx.Timeout(min(active.timeout_seconds, 45), connect=10.0),
-            follow_redirects=True,
-        ) as client:
-            response = client.post(active.endpoint, headers=_headers(active), json=body)
-            response.raise_for_status()
-            payload = response.json()
-        if not isinstance(payload, dict):
-            raise ValueError("AI 接口返回格式异常")
-        _response_text(payload)
-        latency_ms = int((time.monotonic() - started) * 1000)
-        return AiConnectionResult(
-            latency_ms=latency_ms,
-            message=f"模型调用成功；模型列表读取失败：{str(model_error)[:120]}",
-            models=[active.model],
-        )
+        discovered = discover_models(active)
+        models = discovered.models
+        models_note = f"读取到 {len(models)} 个模型"
+    except Exception as exc:
+        models_note = f"模型列表读取失败：{str(exc)[:100]}"
+
+    is_responses = active.endpoint.rstrip("/").endswith("/responses")
+    if is_responses:
+        body: dict[str, Any] = {
+            "model": active.model,
+            "input": "只回复：OK",
+            "max_output_tokens": 16,
+        }
+    else:
+        body = {
+            "model": active.model,
+            "messages": [{"role": "user", "content": "只回复：OK"}],
+            "temperature": 0,
+            "stream": False,
+            "max_tokens": 16,
+        }
+
+    started = time.monotonic()
+    with httpx.Client(
+        timeout=httpx.Timeout(min(active.timeout_seconds, 60), connect=10.0),
+        follow_redirects=True,
+    ) as client:
+        response = client.post(active.endpoint, headers=_headers(active), json=body)
+        response.raise_for_status()
+        payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("AI 接口返回格式异常")
+    text = _response_text(payload).strip()
+    if not text:
+        raise ValueError("模型调用成功但没有返回正文")
+    latency_ms = int((time.monotonic() - started) * 1000)
+    return AiConnectionResult(
+        latency_ms=latency_ms,
+        message=f"模型 {active.model} 调用成功，{models_note}",
+        models=models or [active.model],
+    )
 
 
 def analyze(

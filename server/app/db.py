@@ -5,7 +5,7 @@ import json
 import os
 import sqlite3
 import time
-from typing import Iterable, Iterator
+from typing import Any, Iterable, Iterator
 
 from .config import settings
 from .models import DrawModel, ForecastModel
@@ -72,11 +72,45 @@ class Database:
                 CREATE INDEX IF NOT EXISTS forecasts_lottery_created
                     ON forecasts(lottery, created_at DESC);
 
+                CREATE TABLE IF NOT EXISTS forecast_jobs (
+                    lottery TEXT NOT NULL,
+                    target_period TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    message TEXT NOT NULL DEFAULT '',
+                    attempts INTEGER NOT NULL DEFAULT 1,
+                    claimed_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (lottery, target_period, source)
+                );
+                CREATE INDEX IF NOT EXISTS forecast_jobs_updated
+                    ON forecast_jobs(updated_at DESC);
+
                 CREATE TABLE IF NOT EXISTS service_state (
                     state_key TEXT PRIMARY KEY,
                     state_value TEXT NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
+                """
+            )
+
+            # 旧版把模型和名次放进唯一键，导致同一期切换模型或并发运行时
+            # 可以写入多条正式 AI 预测。正式档案必须保留最早冻结的一条。
+            db.execute(
+                """
+                DELETE FROM forecasts
+                WHERE id NOT IN (
+                    SELECT MIN(id)
+                    FROM forecasts
+                    GROUP BY lottery, target_period, source
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS forecasts_one_source_per_target
+                ON forecasts(lottery, target_period, source)
                 """
             )
 
@@ -157,18 +191,131 @@ class Database:
         lottery: str,
         target_period: str,
         source: str,
-        model: str,
+        model: str | None = None,
     ) -> bool:
+        # model 参数仅为兼容旧调用；正式档案按彩种、目标期、来源唯一。
         with self.connection() as db:
             row = db.execute(
                 """
                 SELECT 1 FROM forecasts
-                WHERE lottery = ? AND target_period = ? AND source = ? AND model = ?
+                WHERE lottery = ? AND target_period = ? AND source = ?
                 LIMIT 1
                 """,
-                (lottery, target_period, source, model),
+                (lottery, target_period, source),
             ).fetchone()
         return row is not None
+
+    def claim_forecast_job(
+        self,
+        *,
+        lottery: str,
+        target_period: str,
+        source: str,
+        model: str,
+        lease_ms: int,
+        retry_after_ms: int = 30_000,
+    ) -> bool:
+        """跨进程原子领取预测任务，防止 API 与 Worker 重复调用同一期。"""
+        now = int(time.time() * 1000)
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            frozen = db.execute(
+                """
+                SELECT 1 FROM forecasts
+                WHERE lottery = ? AND target_period = ? AND source = ?
+                LIMIT 1
+                """,
+                (lottery, target_period, source),
+            ).fetchone()
+            if frozen is not None:
+                return False
+
+            row = db.execute(
+                """
+                SELECT status, updated_at, attempts
+                FROM forecast_jobs
+                WHERE lottery = ? AND target_period = ? AND source = ?
+                """,
+                (lottery, target_period, source),
+            ).fetchone()
+            if row is None:
+                db.execute(
+                    """
+                    INSERT INTO forecast_jobs(
+                        lottery, target_period, source, model, status,
+                        message, attempts, claimed_at, updated_at
+                    ) VALUES (?, ?, ?, ?, 'queued', '', 1, ?, ?)
+                    """,
+                    (lottery, target_period, source, model, now, now),
+                )
+                return True
+
+            status = str(row["status"])
+            age_ms = max(0, now - int(row["updated_at"]))
+            if status in {"queued", "running"} and age_ms < lease_ms:
+                return False
+            if status == "completed":
+                return False
+            if status == "error" and age_ms < retry_after_ms:
+                return False
+            if status == "discarded":
+                return False
+
+            db.execute(
+                """
+                UPDATE forecast_jobs SET
+                    model = ?, status = 'queued', message = '',
+                    attempts = attempts + 1, claimed_at = ?, updated_at = ?
+                WHERE lottery = ? AND target_period = ? AND source = ?
+                """,
+                (model, now, now, lottery, target_period, source),
+            )
+            return True
+
+    def finish_forecast_job(
+        self,
+        *,
+        lottery: str,
+        target_period: str,
+        source: str,
+        status: str,
+        message: str = "",
+        model: str | None = None,
+    ) -> None:
+        now = int(time.time() * 1000)
+        with self.connection() as db:
+            if model is None:
+                db.execute(
+                    """
+                    UPDATE forecast_jobs SET status = ?, message = ?, updated_at = ?
+                    WHERE lottery = ? AND target_period = ? AND source = ?
+                    """,
+                    (status, message[:500], now, lottery, target_period, source),
+                )
+            else:
+                db.execute(
+                    """
+                    UPDATE forecast_jobs SET
+                        model = ?, status = ?, message = ?, updated_at = ?
+                    WHERE lottery = ? AND target_period = ? AND source = ?
+                    """,
+                    (model, status, message[:500], now, lottery, target_period, source),
+                )
+
+    def get_forecast_job(self, lottery: str, source: str = "ai") -> dict[str, Any] | None:
+        with self.connection() as db:
+            row = db.execute(
+                """
+                SELECT lottery, target_period, source, model, status,
+                       message, attempts, claimed_at, updated_at
+                FROM forecast_jobs
+                WHERE lottery = ? AND source = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (lottery, source),
+            ).fetchone()
+        return dict(row) if row is not None else None
 
     def save_forecast(
         self,
@@ -309,6 +456,10 @@ class Database:
         if row is None:
             return None
         return str(row["state_value"]), int(row["updated_at"])
+
+    def delete_state(self, key: str) -> None:
+        with self.connection() as db:
+            db.execute("DELETE FROM service_state WHERE state_key = ?", (key,))
 
     @staticmethod
     def _row_to_draw(row: sqlite3.Row) -> DrawModel:
