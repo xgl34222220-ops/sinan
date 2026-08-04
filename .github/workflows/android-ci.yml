@@ -52,14 +52,29 @@ jobs:
           :app:assembleDebug
           :app:assembleRelease
 
-      - name: Upload Debug APK and reports
+      - name: Prepare release signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-signing-tools/lib ci-signing-tools/lib64
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" ci-signing-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" ci-signing-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" ci-signing-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" ci-signing-tools/lib/
+          cp "$ANDROID_SDK_ROOT/emulator/lib64/libc++.so" ci-signing-tools/lib64/libc++.so
+          chmod +x ci-signing-tools/apksigner ci-signing-tools/zipalign ci-signing-tools/aapt
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Upload APKs, signing tools and reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Tianji-CI-${{ github.sha }}
           path: |
             app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release-unsigned.apk
+            ci-signing-tools/
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 2
