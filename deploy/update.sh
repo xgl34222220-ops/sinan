@@ -4,6 +4,7 @@ set -Eeuo pipefail
 INSTALL_DIR="/opt/tianji"
 REPO_URL="https://github.com/xgl34222220-ops/tianji.git"
 DOMAIN="tianji-xgl.duckdns.org"
+LOCK_FILE="/run/lock/tianji-update.lock"
 
 log() { printf '\033[1;34m[天机]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -11,6 +12,11 @@ fail() { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "请使用 root 用户运行"
 command -v git >/dev/null 2>&1 || fail "服务器没有安装 git"
 command -v docker >/dev/null 2>&1 || fail "服务器没有安装 Docker"
+command -v flock >/dev/null 2>&1 || fail "服务器没有安装 flock"
+
+mkdir -p "$(dirname "$LOCK_FILE")"
+exec 9>"$LOCK_FILE"
+flock -w 300 9 || fail "另一个更新任务仍在运行，请稍后重试"
 
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   log "更新天机代码"
@@ -49,6 +55,10 @@ else
   log "已保留现有网页管理密码"
 fi
 
+log "更新前备份数据库"
+chmod +x "$INSTALL_DIR/deploy/"*.sh
+"$INSTALL_DIR/deploy/backup.sh" || log "当前没有可备份数据库，继续升级"
+
 log "重建并启动服务"
 cd "$INSTALL_DIR"
 docker compose up -d --build --remove-orphans
@@ -72,6 +82,7 @@ if [[ "$healthy" == 1 ]]; then
     printf '\n自动生成的管理密码：\033[1;33m%s\033[0m\n' "$admin_password"
     printf '请立即保存，登录后可在“安全”页面修改。\n'
   fi
+  "$INSTALL_DIR/deploy/install-auto-update.sh"
 else
   log "容器已启动，但健康检查尚未通过"
   docker compose ps
