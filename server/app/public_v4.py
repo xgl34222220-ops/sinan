@@ -6,12 +6,13 @@ from pathlib import Path
 
 PUBLIC_SCRIPT = r"""
 (()=>{
-  document.documentElement.classList.add('tianji-public-v4');
+  document.documentElement.classList.remove('tianji-public-v4');
+  document.documentElement.classList.add('tianji-public-v5');
 
   const themeMeta=document.querySelector('meta[name="theme-color"]');
   const syncTheme=()=>{
     if(!themeMeta)return;
-    themeMeta.content=document.documentElement.dataset.theme==='dark'?'#101219':'#f4f6fc';
+    themeMeta.content=document.documentElement.dataset.theme==='dark'?'#0c0f16':'#f4f6fb';
   };
   syncTheme();
 
@@ -41,9 +42,9 @@ PUBLIC_SCRIPT = r"""
   const refreshButton=document.getElementById('refreshBtn');
   refreshButton?.addEventListener('click',()=>{
     const icon=refreshButton.querySelector('svg');
-    icon?.classList.remove('public-v4-pulse');
+    icon?.classList.remove('public-v5-pulse');
     void icon?.getBoundingClientRect();
-    icon?.classList.add('public-v4-pulse');
+    icon?.classList.add('public-v5-pulse');
   });
 })();
 """
@@ -52,16 +53,16 @@ PUBLIC_SCRIPT = r"""
 @lru_cache(maxsize=1)
 def _style() -> str:
     root = Path(__file__).resolve().parent
-    return (root / "public_v4.css").read_text(encoding="utf-8")
+    return (root / "public_v5.css").read_text(encoding="utf-8")
 
 
 def enhance_public_html(value: str) -> str:
-    style = f"<style>/* Tianji Public Cloud V4 */{_style()}</style>"
+    style = f"<style>/* Tianji Public Cloud V5 */{_style()}</style>"
     script = f"<script>{PUBLIC_SCRIPT}</script>"
 
     value = value.replace(
         '<html lang="zh-CN" data-theme="light">',
-        '<html lang="zh-CN" data-theme="light" class="tianji-public-v4">',
+        '<html lang="zh-CN" data-theme="light" class="tianji-public-v5">',
         1,
     )
     if "</head>" in value:
