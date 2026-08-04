@@ -14,7 +14,7 @@ class WebConsoleRenderTests(unittest.TestCase):
     def test_login_pages_render(self) -> None:
         configured = login_page(True)
         unconfigured = login_page(False)
-        self.assertIn("进入控制台管理云端服务", configured)
+        self.assertIn("安全登录云端工作台", configured)
         self.assertIn("disabled", unconfigured)
 
     def test_admin_page_renders(self) -> None:
