@@ -90,8 +90,8 @@ class CloudForecastApi {
             top6 = top6,
             top7 = top7,
             probabilities = probabilities,
-            analysis = optString("analysis").ifBlank { "服务器后台生成并按目标期冻结" },
-            riskNote = optString("risk_note").ifBlank { "随机开奖不可可靠预测，仅用于前向验证" },
+            analysis = localizeCloudAnalysis(optString("analysis")),
+            riskNote = localizeCloudRisk(optString("risk_note")),
             selfRating = probabilities.sortedDescending().take(6).sum().coerceIn(0.0, 1.0),
             model = model,
             analysisMode = AiAnalysisMode.DEEP,
@@ -121,6 +121,44 @@ class CloudForecastApi {
                     ?.plus(1)
             },
         )
+    }
+
+    private fun localizeCloudAnalysis(raw: String): String {
+        val value = raw.trim()
+        if (value.isBlank()) return "服务器后台生成并按目标期冻结"
+        if (value.containsChinese()) return value
+
+        val frequencyPattern = Regex(
+            pattern = """Position\s+(\d+)\s+shows\s+number\s+(\d+)\s+appearing\s+(\d+)\s+times\s+in\s+last\s+(\d+)\s+draws,?\s*highest\s+frequency\.?\s*Recent\s+trend\s+favors\s+(\d+),?\s*with\s+last\s+draw\s+being\s+(\d+)\.?""",
+            option = RegexOption.IGNORE_CASE,
+        )
+        frequencyPattern.find(value)?.let { match ->
+            val (position, number, count, draws, favored, last) = match.destructured
+            return "第${position}名中，号码${number}在最近${draws}期出现${count}次，出现频率最高；近期走势偏向号码${favored}，最近一期为号码${last}。"
+        }
+
+        return "模型返回的说明不是中文，已隐藏英文原文；请以号码矩阵和真实前向验证结果为准。"
+    }
+
+    private fun localizeCloudRisk(raw: String): String {
+        val value = raw.trim()
+        if (value.isBlank()) return "随机开奖不可可靠预测，仅用于前向验证"
+        if (value.containsChinese()) return value
+
+        val normalized = value.lowercase()
+        if (
+            "small sample" in normalized ||
+            "randomness" in normalized ||
+            "no guarantee" in normalized ||
+            "future outcome" in normalized
+        ) {
+            return "样本量较小，随机性可能造成偏差；不能保证未来结果。"
+        }
+        return "随机开奖不可可靠预测；英文风险说明已转为中文兜底，仅用于前向验证。"
+    }
+
+    private fun String.containsChinese(): Boolean = any { character ->
+        character.code in 0x3400..0x9FFF
     }
 
     private fun JSONArray?.toIntList(): List<Int> = if (this == null) {
