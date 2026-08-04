@@ -122,6 +122,7 @@ def _lottery_overview(key: str) -> dict[str, Any]:
         "synced_at_epoch_ms": cycle.get("completed_at_epoch_ms"),
         "draw_count": len(database.list_draws(key, spec.history_target)),
         "forecasts": [record.model_dump() for record in records],
+        "ai_job": database.get_forecast_job(key, "ai"),
     }
 
 
@@ -277,6 +278,8 @@ def update_ai(payload: AiConfigPayload) -> dict[str, object]:
 def test_ai(payload: AiConfigPayload) -> dict[str, object]:
     try:
         result = ai.test_connection(_config_from_payload(payload))
+        for key in LOTTERIES:
+            database.delete_state(f"ai_error:{key}")
         return {
             "ok": True,
             "message": result.message,
@@ -303,8 +306,10 @@ def list_ai_models(payload: AiConfigPayload) -> dict[str, object]:
 
 @app.post("/admin/api/run", dependencies=[Depends(require_admin_action)])
 def admin_run(background_tasks: BackgroundTasks) -> dict[str, object]:
-    background_tasks.add_task(run_all_cycles)
-    return {"accepted": True, "message": "后台任务已开始"}
+    # 网页手动刷新只做同步、结算和本机预测；AI 由唯一 Worker 调度。
+    # 这样 API 进程和 Worker 不会同时为同一期重复调用模型。
+    background_tasks.add_task(run_all_cycles, False)
+    return {"accepted": True, "message": "同步任务已开始，AI 由后台 Worker 自动执行"}
 
 
 @app.put("/admin/api/password", dependencies=[Depends(require_admin_action)])
