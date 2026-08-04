@@ -22,6 +22,7 @@ from .admin_auth import (
 from .config import settings
 from .db import database
 from .models import ForecastModel, HealthModel, LOTTERIES, SnapshotModel
+from .records_ui import enhance_admin_html
 from .runtime_config import (
     RuntimeAiConfig,
     activate_ai_profile,
@@ -247,7 +248,7 @@ def dashboard() -> str:
 @app.get("/admin", response_class=HTMLResponse)
 def admin(request: Request) -> str:
     if verify_session(request.cookies.get(SESSION_COOKIE)):
-        return admin_page()
+        return enhance_admin_html(admin_page())
     return login_page(admin_password_configured())
 
 
