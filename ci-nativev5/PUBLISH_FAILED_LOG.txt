@@ -1,0 +1,92 @@
+publish	Generate permanent nativev5 signing identity	﻿2026-08-04T04:42:12.0369536Z ##[group]Run set -euo pipefail
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0370091Z ^[[36;1mset -euo pipefail^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0370390Z ^[[36;1mmkdir -p .signing private-backup dist^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0370771Z ^[[36;1mSTORE_PASSWORD="$(openssl rand -base64 48 | tr -d '\n')"^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0371203Z ^[[36;1mKEY_PASSWORD="$(openssl rand -base64 48 | tr -d '\n')"^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0371611Z ^[[36;1mBACKUP_PASSWORD="$(openssl rand -base64 64 | tr -d '\n')"^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0371976Z ^[[36;1mBACKUP_ID="$(openssl rand -hex 12)"^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0372278Z ^[[36;1mKEY_ALIAS='tianji-nativev5-release'^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0372911Z ^[[36;1mfor value in "$STORE_PASSWORD" "$KEY_PASSWORD" "$BACKUP_PASSWORD"; do^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0373314Z ^[[36;1m  echo "::add-mask::$value"^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0373558Z ^[[36;1mdone^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0373769Z ^[[36;1mcat >> "$GITHUB_ENV" <<EOF^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0374163Z ^[[36;1mTIANJI_KEYSTORE_FILE=${GITHUB_WORKSPACE}/.signing/tianji-nativev5-release.jks^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0374669Z ^[[36;1mTIANJI_KEYSTORE_PASSWORD=${STORE_PASSWORD}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0374965Z ^[[36;1mTIANJI_KEY_ALIAS=${KEY_ALIAS}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0375241Z ^[[36;1mTIANJI_KEY_PASSWORD=${KEY_PASSWORD}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0375534Z ^[[36;1mBACKUP_PASSWORD=${BACKUP_PASSWORD}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0375878Z ^[[36;1mBACKUP_ARTIFACT_NAME=tianji-nativev5-key-${BACKUP_ID}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0376329Z ^[[36;1mPASSWORD_ARTIFACT_NAME=tianji-nativev5-recovery-${BACKUP_ID}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0376772Z ^[[36;1mAPK_ARTIFACT_NAME=tianji-nativev5-apk-${BACKUP_ID}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0377085Z ^[[36;1mEOF^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0377287Z ^[[36;1mkeytool -genkeypair \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0377532Z ^[[36;1m  -storetype JKS \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0377818Z ^[[36;1m  -keystore .signing/tianji-nativev5-release.jks \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0378159Z ^[[36;1m  -storepass "$STORE_PASSWORD" \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0378437Z ^[[36;1m  -keypass "$KEY_PASSWORD" \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0378694Z ^[[36;1m  -alias "$KEY_ALIAS" \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0378940Z ^[[36;1m  -keyalg RSA \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0379158Z ^[[36;1m  -keysize 4096 \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0379387Z ^[[36;1m  -sigalg SHA256withRSA \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0379640Z ^[[36;1m  -validity 10000 \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0380044Z ^[[36;1m  -dname 'CN=Tianji NativeV5, OU=Android Release, O=Xiguli, L=Private, ST=Private, C=CN'^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0380491Z ^[[36;1mkeytool -list \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0380772Z ^[[36;1m  -keystore .signing/tianji-nativev5-release.jks \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0381105Z ^[[36;1m  -storepass "$STORE_PASSWORD" \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0381378Z ^[[36;1m  -alias "$KEY_ALIAS" >/dev/null^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0381649Z ^[[36;1mkeytool -exportcert -rfc \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0381957Z ^[[36;1m  -keystore .signing/tianji-nativev5-release.jks \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0382466Z ^[[36;1m  -storepass "$STORE_PASSWORD" \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0382999Z ^[[36;1m  -alias "$KEY_ALIAS" \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0383324Z ^[[36;1m  -file .signing/tianji-nativev5-release-cert.pem^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0384078Z ^[[36;1mCERT_SHA256="$(openssl x509 -in .signing/tianji-nativev5-release-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0384805Z ^[[36;1mecho "CERT_SHA256=$CERT_SHA256" >> "$GITHUB_ENV"^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0385275Z ^[[36;1mprintf 'SHA256 certificate digest: %s\n' "$CERT_SHA256" > dist/SIGNING_CERT_SHA256.txt^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0385786Z ^[[36;1mcp .signing/tianji-nativev5-release.jks private-backup/^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0386194Z ^[[36;1mcat > private-backup/SIGNING-CREDENTIALS.txt <<EOF^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0386573Z ^[[36;1mPACKAGE_NAME=com.tianji.probabilitylab.nativev5^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0386895Z ^[[36;1mVERSION_NAME=5.7.2^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0387140Z ^[[36;1mVERSION_CODE=39^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0387402Z ^[[36;1mKEYSTORE_FILE=tianji-nativev5-release.jks^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0387719Z ^[[36;1mKEYSTORE_PASSWORD=${STORE_PASSWORD}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0388188Z ^[[36;1mKEY_ALIAS=${KEY_ALIAS}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0388434Z ^[[36;1mKEY_PASSWORD=${KEY_PASSWORD}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0388694Z ^[[36;1mCERT_SHA256=${CERT_SHA256}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0388990Z ^[[36;1mGENERATED_AT_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0389278Z ^[[36;1mEOF^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0389522Z ^[[36;1mcat > private-backup/RECOVERY-README.txt <<'EOF'^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0389892Z ^[[36;1m这是天机 nativev5 永久正式签名的唯一恢复资料。^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0390150Z ^[[36;1m必须同时保存加密备份文件和恢复密码。^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0390501Z ^[[36;1m后续所有 com.tianji.probabilitylab.nativev5 正式版本都必须使用此 JKS、别名和密码签名。^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0390934Z ^[[36;1m不要把解密后的 JKS 或 SIGNING-CREDENTIALS.txt 上传到公开仓库。^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0391233Z ^[[36;1mEOF^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0391580Z ^[[36;1mtar -C private-backup -czf .signing/tianji-nativev5-signing-backup.tar.gz .^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0392139Z ^[[36;1mopenssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0392568Z ^[[36;1m  -in .signing/tianji-nativev5-signing-backup.tar.gz \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0393285Z ^[[36;1m  -out .signing/Tianji-nativev5-signing-backup-PRIVATE.enc \^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0393672Z ^[[36;1m  -pass env:BACKUP_PASSWORD^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0394048Z ^[[36;1mcat > .signing/Tianji-nativev5-signing-backup-PASSWORD.txt <<EOF^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0394519Z ^[[36;1mBACKUP_FILE=Tianji-nativev5-signing-backup-PRIVATE.enc^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0394885Z ^[[36;1mBACKUP_PASSWORD=${BACKUP_PASSWORD}^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0395729Z ^[[36;1mDECRYPT_COMMAND=openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in Tianji-nativev5-signing-backup-PRIVATE.enc -out Tianji-nativev5-signing-backup.tar.gz -pass pass:'${BACKUP_PASSWORD}'^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0396566Z ^[[36;1mEOF^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0396899Z ^[[36;1mrm -rf private-backup .signing/tianji-nativev5-signing-backup.tar.gz^[[0m
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0441285Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0441648Z env:
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0441905Z   RELEASE_SOURCE_SHA: ecd459c4ebc673b708f91ad49088bc87bedf9869
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:12.0442242Z ##[endgroup]
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.2658521Z Generating 4,096 bit RSA key pair and self-signed certificate (SHA256withRSA) with a validity of 10,000 days
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.2678747Z 	for: CN=Tianji NativeV5, OU=Android Release, O=Xiguli, L=Private, ST=Private, C=CN
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.4790938Z 
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.4791275Z Warning:
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.4793331Z The JKS keystore uses a proprietary format. It is recommended to migrate to PKCS12 which is an industry standard format using "keytool -importkeystore -srckeystore .signing/tianji-nativev5-release.jks -destkeystore .signing/tianji-nativev5-release.jks -deststoretype pkcs12".
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.7203411Z 
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.7204301Z Warning:
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.7206424Z The JKS keystore uses a proprietary format. It is recommended to migrate to PKCS12 which is an industry standard format using "keytool -importkeystore -srckeystore .signing/tianji-nativev5-release.jks -destkeystore .signing/tianji-nativev5-release.jks -deststoretype pkcs12".
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.9012095Z Certificate stored in file <.signing/tianji-nativev5-release-cert.pem>
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.9059319Z 
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.9059693Z Warning:
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.9061715Z The JKS keystore uses a proprietary format. It is recommended to migrate to PKCS12 which is an industry standard format using "keytool -importkeystore -srckeystore .signing/tianji-nativev5-release.jks -destkeystore .signing/tianji-nativev5-release.jks -deststoretype pkcs12".
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.9553752Z No environment variable BACKUP_PASSWORD
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.9554591Z Error getting password
+publish	Generate permanent nativev5 signing identity	2026-08-04T04:42:16.9572020Z ##[error]Process completed with exit code 1.
