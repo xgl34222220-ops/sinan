@@ -1,0 +1,2 @@
+delete_branch=tmp/observe-v573-final
+requested_at=2026-08-04T06:28:00Z
