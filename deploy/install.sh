@@ -47,7 +47,7 @@ env_value() {
 
 log "安装基础工具"
 apt-get update
-apt-get install -y ca-certificates curl gnupg git openssl
+apt-get install -y ca-certificates curl gnupg git openssl util-linux
 
 install_docker() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -136,7 +136,7 @@ cd "$INSTALL_DIR"
 docker compose up -d --build --remove-orphans
 
 log "安装每日数据库备份任务"
-chmod +x "$INSTALL_DIR/deploy/backup.sh"
+chmod +x "$INSTALL_DIR/deploy/"*.sh
 cat >/etc/cron.d/tianji-backup <<EOF
 17 4 * * * root $INSTALL_DIR/deploy/backup.sh >/var/log/tianji-backup.log 2>&1
 EOF
@@ -162,6 +162,7 @@ if [[ "$healthy" == 1 ]]; then
     printf '\n自动生成的管理密码：\033[1;33m%s\033[0m\n' "$ADMIN_PASSWORD"
     printf '请立即保存，登录后可在“安全”页面修改。\n'
   fi
+  "$INSTALL_DIR/deploy/install-auto-update.sh"
 else
   log "容器已经启动，但 HTTPS 暂未就绪。请确认 DuckDNS 指向本机、80/443 端口已开放。"
   docker compose ps
@@ -170,4 +171,5 @@ fi
 
 printf '\n敏感配置保存在 %s/.env，不会显示在网页中。\n' "$INSTALL_DIR"
 printf '以后切换模型请直接使用网页管理面板，不需要 SSH。\n'
+printf '云端代码以后会自动检查、备份、更新；失败时自动回滚。\n'
 printf '查看日志：cd %s && docker compose logs -f\n' "$INSTALL_DIR"

@@ -36,6 +36,9 @@ jobs:
           cache: pip
           cache-dependency-path: server/requirements.txt
 
+      - name: Validate deployment scripts
+        run: bash -n deploy/*.sh
+
       - name: Install dependencies
         run: python -m pip install -r server/requirements.txt
 
