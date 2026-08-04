@@ -20,3 +20,4 @@
 - 服务端 Python 语法检查通过。
 - 新增 PR Android、Lint、Debug APK 与服务端校验工作流。
 - 合并前以 PR CI 结果为准。
+- 本提交用于在默认分支已启用校验后触发 PR 同步检查。
