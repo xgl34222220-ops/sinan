@@ -1,0 +1,45 @@
+name: Observe Tianji v5.7.3 finalizer
+
+on:
+  push:
+    branches: [main]
+    paths: [OBSERVE_V573_FINALIZER_TRIGGER.txt]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Wait for finalizer and self-clean
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=''
+          for i in $(seq 1 180); do
+            RESULT="$(gh run list --limit 100 --json databaseId,name,status,conclusion,headSha,event,url,createdAt,updatedAt --jq '[.[] | select(.name == "Finalize Tianji v5.7.3 and clean repository")][0] // empty' 2>/dev/null || true)"
+            if [ -n "$RESULT" ] && [ "$(jq -r '.status' <<<"$RESULT")" = 'completed' ]; then
+              break
+            fi
+            sleep 10
+          done
+          test -n "$RESULT"
+          test "$(jq -r '.status' <<<"$RESULT")" = 'completed'
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git pull --rebase origin main
+          mkdir -p ci-v573
+          printf '%s\n' "$RESULT" > ci-v573/FINALIZER_RESULT.json
+          rm -f .github/workflows/observe-v5.7.3-finalizer.yml OBSERVE_V573_FINALIZER_TRIGGER.txt
+          git add -A
+          git commit -m 'chore: record v5.7.3 finalizer result [skip ci]'
+          git push origin HEAD:main
