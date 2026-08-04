@@ -68,6 +68,52 @@ class RuntimeConfigTests(unittest.TestCase):
                 timeout_seconds=120,
             )
 
+    def test_multiple_profiles_can_be_saved_switched_and_disabled(self) -> None:
+        runtime_config.settings = replace(
+            runtime_config.settings,
+            ai_endpoint="",
+            ai_model="",
+            ai_api_key="",
+        )
+        runtime_config.clear_runtime_ai_config()
+
+        first = runtime_config.save_ai_profile(
+            profile_id=None,
+            name="主力模型",
+            endpoint="https://one.example/v1/chat/completions",
+            model="model-one",
+            api_key="key-one",
+            timeout_seconds=90,
+            activate=True,
+        )
+        second = runtime_config.save_ai_profile(
+            profile_id=None,
+            name="备用模型",
+            endpoint="https://two.example/v1/responses",
+            model="model-two",
+            api_key="key-two",
+            timeout_seconds=120,
+            activate=False,
+        )
+
+        registry = runtime_config.load_ai_registry()
+        self.assertEqual(len(registry.profiles), 2)
+        self.assertEqual(registry.active_profile_id, first.profile_id)
+
+        runtime_config.activate_ai_profile(second.profile_id)
+        runtime_config.set_ai_auto_predict(True)
+        active = runtime_config.load_ai_config()
+        self.assertEqual(active.model, "model-two")
+        self.assertTrue(active.complete)
+
+        runtime_config.set_ai_auto_predict(False)
+        self.assertFalse(runtime_config.load_ai_config().complete)
+        self.assertTrue(runtime_config.load_ai_config().ready)
+
+        remaining = runtime_config.delete_ai_profile(second.profile_id)
+        self.assertEqual(len(remaining.profiles), 1)
+        self.assertEqual(remaining.active_profile_id, first.profile_id)
+
 
 if __name__ == "__main__":
     unittest.main()
