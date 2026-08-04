@@ -1,0 +1,44 @@
+name: Observe final Tianji v5.7.3 publisher
+
+on:
+  push:
+    branches: [main]
+    paths: [OBSERVE_FINAL_V573_TRIGGER.txt]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record latest finalizer result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=''
+          for i in $(seq 1 80); do
+            RESULT="$(gh run list --limit 100 --json databaseId,name,status,conclusion,headSha,event,url,createdAt,updatedAt --jq '[.[] | select(.name == "Finalize Tianji v5.7.3 and clean repository")][0] // empty' 2>/dev/null || true)"
+            if [ -n "$RESULT" ] && [ "$(jq -r '.status' <<<"$RESULT")" = completed ]; then
+              break
+            fi
+            sleep 10
+          done
+          test -n "$RESULT"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git pull --rebase origin main
+          mkdir -p ci-v573
+          printf '%s\n' "$RESULT" > ci-v573/FINAL_PUBLISHER_RESULT.json
+          rm -f .github/workflows/observe-final-v573.yml OBSERVE_FINAL_V573_TRIGGER.txt
+          git add -A
+          git commit -m 'ci: record final v5.7.3 publisher result [skip ci]'
+          git push origin HEAD:main
