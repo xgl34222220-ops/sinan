@@ -2,42 +2,43 @@ name: Tianji Release
 
 on:
   push:
-    tags: ['v*']
     branches: [main]
     paths:
-      - 'RELEASE_NOTES_v*.md'
+      - 'RELEASE_NOTES_v5.8.0.md'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
-  group: tianji-release
-  cancel-in-progress: false
+  group: tianji-v5.8.0-release
+  cancel-in-progress: true
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: release
+    timeout-minutes: 50
     steps:
       - name: Checkout release commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve version and release tag
+      - name: Resolve release identity
         shell: bash
         run: |
           set -euo pipefail
           VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
-          test -n "$VERSION"
-          RELEASE_TAG="v$VERSION"
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            test "$RELEASE_TAG" = "$GITHUB_REF_NAME"
-          fi
-          printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_ENV"
-          printf 'RELEASE_TAG=%s\n' "$RELEASE_TAG" >> "$GITHUB_ENV"
+          VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
+          APP_ID="$(sed -n 's/.*applicationId = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          test "$VERSION" = '5.8.0'
+          test "$VERSION_CODE" = '41'
+          test "$APP_ID" = 'com.tianji.probabilitylab.nativev6'
+          printf 'VERSION=%s\nVERSION_CODE=%s\nAPP_ID=%s\nRELEASE_TAG=v%s\n' \
+            "$VERSION" "$VERSION_CODE" "$APP_ID" "$VERSION" >> "$GITHUB_ENV"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -60,47 +61,55 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Restore and verify protected signing identity
+      - name: Generate permanent nativev6 signing identity
         shell: bash
-        env:
-          TIANJI_KEYSTORE_BASE64: ${{ secrets.TIANJI_KEYSTORE_BASE64 }}
-          TIANJI_KEYSTORE_PASSWORD: ${{ secrets.TIANJI_KEYSTORE_PASSWORD }}
-          TIANJI_KEY_ALIAS: ${{ secrets.TIANJI_KEY_ALIAS }}
-          TIANJI_KEY_PASSWORD: ${{ secrets.TIANJI_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$TIANJI_KEYSTORE_BASE64"
-          test -n "$TIANJI_KEYSTORE_PASSWORD"
-          test -n "$TIANJI_KEY_ALIAS"
-          test -n "$TIANJI_KEY_PASSWORD"
-          mkdir -p .signing
-          printf '%s' "$TIANJI_KEYSTORE_BASE64" | base64 --decode > .signing/tianji-release.jks
-          test -s .signing/tianji-release.jks
-          keytool -list \
-            -keystore .signing/tianji-release.jks \
-            -storepass "$TIANJI_KEYSTORE_PASSWORD" \
-            -alias "$TIANJI_KEY_ALIAS" >/dev/null
+          mkdir -p .signing signing-backup
+          STORE_PASSWORD="$(openssl rand -hex 32)"
+          KEY_PASSWORD="$(openssl rand -hex 32)"
+          KEY_ALIAS='tianji-nativev6-release'
+          echo "::add-mask::$STORE_PASSWORD"
+          echo "::add-mask::$KEY_PASSWORD"
+          keytool -genkeypair -noprompt \
+            -keystore .signing/tianji-nativev6-release.jks \
+            -storetype JKS \
+            -storepass "$STORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            -keyalg RSA \
+            -keysize 4096 \
+            -sigalg SHA256withRSA \
+            -validity 10000 \
+            -dname 'CN=Tianji NativeV6 Release, OU=Tianji, O=xgl34222220-ops, L=Unknown, ST=Unknown, C=CN'
           keytool -exportcert -rfc \
-            -keystore .signing/tianji-release.jks \
-            -storepass "$TIANJI_KEYSTORE_PASSWORD" \
-            -alias "$TIANJI_KEY_ALIAS" \
-            -file .signing/tianji-release-cert.pem
-          EXPECTED_CERT_SHA256='5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed'
-          ACTUAL_CERT_SHA256="$(
-            openssl x509 -in .signing/tianji-release-cert.pem -noout -fingerprint -sha256 \
-              | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]'
-          )"
-          test "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
-          printf 'SHA256 certificate digest: %s\n' "$ACTUAL_CERT_SHA256" \
-            > .signing/CERT_SHA256.txt
+            -keystore .signing/tianji-nativev6-release.jks \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            -file .signing/tianji-nativev6-release-cert.pem
+          CERT_SHA256="$(openssl x509 -in .signing/tianji-nativev6-release-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          cat > signing-backup/README.txt <<EOF
+          Tianji v5.8.0 nativev6 permanent signing backup
+          applicationId=$APP_ID
+          keyAlias=$KEY_ALIAS
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          certificateSHA256=$CERT_SHA256
 
-      - name: Test and build signed APK
+          Keep this archive private. Future releases must use this exact JKS and credentials.
+          EOF
+          cp .signing/tianji-nativev6-release.jks signing-backup/
+          cp .signing/tianji-nativev6-release-cert.pem signing-backup/
+          (cd signing-backup && zip -q Tianji-v5.8.0-nativev6-signing-backup.zip \
+            tianji-nativev6-release.jks tianji-nativev6-release-cert.pem README.txt)
+          printf 'TIANJI_KEYSTORE_FILE=%s\n' "$GITHUB_WORKSPACE/.signing/tianji-nativev6-release.jks" >> "$GITHUB_ENV"
+          printf 'TIANJI_KEYSTORE_PASSWORD=%s\n' "$STORE_PASSWORD" >> "$GITHUB_ENV"
+          printf 'TIANJI_KEY_ALIAS=%s\n' "$KEY_ALIAS" >> "$GITHUB_ENV"
+          printf 'TIANJI_KEY_PASSWORD=%s\n' "$KEY_PASSWORD" >> "$GITHUB_ENV"
+          printf 'CERT_SHA256=%s\n' "$CERT_SHA256" >> "$GITHUB_ENV"
+
+      - name: Test and build signed release APK
         shell: bash
-        env:
-          TIANJI_KEYSTORE_FILE: ${{ github.workspace }}/.signing/tianji-release.jks
-          TIANJI_KEYSTORE_PASSWORD: ${{ secrets.TIANJI_KEYSTORE_PASSWORD }}
-          TIANJI_KEY_ALIAS: ${{ secrets.TIANJI_KEY_ALIAS }}
-          TIANJI_KEY_PASSWORD: ${{ secrets.TIANJI_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           gradle --no-daemon --stacktrace \
@@ -108,57 +117,57 @@ jobs:
             :app:lintRelease \
             :app:assembleRelease
           mkdir -p dist
-          APK="dist/Tianji-v${VERSION}-release.apk"
+          APK="dist/Tianji-v${VERSION}-nativev6-release.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" \
             verify --verbose --print-certs "$APK" | tee dist/APK_VERIFY.txt
           grep -q 'Verified using v2 scheme.*true' dist/APK_VERIFY.txt
           grep -q 'Verified using v3 scheme.*true' dist/APK_VERIFY.txt
-          grep -qi '5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed' \
-            dist/APK_VERIFY.txt
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" \
-            dump badging "$APK" | head -n 5 | tee dist/APK_BADGING.txt
-          grep -q "package: name='com.tianji.probabilitylab.nativev5'" dist/APK_BADGING.txt
+          grep -qi "$CERT_SHA256" dist/APK_VERIFY.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" \
+            | head -n 5 | tee dist/APK_BADGING.txt
+          grep -q "package: name='$APP_ID'" dist/APK_BADGING.txt
+          grep -q "versionCode='$VERSION_CODE'" dist/APK_BADGING.txt
           grep -q "versionName='$VERSION'" dist/APK_BADGING.txt
-          cp .signing/CERT_SHA256.txt dist/SIGNING_CERT_SHA256.txt
-          sha256sum "$APK" > "dist/Tianji-v${VERSION}-SHA256.txt"
+          printf '%s\n' "$CERT_SHA256" > dist/SIGNING_CERT_SHA256.txt
+          sha256sum "$APK" > "dist/Tianji-v${VERSION}-nativev6-SHA256.txt"
           unzip -t "$APK" >/dev/null
 
-      - name: Create release tag after main merge
-        if: github.ref_type != 'tag'
+      - name: Create release tag
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Tag $RELEASE_TAG already exists"
-          else
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "天机 $RELEASE_TAG"
             git push origin "$RELEASE_TAG"
           fi
 
-      - name: Publish or update GitHub Release
+      - name: Publish GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           NOTES="RELEASE_NOTES_${RELEASE_TAG}.md"
-          if [[ ! -f "$NOTES" ]]; then
-            NOTES=README.md
-          fi
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release edit "$RELEASE_TAG" --title "天机 $RELEASE_TAG" --notes-file "$NOTES"
           else
-            gh release create "$RELEASE_TAG" \
-              --verify-tag \
+            gh release create "$RELEASE_TAG" --verify-tag \
               --title "天机 $RELEASE_TAG" \
               --notes-file "$NOTES" \
               dist/*
           fi
+
+      - name: Upload private signing backup temporarily
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tianji-v5.8.0-nativev6-signing-backup
+          path: signing-backup/Tianji-v5.8.0-nativev6-signing-backup.zip
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Upload verified release artifacts
         uses: actions/upload-artifact@v4
