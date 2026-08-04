@@ -85,7 +85,6 @@ else
   git clone --depth 1 --branch main "$REPO_URL" "$INSTALL_DIR"
 fi
 mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/backups"
-# The API/worker images run as uid/gid 10001 so the bind-mounted database stays writable.
 chown -R 10001:10001 "$INSTALL_DIR/data"
 
 OLD_DOMAIN="$(env_value TIANJI_DOMAIN "$DEFAULT_DOMAIN")"
@@ -93,6 +92,7 @@ OLD_ENDPOINT="$(env_value TIANJI_AI_ENDPOINT 'https://api.deepseek.com/chat/comp
 OLD_MODEL="$(env_value TIANJI_AI_MODEL 'deepseek-chat')"
 OLD_KEY="$(env_value TIANJI_AI_API_KEY '')"
 OLD_TOKEN="$(env_value TIANJI_API_TOKEN '')"
+OLD_ADMIN_PASSWORD="$(env_value TIANJI_ADMIN_PASSWORD '')"
 
 DOMAIN="$(read_tty '请输入 DuckDNS 域名' "$OLD_DOMAIN")"
 [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || fail "域名格式不正确"
@@ -103,12 +103,25 @@ NEW_AI_KEY="$(read_secret_tty '请输入 AI API Key')"
 AI_KEY="${NEW_AI_KEY:-$OLD_KEY}"
 API_TOKEN="${OLD_TOKEN:-$(openssl rand -hex 32)}"
 
+ADMIN_PASSWORD="$OLD_ADMIN_PASSWORD"
+GENERATED_ADMIN_PASSWORD=0
+if [[ -z "$ADMIN_PASSWORD" ]]; then
+  ADMIN_PASSWORD="$(read_secret_tty '请设置网页管理密码（至少8位，仅字母数字和 ._@!+=-；直接回车自动生成）')"
+  if [[ -z "$ADMIN_PASSWORD" ]]; then
+    ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)"
+    GENERATED_ADMIN_PASSWORD=1
+  fi
+  [[ ${#ADMIN_PASSWORD} -ge 8 ]] || fail "网页管理密码至少需要 8 位"
+  [[ "$ADMIN_PASSWORD" =~ ^[A-Za-z0-9._@!+=-]+$ ]] || fail "网页管理密码包含不支持的字符"
+fi
+
 umask 077
 cat >"$INSTALL_DIR/.env" <<EOF
 TIANJI_DOMAIN=$DOMAIN
 TIANJI_PUBLIC_BASE_URL=https://$DOMAIN
 TIANJI_DATABASE=/app/data/tianji.db
 TIANJI_API_TOKEN=$API_TOKEN
+TIANJI_ADMIN_PASSWORD=$ADMIN_PASSWORD
 TIANJI_POLL_SECONDS=30
 TIANJI_HISTORY_DAYS=14
 TIANJI_AI_ENDPOINT=$AI_ENDPOINT
@@ -143,12 +156,18 @@ printf '\n'
 if [[ "$healthy" == 1 ]]; then
   log "部署成功"
   cat /tmp/tianji-health.json
-  printf '\n\n访问地址：\033[1;32mhttps://%s\033[0m\n' "$DOMAIN"
+  printf '\n\n公开页面：\033[1;32mhttps://%s\033[0m\n' "$DOMAIN"
+  printf '管理面板：\033[1;32mhttps://%s/admin\033[0m\n' "$DOMAIN"
+  if [[ "$GENERATED_ADMIN_PASSWORD" == 1 ]]; then
+    printf '\n自动生成的管理密码：\033[1;33m%s\033[0m\n' "$ADMIN_PASSWORD"
+    printf '请立即保存，登录后可在“安全”页面修改。\n'
+  fi
 else
   log "容器已经启动，但 HTTPS 暂未就绪。请确认 DuckDNS 指向本机、80/443 端口已开放。"
   docker compose ps
   docker compose logs --tail=80 caddy || true
 fi
 
-printf '\n管理令牌已保存在 %s/.env，不会显示在聊天或网页中。\n' "$INSTALL_DIR"
+printf '\n敏感配置保存在 %s/.env，不会显示在网页中。\n' "$INSTALL_DIR"
+printf '以后切换模型请直接使用网页管理面板，不需要 SSH。\n'
 printf '查看日志：cd %s && docker compose logs -f\n' "$INSTALL_DIR"
