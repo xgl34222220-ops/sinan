@@ -17,41 +17,35 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Record release workflow state and artifact inventory
+
+      - name: Inventory all Actions artifacts
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p ci-v572
-          gh run list --workflow publish-v5.7.2.yml --limit 5 \
-            --json databaseId,status,conclusion,event,headSha,url,createdAt \
-            > ci-v572/PUBLISH_RUNS.json || true
-          gh run list --workflow recover-publish-v5.7.2.yml --limit 5 \
-            --json databaseId,status,conclusion,event,headSha,url,createdAt \
-            > ci-v572/RECOVERY_RUNS.json || true
-          gh run list --workflow release.yml --limit 10 \
-            --json databaseId,status,conclusion,event,headSha,url,createdAt \
-            > ci-v572/SIGNED_RELEASE_RUNS.json || true
-          gh api \
+          gh api --paginate --slurp \
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
-            --jq '.artifacts | map({id,name,expired,created_at,expires_at,size_in_bytes,workflow_run})' \
-            > ci-v572/ARTIFACTS.json
-          jq '[.[] | select((.expired | not) and ((.name | ascii_downcase) | contains("sign")))]' \
-            ci-v572/ARTIFACTS.json > ci-v572/NON_EXPIRED_SIGNING_ARTIFACTS.json
+            > ci-v572/ARTIFACT_PAGES.json
+          jq '[.[].artifacts[] | {id,name,expired,created_at,expires_at,size_in_bytes,workflow_run}]' \
+            ci-v572/ARTIFACT_PAGES.json > ci-v572/ALL_ARTIFACTS.json
+          jq '[.[] | select(.expired | not)]' \
+            ci-v572/ALL_ARTIFACTS.json > ci-v572/ALL_NON_EXPIRED_ARTIFACTS.json
+          jq '[.[] | select(((.name | ascii_downcase) | test("sign|keystore|backup|credential|release-key|jks")))]' \
+            ci-v572/ALL_ARTIFACTS.json > ci-v572/POTENTIAL_SIGNING_ARTIFACTS.json
+          jq '[.[] | select(.id == 8842385591)]' \
+            ci-v572/ALL_ARTIFACTS.json > ci-v572/EXPIRED_BACKUP_REFERENCE.json
+          BACKUP_NAME="$(jq -r '.[0].name // empty' ci-v572/EXPIRED_BACKUP_REFERENCE.json)"
+          jq --arg name "$BACKUP_NAME" \
+            '[.[] | select((.expired | not) and (.name == $name))]' \
+            ci-v572/ALL_ARTIFACTS.json > ci-v572/NON_EXPIRED_SAME_BACKUP_NAME.json
 
-          PUBLISH_ID="$(jq -r '.[0].databaseId // empty' ci-v572/PUBLISH_RUNS.json)"
-          if [[ -n "$PUBLISH_ID" ]]; then
-            gh run view "$PUBLISH_ID" --json databaseId,status,conclusion,event,headSha,url,jobs \
-              > ci-v572/PUBLISH_DETAIL.json
-            if [[ "$(jq -r '.status' ci-v572/PUBLISH_DETAIL.json)" == completed && \
-                  "$(jq -r '.conclusion' ci-v572/PUBLISH_DETAIL.json)" != success ]]; then
-              gh run view "$PUBLISH_ID" --log-failed > ci-v572/PUBLISH_FAILED_LOG.txt || true
-            fi
-          fi
-
+          gh run list --workflow recover-publish-v5.7.2.yml --limit 5 \
+            --json databaseId,status,conclusion,event,headSha,url,createdAt \
+            > ci-v572/RECOVERY_RUNS.json || true
           RECOVERY_ID="$(jq -r '.[0].databaseId // empty' ci-v572/RECOVERY_RUNS.json)"
           if [[ -n "$RECOVERY_ID" ]]; then
             gh run view "$RECOVERY_ID" --json databaseId,status,conclusion,event,headSha,url,jobs \
@@ -62,29 +56,18 @@ jobs:
             fi
           fi
 
-          RELEASE_ID="$(jq -r '[.[] | select(.headSha != "")][0].databaseId // empty' ci-v572/SIGNED_RELEASE_RUNS.json)"
-          if [[ -n "$RELEASE_ID" ]]; then
-            gh run view "$RELEASE_ID" --json databaseId,status,conclusion,event,headSha,url,jobs \
-              > ci-v572/SIGNED_RELEASE_DETAIL.json
-            if [[ "$(jq -r '.status' ci-v572/SIGNED_RELEASE_DETAIL.json)" == completed && \
-                  "$(jq -r '.conclusion' ci-v572/SIGNED_RELEASE_DETAIL.json)" != success ]]; then
-              gh run view "$RELEASE_ID" --log-failed > ci-v572/SIGNED_RELEASE_FAILED_LOG.txt || true
-            fi
-          fi
-
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -- \
-            ci-v572/PUBLISH_RUNS.json \
-            ci-v572/RECOVERY_RUNS.json \
-            ci-v572/SIGNED_RELEASE_RUNS.json \
-            ci-v572/ARTIFACTS.json \
-            ci-v572/NON_EXPIRED_SIGNING_ARTIFACTS.json
-          for file in \
-            ci-v572/PUBLISH_DETAIL.json ci-v572/PUBLISH_FAILED_LOG.txt \
-            ci-v572/RECOVERY_DETAIL.json ci-v572/RECOVERY_FAILED_LOG.txt \
-            ci-v572/SIGNED_RELEASE_DETAIL.json ci-v572/SIGNED_RELEASE_FAILED_LOG.txt; do
+            ci-v572/ARTIFACT_PAGES.json \
+            ci-v572/ALL_ARTIFACTS.json \
+            ci-v572/ALL_NON_EXPIRED_ARTIFACTS.json \
+            ci-v572/POTENTIAL_SIGNING_ARTIFACTS.json \
+            ci-v572/EXPIRED_BACKUP_REFERENCE.json \
+            ci-v572/NON_EXPIRED_SAME_BACKUP_NAME.json \
+            ci-v572/RECOVERY_RUNS.json
+          for file in ci-v572/RECOVERY_DETAIL.json ci-v572/RECOVERY_FAILED_LOG.txt; do
             [[ -f "$file" ]] && git add -- "$file"
           done
-          git commit -m 'ci: record Tianji v5.7.2 release diagnostics'
+          git commit -m 'ci: record Tianji v5.7.2 artifact inventory'
           git push origin HEAD:main
