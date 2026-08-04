@@ -6,6 +6,7 @@ from pathlib import Path
 
 FILTER_PATCH = r"""
 (()=>{
+  document.documentElement.classList.add('tianji-console-v4');
   const select=document.getElementById('v3Lottery');
   if(!select)return;
   fetch('/admin/api/state',{cache:'no-store'})
@@ -33,12 +34,21 @@ def _assets() -> tuple[str, str]:
 
 def enhance_console_html(value: str) -> str:
     style_text, script_text = _assets()
-    style = f"<style>/* Cloud Console V3 */{style_text}</style>"
+    head_meta = (
+        '<meta name="theme-color" content="#0b0d13">'
+        '<meta name="color-scheme" content="dark light">'
+    )
+    if "viewport-fit=cover" not in value:
+        head_meta += (
+            '<meta name="viewport" '
+            'content="width=device-width,initial-scale=1,viewport-fit=cover">'
+        )
+    style = f"<style>/* Tianji Cloud Console V4 */{style_text}</style>"
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"
     if "</head>" in value:
-        value = value.replace("</head>", style + "</head>", 1)
+        value = value.replace("</head>", head_meta + style + "</head>", 1)
     else:
-        value = style + value
+        value = head_meta + style + value
     if "</body>" in value:
         value = value.replace("</body>", script + "</body>", 1)
     else:
