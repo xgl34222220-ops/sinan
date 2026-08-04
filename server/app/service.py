@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
+import threading
 import time
 from typing import Any
 
@@ -10,11 +12,18 @@ from .db import database
 from .lottery import lottery_client
 from .models import LOTTERIES, LotterySpec, SnapshotModel
 from .predictor import predict
-from .runtime_config import load_ai_config
+from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
-SERVICE_VERSION = "1.1.0"
+SERVICE_VERSION = "1.2.0"
 SAFETY_WINDOW_MS = 5_000
+_AI_EXECUTOR = ThreadPoolExecutor(max_workers=max(1, len(LOTTERIES)), thread_name_prefix="tianji-ai")
+_AI_LOCK = threading.Lock()
+_AI_INFLIGHT: set[tuple[str, str, str]] = set()
+
+
+def _state(key: str, value: dict[str, Any]) -> None:
+    database.set_state(key, json.dumps(value, ensure_ascii=False))
 
 
 def _target_is_open(spec: LotterySpec, trained_through_period: str, target_period: str) -> bool:
@@ -26,6 +35,111 @@ def _target_is_open(spec: LotterySpec, trained_through_period: str, target_perio
     return database.get_draw(spec.key, target_period) is None
 
 
+def _run_ai_prediction(
+    spec: LotterySpec,
+    history: list,
+    target_period: str,
+    trained_through_period: str,
+    ai_config: RuntimeAiConfig,
+) -> None:
+    key = (spec.key, target_period, ai_config.model)
+    started = int(time.time() * 1000)
+    try:
+        _state(
+            f"ai_job:{spec.key}",
+            {
+                "status": "running",
+                "target_period": target_period,
+                "model": ai_config.model,
+                "started_at_epoch_ms": started,
+            },
+        )
+        result = ai.analyze(history, target_period, ai_config)
+        if not _target_is_open(spec, trained_through_period, target_period):
+            _state(
+                f"ai_job:{spec.key}",
+                {
+                    "status": "discarded",
+                    "target_period": target_period,
+                    "model": ai_config.model,
+                    "message": "AI 完成时目标期已经封盘，结果未写入前向档案",
+                    "started_at_epoch_ms": started,
+                    "completed_at_epoch_ms": int(time.time() * 1000),
+                },
+            )
+            return
+        inserted = database.save_forecast(
+            lottery=spec.key,
+            target_period=target_period,
+            trained_through_period=trained_through_period,
+            position=result.position,
+            top6=result.top6,
+            top7=result.top7,
+            probabilities=result.probabilities,
+            source="ai",
+            model=result.model,
+            analysis=f"{result.analysis} · 云端耗时 {result.latency_ms / 1000:.1f}s",
+            risk_note=result.risk_note,
+        )
+        _state(
+            f"ai_job:{spec.key}",
+            {
+                "status": "completed" if inserted is not None else "duplicate",
+                "target_period": target_period,
+                "model": ai_config.model,
+                "latency_ms": result.latency_ms,
+                "started_at_epoch_ms": started,
+                "completed_at_epoch_ms": int(time.time() * 1000),
+            },
+        )
+    except Exception as exc:
+        error = {
+            "status": "error",
+            "message": str(exc)[:500],
+            "target_period": target_period,
+            "model": ai_config.model,
+            "started_at_epoch_ms": started,
+            "completed_at_epoch_ms": int(time.time() * 1000),
+        }
+        _state(f"ai_job:{spec.key}", error)
+        _state(f"ai_error:{spec.key}", error)
+    finally:
+        with _AI_LOCK:
+            _AI_INFLIGHT.discard(key)
+
+
+def _schedule_ai_prediction(
+    spec: LotterySpec,
+    history: list,
+    target_period: str,
+    trained_through_period: str,
+    ai_config: RuntimeAiConfig,
+) -> bool:
+    key = (spec.key, target_period, ai_config.model)
+    with _AI_LOCK:
+        if key in _AI_INFLIGHT:
+            return False
+        _AI_INFLIGHT.add(key)
+    _state(
+        f"ai_job:{spec.key}",
+        {
+            "status": "queued",
+            "target_period": target_period,
+            "model": ai_config.model,
+            "queued_at_epoch_ms": int(time.time() * 1000),
+        },
+    )
+    _AI_EXECUTOR.submit(
+        _run_ai_prediction,
+        spec,
+        list(history),
+        target_period,
+        trained_through_period,
+        ai_config,
+    )
+    return True
+
+
 def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
     spec = LOTTERIES.get(lottery_key)
     if spec is None:
@@ -33,30 +147,50 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
 
     existing_count = len(database.list_draws(lottery_key, 180))
     sync_days = settings.history_days if existing_count < 180 else 2
-    draws, next_period, server_time, next_draw_at = lottery_client.fetch_recent(
-        spec,
-        sync_days,
-    )
+    draws, next_period, server_time, next_draw_at = lottery_client.fetch_recent(spec, sync_days)
     database.save_draws(draws)
+
+    # 结算必须先于任何预测和 AI 调用；即使模型失败，也不能阻塞已开奖档案更新。
     settled = database.settle_forecasts(lottery_key)
     history = database.list_draws(lottery_key, spec.history_target)
     latest = history[-1]
 
     generated: list[str] = []
+    scheduled: list[str] = []
+    errors: dict[str, str] = {}
     now_ms = int(time.time() * 1000)
     before_safety_window = next_draw_at is None or now_ms < next_draw_at - SAFETY_WINDOW_MS
-    target_candidate = (
+    target_candidate = bool(
         next_period
         and next_period != "待同步"
         and before_safety_window
         and database.get_draw(lottery_key, next_period) is None
     )
+
+    # 先落盘同步状态，避免预测过程异常时页面仍显示上一次旧期号。
+    base_result: dict[str, Any] = {
+        "lottery": lottery_key,
+        "latest_period": latest.period,
+        "next_period": next_period,
+        "draws": len(history),
+        "sync_days": sync_days,
+        "settled": settled,
+        "generated": generated,
+        "scheduled": scheduled,
+        "errors": errors,
+        "ai_model": load_ai_config().model,
+        "server_time_epoch_ms": server_time,
+        "next_draw_at_epoch_ms": next_draw_at,
+        "completed_at_epoch_ms": int(time.time() * 1000),
+    }
+    _state(f"cycle:{lottery_key}", base_result)
+
     if target_candidate:
         native_model = "tianji-native-cloud-v1"
         if not database.has_forecast(lottery_key, next_period, "native", native_model):
-            native = predict(history)
-            selected = native.selected
-            if _target_is_open(spec, latest.period, next_period):
+            try:
+                native = predict(history)
+                selected = native.selected
                 inserted = database.save_forecast(
                     lottery=lottery_key,
                     target_period=next_period,
@@ -72,6 +206,16 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
                 )
                 if inserted is not None:
                     generated.append("native")
+            except Exception as exc:
+                errors["native"] = str(exc)[:500]
+                _state(
+                    f"native_error:{lottery_key}",
+                    {
+                        "message": errors["native"],
+                        "target_period": next_period,
+                        "at": int(time.time() * 1000),
+                    },
+                )
 
         ai_config = load_ai_config()
         if ai_config.complete and not database.has_forecast(
@@ -80,54 +224,19 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
             "ai",
             ai_config.model,
         ):
-            try:
-                result = ai.analyze(history, next_period, ai_config)
-                if not _target_is_open(spec, latest.period, next_period):
-                    raise RuntimeError("AI 完成时目标期已经封盘，结果已丢弃且不会进入前向档案")
-                inserted = database.save_forecast(
-                    lottery=lottery_key,
-                    target_period=next_period,
-                    trained_through_period=latest.period,
-                    position=result.position,
-                    top6=result.top6,
-                    top7=result.top7,
-                    probabilities=result.probabilities,
-                    source="ai",
-                    model=result.model,
-                    analysis=f"{result.analysis} · 云端耗时 {result.latency_ms / 1000:.1f}s",
-                    risk_note=result.risk_note,
-                )
-                if inserted is not None:
-                    generated.append("ai")
-            except Exception as exc:
-                database.set_state(
-                    f"ai_error:{lottery_key}",
-                    json.dumps(
-                        {
-                            "message": str(exc)[:500],
-                            "target_period": next_period,
-                            "model": ai_config.model,
-                            "at": int(time.time() * 1000),
-                        },
-                        ensure_ascii=False,
-                    ),
-                )
+            if _schedule_ai_prediction(spec, history, next_period, latest.period, ai_config):
+                scheduled.append("ai")
 
-    result = {
-        "lottery": lottery_key,
-        "latest_period": latest.period,
-        "next_period": next_period,
-        "draws": len(history),
-        "sync_days": sync_days,
-        "settled": settled,
-        "generated": generated,
-        "ai_model": load_ai_config().model,
-        "server_time_epoch_ms": server_time,
-        "next_draw_at_epoch_ms": next_draw_at,
-        "completed_at_epoch_ms": int(time.time() * 1000),
-    }
-    database.set_state(f"cycle:{lottery_key}", json.dumps(result, ensure_ascii=False))
-    return result
+    base_result.update(
+        {
+            "generated": generated,
+            "scheduled": scheduled,
+            "errors": errors,
+            "completed_at_epoch_ms": int(time.time() * 1000),
+        }
+    )
+    _state(f"cycle:{lottery_key}", base_result)
+    return base_result
 
 
 def run_all_cycles() -> dict[str, Any]:
@@ -145,7 +254,7 @@ def run_all_cycles() -> dict[str, Any]:
         "results": results,
         "errors": errors,
     }
-    database.set_state("worker_heartbeat", json.dumps(heartbeat, ensure_ascii=False))
+    _state("worker_heartbeat", heartbeat)
     return heartbeat
 
 

@@ -17,7 +17,7 @@ HEADERS = {
     "Accept": "application/json",
     "Cache-Control": "no-cache",
     "Referer": "https://www.168kai.com/",
-    "User-Agent": "TianjiCloud/1.0",
+    "User-Agent": "TianjiCloud/1.2",
 }
 
 
@@ -38,7 +38,11 @@ class LotteryClient:
         draw = self._parse_draw(value, spec)
         if draw is None:
             raise RuntimeError(f"{spec.name} 最新开奖接口没有有效期号或号码")
-        next_period = self._first_text(value, "drawIssue", "nextIssue") or increment_period(draw.period)
+
+        # API68 的 drawIssue 在部分彩种会返回旧的正在开奖期，不能优先当作下一期。
+        # nextIssue 才是首选；无论上游返回什么，都必须保证目标期严格晚于最新已开奖期。
+        reported_next = self._first_text(value, "nextIssue", "drawIssue")
+        next_period = normalize_next_period(draw.period, reported_next)
         server_time = parse_epoch_ms(self._first_text(value, "serverTime"))
         next_draw_at = parse_epoch_ms(self._first_text(value, "drawTime", "nextDrawTime"))
         return draw, next_period, server_time, next_draw_at
@@ -73,7 +77,7 @@ class LotteryClient:
                 try:
                     all_draws.extend(future.result())
                 except Exception:
-                    # A missing day does not invalidate other verified dates; the next cycle retries.
+                    # 单日历史失败不能阻止最新期开奖同步；下一轮继续补齐并结算。
                     continue
         latest, next_period, server_time, next_draw_at = self.fetch_latest(spec)
         all_draws.append(latest)
@@ -158,6 +162,13 @@ def merge_draws(draws: list[DrawModel]) -> list[DrawModel]:
 
 def period_sort_key(period: str) -> tuple[int, str]:
     return len(period), period
+
+
+def normalize_next_period(latest_period: str, reported_next: str) -> str:
+    candidate = reported_next.strip()
+    if candidate and period_sort_key(candidate) > period_sort_key(latest_period):
+        return candidate
+    return increment_period(latest_period)
 
 
 def increment_period(period: str) -> str:
