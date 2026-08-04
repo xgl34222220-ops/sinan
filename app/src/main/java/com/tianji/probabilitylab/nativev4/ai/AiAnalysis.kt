@@ -547,15 +547,10 @@ class RemoteAiAnalyzer(context: Context) {
     ): AiForecast {
         require(config.isComplete) { "请先在数据页填写 HTTPS 接口、模型名和 API Key" }
         val historyLimit = config.analysisMode.historyLimit
-        val learningContext = learningStore.snapshotAll(
-            snapshot.history,
-            snapshot.lottery.apiKey,
-            config.id,
-            AiLearningStrategy.official(config),
-        )
-        val userPrompt = analysisPayload(snapshot, report, historyLimit)
-            .put("adaptive_learning", learningContext)
-            .toString()
+        // Strict independence protocol: the remote model receives only raw verified draws.
+        // AI-specific outcomes remain archived for diagnostics, but local engineered factors and
+        // native-model selections are deliberately excluded from the prediction prompt.
+        val userPrompt = analysisPayload(snapshot, report, historyLimit).toString()
         val started = System.currentTimeMillis()
         val primaryDecision = AiReasoningEngine.resolveForecast(config)
 
@@ -607,7 +602,7 @@ class RemoteAiAnalyzer(context: Context) {
                     )
                 }
                 onProgress(
-                    "已保留首次思考证据；正在使用同一模型关闭额外思考并重新提交精简统计任务",
+                    "已保留首次思考证据；正在使用同一模型关闭额外思考并重新提交同一份原始历史任务",
                     System.currentTimeMillis() - started,
                 )
                 response = runCatching {
@@ -667,6 +662,7 @@ class RemoteAiAnalyzer(context: Context) {
                 estimatedCost = estimateCost(config, usage),
                 executionNote = buildString {
                     append(executionNote)
+                    append(" · 严格独立原始历史输入")
                     if (continuedConversation) append(" · 同一对话补全结果")
                     response.json.streamPhaseSummary().takeIf(String::isNotBlank)?.let {
                         append(" · $it")
@@ -1373,44 +1369,48 @@ class RemoteAiAnalyzer(context: Context) {
         snapshot: DrawSnapshot,
         report: ForecastReport,
         historyLimit: Int,
-    ): JSONObject =
-        JSONObject().apply {
-            put("task", "独立分析下一期候选；不得承诺必中或虚构优势")
+    ): JSONObject {
+        val rawHistory = snapshot.history
+            .filter { it.numbers.size == 10 }
+            .takeLast(historyLimit)
+        require(rawHistory.isNotEmpty()) { "没有可用于独立 AI 分析的开奖历史" }
+        return JSONObject().apply {
+            put("task", "仅根据原始开奖历史，独立选择下一期一个名次并对号码1至10排序")
+            put("independence_protocol", "raw-history-v1")
             put(
-                "independence_rule",
-                "本地盲测的名次、六码、七码和概率矩阵已故意隐藏。请只根据原始历史独立分析，不要猜测或复述本地候选。",
+                "input_isolation",
+                "客户端未提供本机模型选择的名次、六码、七码、概率矩阵、因子权重或预计算统计。不得猜测本机答案，也不得为了刻意不同而反向选择。",
             )
             put("lottery", snapshot.lottery.displayName)
             put("target_period", report.targetPeriod)
             put("trained_through", report.trainedThroughPeriod)
-            put("local_mode", report.mode.name)
-            put("analysis_window", historyLimit)
-            put("verified_fact_history_size", snapshot.history.size)
+            put("analysis_window", rawHistory.size)
             put("data_source", "fresh lottery API history fetched immediately before this analysis")
-            put("history_order", "oldest_to_newest; the final item is the latest verified draw")
-            put("reasoning_efficiency_rule", AiPromptCompactor.REASONING_RULE)
-            put("compact_draw_format", AiPromptCompactor.FORMAT)
+            put("history_order", "oldest_to_newest; final item is the latest verified draw")
             put("latest_period", snapshot.latest.period)
-            put("latest_numbers", JSONArray(snapshot.latest.numbers))
             put(
-                "position_selection_rule",
-                "必须先横向比较position 1至10的全部已核验统计，再选择证据最充分的一个名次。不得默认、照抄或偏向position=1；名次选择必须由本次数据决定。",
+                "raw_draws_oldest_to_newest",
+                JSONArray(rawHistory.map { draw ->
+                    JSONObject()
+                        .put("period", draw.period)
+                        .put("numbers", JSONArray(draw.numbers))
+                }),
             )
             put(
-                "multi_factor_rule",
-                "禁止使用单一指标或简单的遗漏+转移未加权求和。factor_weights固定顺序为[近20期频次,近60期频次,当前遗漏,后继转移,趋势稳定性]，归一化后至少3项权重>=0.08，任何一项不得超过0.65。scores必须与这些权重和已核验统计方向一致。",
+                "analysis_requirements",
+                JSONArray(
+                    listOf(
+                        "derive your own useful features directly from raw draws",
+                        "compare all ten positions before selecting one unless evidence is genuinely weak",
+                        "use at least three independently justified signals; do not inherit client weights",
+                        "treat small samples and tiny differences as weak evidence",
+                        "produce your own ten-number score vector; natural agreement with another model is allowed but copying is not",
+                    ),
+                ),
             )
             put(
                 "output_rule",
-                "正式预测只输出position和scores核心矩阵。不要输出思维过程、Markdown、逐期复述或额外字段；客户端会立即冻结并生成可核验说明。",
-            )
-            put(
-                "verified_position_statistics",
-                AiPromptCompactor.verifiedPositionStatistics(snapshot.history),
-            )
-            put(
-                "verified_draws_oldest_to_newest",
-                AiPromptCompactor.compactDraws(snapshot.history, minOf(historyLimit, 24)),
+                "只输出position和scores紧凑JSON；不要输出隐藏思维链、Markdown、逐期复述或额外字段。",
             )
             put(
                 "required_json_schema",
@@ -1419,6 +1419,7 @@ class RemoteAiAnalyzer(context: Context) {
                     .put("scores", "按号码1至10排列的10项非负原始评分，不得全部相同"),
             )
         }
+    }
 
     private fun isRetriableModelOutput(error: Throwable): Boolean {
         if (error is AiConversationFinalizationException) return false
@@ -1526,6 +1527,6 @@ class RemoteAiAnalyzer(context: Context) {
     private companion object {
         const val FINALIZE_JSON_PROMPT =
             "不要重新分析或复述过程。立即只输出紧凑JSON：{\"position\":1至10整数,\"scores\":[号码1至10对应的10项非负评分]}。"
-        const val SYSTEM_PROMPT = """你是独立概率排序与持续学习模型。客户端已根据真实开奖历史核验position 1至10的频次、遗漏、收缩后继转移、状态变化和稳定性，本机最终候选被刻意隐藏。adaptive_learning 保存该AI配置此前真实前向结算后更新的因子权重、连续未中和策略变化；它是长期先验而不是答案。你必须先比较十个名次，连续未中时主动降低失效因子并改变策略，禁止机械复制上一期候选。随后按号码1至10顺序给出10项非负评分。正式预测有严格时间预算：禁止输出隐藏思维链、解释、Markdown或逐期复述；只输出position与scores的紧凑JSON。不得承诺准确率、盈利或必中。"""
+        const val SYSTEM_PROMPT = """你是与客户端本机模型严格隔离的概率排序模型。你只会收到按时间排序的真实开奖原始记录、目标期和必要元数据；客户端不会提供本机选择的名次、候选、概率矩阵、预计算频次/遗漏/转移统计或本机因子权重。你必须从原始记录自行决定分析方法，先比较十个名次，再选择证据相对充分的一个名次，并按号码1至10给出10项非负评分。不得猜测、迎合或复制本机答案，也不得为了显得不同而故意反选；独立分析后自然重合是允许的。小样本和细微差异必须降权。正式预测有严格时间预算：禁止输出隐藏思维链、解释、Markdown或逐期复述；只输出position与scores的紧凑JSON。不得承诺准确率、盈利或必中。"""
     }
 }

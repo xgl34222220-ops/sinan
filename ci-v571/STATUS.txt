@@ -1,0 +1,7 @@
+status=success
+source_sha=0489ade47f88130e30bd871f82120cb75d5dee91
+checked_at=2026-08-04T00:04:20Z
+formal_ai_input=raw_history_only
+independent_chat_native_position_leak=removed
+independent_chat_native_statistics=removed
+AI isolation tests, Debug/Release unit tests, Android Lint, Debug APK and R8 Release APK passed.
