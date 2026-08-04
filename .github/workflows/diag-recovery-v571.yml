@@ -1,0 +1,45 @@
+name: Diagnose v5.7.1 recovery publish
+
+on:
+  push:
+    branches: [main]
+    paths: [DIAG_RECOVERY_V571_TRIGGER.txt]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Capture recovery workflow state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-v571
+          gh run list --workflow recover-publish-v5.7.1.yml --limit 10 \
+            --json databaseId,status,conclusion,event,headSha,createdAt,updatedAt,url \
+            > ci-v571/RECOVERY_RUNS.json
+          RUN_ID="$(jq -r '.[0].databaseId // empty' ci-v571/RECOVERY_RUNS.json)"
+          test -n "$RUN_ID"
+          gh run view "$RUN_ID" --json databaseId,status,conclusion,event,headSha,jobs,url \
+            > ci-v571/RECOVERY_DETAIL.json
+          if [[ "$(jq -r '.status' ci-v571/RECOVERY_DETAIL.json)" == completed && "$(jq -r '.conclusion' ci-v571/RECOVERY_DETAIL.json)" != success ]]; then
+            gh run view "$RUN_ID" --log-failed > ci-v571/RECOVERY_FAILED_LOG.txt || true
+          else
+            rm -f ci-v571/RECOVERY_FAILED_LOG.txt
+          fi
+          rm -f DIAG_RECOVERY_V571_TRIGGER.txt .github/workflows/diag-recovery-v571.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- ci-v571/RECOVERY_RUNS.json ci-v571/RECOVERY_DETAIL.json
+          [[ ! -e ci-v571/RECOVERY_FAILED_LOG.txt ]] || git add -- ci-v571/RECOVERY_FAILED_LOG.txt
+          git rm --ignore-unmatch -- DIAG_RECOVERY_V571_TRIGGER.txt .github/workflows/diag-recovery-v571.yml
+          git commit -m 'ci: record v5.7.1 recovery publish diagnostics'
+          git push origin HEAD:main
