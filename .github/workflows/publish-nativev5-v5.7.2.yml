@@ -18,16 +18,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Checkout main
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Validate release identity
+      - name: Pin and validate release source
         shell: bash
         run: |
           set -euo pipefail
+          RELEASE_SOURCE_SHA='1a19b17dd361e4fc2fc4a0347bc2322c844d7ee4'
+          git cat-file -e "${RELEASE_SOURCE_SHA}^{commit}"
+          git checkout --detach "$RELEASE_SOURCE_SHA"
           grep -Fq 'applicationId = "com.tianji.probabilitylab.nativev5"' app/build.gradle.kts
           grep -Fq 'namespace = "com.tianji.probabilitylab.nativev4"' app/build.gradle.kts
           grep -Fq 'versionCode = 39' app/build.gradle.kts
@@ -35,7 +38,7 @@ jobs:
           grep -Fq 'https://tianji-xgl.duckdns.org' app/build.gradle.kts
           grep -Fq '<string name="app_name">天机·新正式版</string>' app/src/main/res/values/strings.xml
           test -s RELEASE_NOTES_v5.7.2.md
-          echo "RELEASE_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RELEASE_SOURCE_SHA=$RELEASE_SOURCE_SHA" >> "$GITHUB_ENV"
 
       - name: Generate permanent nativev5 signing identity
         shell: bash
@@ -55,7 +58,6 @@ jobs:
           TIANJI_KEYSTORE_PASSWORD=${STORE_PASSWORD}
           TIANJI_KEY_ALIAS=${KEY_ALIAS}
           TIANJI_KEY_PASSWORD=${KEY_PASSWORD}
-          BACKUP_PASSWORD=${BACKUP_PASSWORD}
           BACKUP_ARTIFACT_NAME=tianji-nativev5-key-${BACKUP_ID}
           PASSWORD_ARTIFACT_NAME=tianji-nativev5-recovery-${BACKUP_ID}
           APK_ARTIFACT_NAME=tianji-nativev5-apk-${BACKUP_ID}
@@ -105,7 +107,7 @@ jobs:
           openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
             -in .signing/tianji-nativev5-signing-backup.tar.gz \
             -out .signing/Tianji-nativev5-signing-backup-PRIVATE.enc \
-            -pass env:BACKUP_PASSWORD
+            -pass pass:"$BACKUP_PASSWORD"
           cat > .signing/Tianji-nativev5-signing-backup-PASSWORD.txt <<EOF
           BACKUP_FILE=Tianji-nativev5-signing-backup-PRIVATE.enc
           BACKUP_PASSWORD=${BACKUP_PASSWORD}
@@ -225,10 +227,12 @@ jobs:
           grep -Fxq 'PACKAGE_MIGRATION.txt' <<<"$ASSETS"
           grep -Fxq 'RELEASE_SOURCE_SHA.txt' <<<"$ASSETS"
 
-      - name: Record verified release and remove one-shot publisher
+      - name: Record verified release and remove one-shot automation
         shell: bash
         run: |
           set -euo pipefail
+          git checkout main
+          git pull --ff-only origin main
           mkdir -p ci-nativev5
           cat > ci-nativev5/RELEASE_STATUS.txt <<EOF
           status=success
@@ -246,13 +250,17 @@ jobs:
           cloud_base_url=https://tianji-xgl.duckdns.org
           checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
-          git pull --ff-only origin main
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add ci-nativev5/RELEASE_STATUS.txt
           git rm --ignore-unmatch \
             PUBLISH_NATIVEV5_V572_TRIGGER.txt \
             .github/workflows/publish-nativev5-v5.7.2.yml \
+            DIAG_NATIVEV5_V572_TRIGGER.txt \
+            .github/workflows/diag-nativev5-v5.7.2.yml \
+            ci-nativev5/PUBLISH_RUNS.json \
+            ci-nativev5/PUBLISH_DETAIL.json \
+            ci-nativev5/PUBLISH_FAILED_LOG.txt \
             ci-v572/RELEASE_BLOCKED.txt
           git commit -m 'chore: record verified Tianji v5.7.2 nativev5 release'
           git push origin HEAD:main
