@@ -39,6 +39,17 @@ def _normalize(scores: list[float]) -> list[float]:
     return [value / total for value in safe]
 
 
+def _contains_chinese(value: str) -> bool:
+    return any("\u3400" <= char <= "\u9fff" for char in value)
+
+
+def _chinese_text(value: Any, fallback: str, limit: int) -> str:
+    text = str(value or "").strip()
+    if not text or not _contains_chinese(text):
+        return fallback
+    return text[:limit]
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     stripped = text.strip()
     if stripped.startswith("```"):
@@ -253,8 +264,10 @@ def analyze(
         "你是天机的独立概率排序模型。只能依据提供的真实开奖历史进行统计比较，"
         "不得承诺必中、盈利或准确率，不得输出隐藏思维链。"
         "比较十个名次后选择证据相对更充分的一名，按号码1至10顺序给出10项非负评分。"
+        "analysis 与 risk_note 必须使用自然、易懂的简体中文完整句子，禁止输出英文句子、拼音或中英混排；"
+        "模型名称和必要技术缩写除外。"
         "只返回紧凑JSON：{\"position\":1至10整数,\"scores\":[10项非负数],"
-        "\"analysis\":\"不超过100字\",\"risk_note\":\"不超过80字\"}。"
+        "\"analysis\":\"不超过100字的简体中文分析\",\"risk_note\":\"不超过80字的简体中文风险提示\"}。"
     )
     user_prompt = compact_json(
         {
@@ -314,7 +327,7 @@ def analyze(
             retry_messages.append(
                 {
                     "role": "user",
-                    "content": "上一次返回为空。请立即只返回一行完整 JSON，不要解释，不要留空。",
+                    "content": "上一次返回为空。请立即只返回一行完整 JSON，analysis 和 risk_note 必须是简体中文，不要解释，不要留空。",
                 }
             )
             retry_body["messages"] = retry_messages
@@ -340,10 +353,16 @@ def analyze(
     scores = [float(value) for value in raw_scores]
     probabilities = _normalize(scores)
     ranked = sorted(range(10), key=lambda index: probabilities[index], reverse=True)
-    analysis_text = str(result.get("analysis", "AI 已完成独立统计比较"))[:240]
-    risk_text = str(
-        result.get("risk_note", "随机开奖不可可靠预测，结果仅用于前向验证")
-    )[:200]
+    analysis_text = _chinese_text(
+        result.get("analysis"),
+        "模型已完成独立统计比较；原始说明不是中文，已改用中文兜底说明。",
+        240,
+    )
+    risk_text = _chinese_text(
+        result.get("risk_note"),
+        "样本量和随机性都可能造成偏差，不能保证未来结果，仅用于前向验证。",
+        200,
+    )
     return AiPrediction(
         position=position,
         probabilities=probabilities,

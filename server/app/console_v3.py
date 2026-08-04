@@ -33,7 +33,7 @@ def _assets() -> tuple[str, str]:
 
 def enhance_console_html(value: str) -> str:
     style_text, script_text = _assets()
-    style = f"<style>{style_text}</style>"
+    style = f"<style>/* Cloud Console V3 */{style_text}</style>"
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"
     if "</head>" in value:
         value = value.replace("</head>", style + "</head>", 1)
