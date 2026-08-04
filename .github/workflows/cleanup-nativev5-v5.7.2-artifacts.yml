@@ -1,0 +1,72 @@
+name: Clean Tianji v5.7.2 nativev5 private artifacts
+
+on:
+  push:
+    branches: [main]
+    paths: [CLEANUP_NATIVEV5_V572_TRIGGER.txt]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify release record and delete temporary artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          grep -Fxq 'status=success' ci-nativev5/RELEASE_STATUS.txt
+          grep -Fxq 'release_published=true' ci-nativev5/RELEASE_STATUS.txt
+          grep -Fxq 'backup_delivered_to_private_session=true' ci-nativev5/RELEASE_STATUS.txt
+          for artifact_id in 8880536983 8880537212 8880537524; do
+            gh api -X DELETE \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}"
+            if gh api \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}" >/dev/null 2>&1; then
+              echo "Artifact ${artifact_id} still exists" >&2
+              exit 1
+            fi
+          done
+
+      - name: Record cleanup and remove temporary automation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin main
+          cat > ci-nativev5/ARTIFACT_CLEANUP_STATUS.txt <<EOF
+          status=success
+          release=v5.7.2
+          package_name=com.tianji.probabilitylab.nativev5
+          signing_key_artifact_id=8880536983
+          recovery_password_artifact_id=8880537212
+          apk_artifact_id=8880537524
+          github_temporary_artifacts_deleted=true
+          private_session_backup_retained=true
+          cleaned_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-nativev5/ARTIFACT_CLEANUP_STATUS.txt
+          git rm --ignore-unmatch \
+            CLEANUP_NATIVEV5_V572_TRIGGER.txt \
+            .github/workflows/cleanup-nativev5-v5.7.2-artifacts.yml \
+            DIAG_FINALIZE_NATIVEV5_V572_TRIGGER.txt \
+            .github/workflows/diag-finalize-nativev5-v5.7.2.yml \
+            ci-nativev5/FINALIZER_RUNS.json \
+            ci-nativev5/FINALIZER_DETAIL.json \
+            ci-nativev5/FINALIZER_FAILED_LOG.txt
+          git commit -m 'chore: delete temporary Tianji nativev5 signing artifacts'
+          git push origin HEAD:main
