@@ -3,9 +3,13 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from . import web_console as _web_console
+from .public_v4 import enhance_public_html
+
 
 FILTER_PATCH = r"""
 (()=>{
+  document.documentElement.classList.add('tianji-console-v4');
   const select=document.getElementById('v3Lottery');
   if(!select)return;
   fetch('/admin/api/state',{cache:'no-store'})
@@ -33,14 +37,38 @@ def _assets() -> tuple[str, str]:
 
 def enhance_console_html(value: str) -> str:
     style_text, script_text = _assets()
-    style = f"<style>/* Cloud Console V3 */{style_text}</style>"
+    head_meta = (
+        '<meta name="theme-color" content="#0b0d13">'
+        '<meta name="color-scheme" content="dark light">'
+    )
+    if "viewport-fit=cover" not in value:
+        head_meta += (
+            '<meta name="viewport" '
+            'content="width=device-width,initial-scale=1,viewport-fit=cover">'
+        )
+    style = f"<style>/* Tianji Cloud Console V4 */{style_text}</style>"
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"
     if "</head>" in value:
-        value = value.replace("</head>", style + "</head>", 1)
+        value = value.replace("</head>", head_meta + style + "</head>", 1)
     else:
-        value = style + value
+        value = head_meta + style + value
     if "</body>" in value:
         value = value.replace("</body>", script + "</body>", 1)
     else:
         value += script
     return value
+
+
+def _install_public_page_v4() -> None:
+    original = _web_console.public_page
+    if getattr(original, "_tianji_public_v4", False):
+        return
+
+    def public_page_v4() -> str:
+        return enhance_public_html(original())
+
+    setattr(public_page_v4, "_tianji_public_v4", True)
+    _web_console.public_page = public_page_v4
+
+
+_install_public_page_v4()
