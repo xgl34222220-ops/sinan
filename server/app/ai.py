@@ -8,8 +8,8 @@ from typing import Any
 
 import httpx
 
-from .config import settings
 from .models import DrawModel, compact_json
+from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,13 @@ class AiPrediction:
     risk_note: str
     model: str
     latency_ms: int
+
+
+@dataclass(frozen=True)
+class AiConnectionResult:
+    latency_ms: int
+    message: str
+    models: list[str]
 
 
 def _normalize(scores: list[float]) -> list[float]:
@@ -80,9 +87,105 @@ def _response_text(payload: dict[str, Any]) -> str:
     raise ValueError("AI 接口没有返回正文")
 
 
-def analyze(history: list[DrawModel], target_period: str) -> AiPrediction:
-    if not settings.ai_enabled:
-        raise RuntimeError("服务器尚未配置 AI")
+def _headers(config: RuntimeAiConfig) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {config.api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def _models_endpoint(endpoint: str) -> str:
+    value = endpoint.rstrip("/")
+    for suffix in ("/chat/completions", "/responses"):
+        if value.endswith(suffix):
+            return value[: -len(suffix)] + "/models"
+    if value.endswith("/v1"):
+        return value + "/models"
+    return value + "/models"
+
+
+def discover_models(config: RuntimeAiConfig | None = None) -> AiConnectionResult:
+    active = config or load_ai_config()
+    if not active.complete:
+        raise RuntimeError("请先完整配置 HTTPS 接口、模型和 API Key")
+    started = time.monotonic()
+    endpoint = _models_endpoint(active.endpoint)
+    with httpx.Client(
+        timeout=httpx.Timeout(min(active.timeout_seconds, 30), connect=10.0),
+        follow_redirects=True,
+    ) as client:
+        response = client.get(endpoint, headers=_headers(active))
+        response.raise_for_status()
+        payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("模型接口返回格式异常")
+    data = payload.get("data")
+    models: list[str] = []
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                model_id = str(item.get("id") or "").strip()
+                if model_id:
+                    models.append(model_id)
+    models = sorted(set(models))
+    latency_ms = int((time.monotonic() - started) * 1000)
+    return AiConnectionResult(
+        latency_ms=latency_ms,
+        message=f"连接正常，读取到 {len(models)} 个模型" if models else "连接正常，但接口未返回模型列表",
+        models=models,
+    )
+
+
+def test_connection(config: RuntimeAiConfig | None = None) -> AiConnectionResult:
+    active = config or load_ai_config()
+    try:
+        return discover_models(active)
+    except Exception as model_error:
+        if not active.complete:
+            raise
+        is_responses = active.endpoint.rstrip("/").endswith("/responses")
+        if is_responses:
+            body: dict[str, Any] = {
+                "model": active.model,
+                "input": "只回复：OK",
+                "max_output_tokens": 8,
+            }
+        else:
+            body = {
+                "model": active.model,
+                "messages": [{"role": "user", "content": "只回复：OK"}],
+                "temperature": 0,
+                "stream": False,
+                "max_tokens": 8,
+            }
+        started = time.monotonic()
+        with httpx.Client(
+            timeout=httpx.Timeout(min(active.timeout_seconds, 45), connect=10.0),
+            follow_redirects=True,
+        ) as client:
+            response = client.post(active.endpoint, headers=_headers(active), json=body)
+            response.raise_for_status()
+            payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("AI 接口返回格式异常")
+        _response_text(payload)
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return AiConnectionResult(
+            latency_ms=latency_ms,
+            message=f"模型调用成功；模型列表读取失败：{str(model_error)[:120]}",
+            models=[active.model],
+        )
+
+
+def analyze(
+    history: list[DrawModel],
+    target_period: str,
+    config: RuntimeAiConfig | None = None,
+) -> AiPrediction:
+    active = config or load_ai_config()
+    if not active.complete:
+        raise RuntimeError("服务器尚未完整配置 AI")
     verified = [draw for draw in history if len(draw.numbers) == 10][-120:]
     if len(verified) < 30:
         raise ValueError("AI 分析至少需要 30 期有效历史")
@@ -106,11 +209,11 @@ def analyze(history: list[DrawModel], target_period: str) -> AiPrediction:
             "history": history_payload,
         }
     )
-    endpoint = settings.ai_endpoint
+    endpoint = active.endpoint
     is_responses = endpoint.rstrip("/").endswith("/responses")
     if is_responses:
         body: dict[str, Any] = {
-            "model": settings.ai_model,
+            "model": active.model,
             "input": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -118,7 +221,7 @@ def analyze(history: list[DrawModel], target_period: str) -> AiPrediction:
         }
     else:
         body = {
-            "model": settings.ai_model,
+            "model": active.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -130,29 +233,13 @@ def analyze(history: list[DrawModel], target_period: str) -> AiPrediction:
 
     started = time.monotonic()
     with httpx.Client(
-        timeout=httpx.Timeout(settings.ai_timeout_seconds, connect=15.0),
+        timeout=httpx.Timeout(active.timeout_seconds, connect=15.0),
         follow_redirects=True,
     ) as client:
-        response = client.post(
-            endpoint,
-            headers={
-                "Authorization": f"Bearer {settings.ai_api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            json=body,
-        )
+        response = client.post(endpoint, headers=_headers(active), json=body)
         if response.status_code >= 400 and not is_responses and "response_format" in body:
             body.pop("response_format", None)
-            response = client.post(
-                endpoint,
-                headers={
-                    "Authorization": f"Bearer {settings.ai_api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                json=body,
-            )
+            response = client.post(endpoint, headers=_headers(active), json=body)
         response.raise_for_status()
         payload = response.json()
     latency_ms = int((time.monotonic() - started) * 1000)
@@ -179,6 +266,6 @@ def analyze(history: list[DrawModel], target_period: str) -> AiPrediction:
         top7=[index + 1 for index in ranked[:7]],
         analysis=analysis_text,
         risk_note=risk_text,
-        model=settings.ai_model,
+        model=active.model,
         latency_ms=latency_ms,
     )

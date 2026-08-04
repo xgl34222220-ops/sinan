@@ -10,9 +10,10 @@ from .db import database
 from .lottery import lottery_client
 from .models import LOTTERIES, LotterySpec, SnapshotModel
 from .predictor import predict
+from .runtime_config import load_ai_config
 
 
-SERVICE_VERSION = "1.0.0"
+SERVICE_VERSION = "1.1.0"
 SAFETY_WINDOW_MS = 5_000
 
 
@@ -72,14 +73,15 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
                 if inserted is not None:
                     generated.append("native")
 
-        if settings.ai_enabled and not database.has_forecast(
+        ai_config = load_ai_config()
+        if ai_config.complete and not database.has_forecast(
             lottery_key,
             next_period,
             "ai",
-            settings.ai_model,
+            ai_config.model,
         ):
             try:
-                result = ai.analyze(history, next_period)
+                result = ai.analyze(history, next_period, ai_config)
                 if not _target_is_open(spec, latest.period, next_period):
                     raise RuntimeError("AI 完成时目标期已经封盘，结果已丢弃且不会进入前向档案")
                 inserted = database.save_forecast(
@@ -104,6 +106,7 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
                         {
                             "message": str(exc)[:500],
                             "target_period": next_period,
+                            "model": ai_config.model,
                             "at": int(time.time() * 1000),
                         },
                         ensure_ascii=False,
@@ -118,6 +121,7 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
         "sync_days": sync_days,
         "settled": settled,
         "generated": generated,
+        "ai_model": load_ai_config().model,
         "server_time_epoch_ms": server_time,
         "next_draw_at_epoch_ms": next_draw_at,
         "completed_at_epoch_ms": int(time.time() * 1000),

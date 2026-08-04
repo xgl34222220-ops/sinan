@@ -8,6 +8,7 @@ import os
 class Settings:
     database_path: str
     api_token: str
+    admin_password: str
     poll_seconds: int
     history_days: int
     public_base_url: str
@@ -19,6 +20,10 @@ class Settings:
     @property
     def ai_enabled(self) -> bool:
         return bool(self.ai_endpoint and self.ai_model and self.ai_api_key)
+
+    @property
+    def data_dir(self) -> str:
+        return os.path.dirname(self.database_path) or "."
 
 
 def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -34,6 +39,7 @@ def load_settings() -> Settings:
     return Settings(
         database_path=os.getenv("TIANJI_DATABASE", "./data/tianji.db").strip(),
         api_token=os.getenv("TIANJI_API_TOKEN", "").strip(),
+        admin_password=os.getenv("TIANJI_ADMIN_PASSWORD", "").strip(),
         poll_seconds=_int_env("TIANJI_POLL_SECONDS", 30, 15, 3600),
         history_days=_int_env("TIANJI_HISTORY_DAYS", 14, 2, 40),
         public_base_url=os.getenv("TIANJI_PUBLIC_BASE_URL", "").strip().rstrip("/"),
