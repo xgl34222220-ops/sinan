@@ -31,6 +31,23 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Mark finalizer as started
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git pull --rebase origin main
+          mkdir -p ci-v573
+          cat > ci-v573/FINALIZER_STARTED.txt <<EOF
+          run_id=${GITHUB_RUN_ID}
+          head_sha=${GITHUB_SHA}
+          started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          git add ci-v573/FINALIZER_STARTED.txt
+          git commit -m 'ci: mark v5.7.3 finalizer started [skip ci]'
+          git push origin HEAD:main
+
       - name: Reconstruct and verify permanent-signed APK
         shell: bash
         env:
@@ -40,8 +57,7 @@ jobs:
           command -v zstd >/dev/null
           rm -rf /tmp/tianji-build /tmp/tianji-release
           mkdir -p /tmp/tianji-build /tmp/tianji-release
-          gh api --method GET \
-            -H 'Accept: application/vnd.github+json' \
+          gh api --method GET -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BUILD_ARTIFACT_ID}/zip" \
             > /tmp/tianji-build/artifact.zip
           unzip -q /tmp/tianji-build/artifact.zip -d /tmp/tianji-build/files
@@ -51,9 +67,6 @@ jobs:
           PATCH=/tmp/tianji-build/Tianji-v5.7.3-signed.zstpatch
           APK=/tmp/tianji-release/Tianji-v5.7.3-nativev5-release.apk
           test -s "$UNSIGNED"
-          test -x "$TOOLS/zipalign"
-          test -x "$TOOLS/apksigner"
-          test -x "$TOOLS/aapt"
           test -s "$TOOLS/lib64/libc++.so"
           export LD_LIBRARY_PATH="$TOOLS/lib64"
           "$TOOLS/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
@@ -76,93 +89,29 @@ jobs:
           printf '%s  %s\n' "$EXPECTED_APK_SHA256" 'Tianji-v5.7.3-nativev5-release.apk' > /tmp/tianji-release/Tianji-v5.7.3-nativev5-SHA256.txt
           printf '%s\n' "$EXPECTED_CERT_SHA256" > /tmp/tianji-release/SIGNING_CERT_SHA256.txt
 
-      - name: Produce clean latest-only source commit
+      - name: Wait for clean source commit
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git pull --rebase origin main
-          cat > .github/workflows/android-ci.yml <<'EOF'
-          name: Tianji Android CI
-
-          on:
-            push:
-              branches: [main, 'feature/**']
-            pull_request:
-              branches: [main]
-            workflow_dispatch:
-
-          permissions:
-            contents: read
-
-          concurrency:
-            group: tianji-ci-${{ github.workflow }}-${{ github.ref }}
-            cancel-in-progress: true
-
-          jobs:
-            verify:
-              runs-on: ubuntu-latest
-              timeout-minutes: 45
-              steps:
-                - name: Checkout
-                  uses: actions/checkout@v4
-
-                - name: Set up Java 17
-                  uses: actions/setup-java@v4
-                  with:
-                    distribution: temurin
-                    java-version: '17'
-
-                - name: Set up Android SDK
-                  uses: android-actions/setup-android@v3
-
-                - name: Set up Gradle 8.13
-                  uses: gradle/actions/setup-gradle@v4
-                  with:
-                    gradle-version: '8.13'
-
-                - name: Install Android SDK 36
-                  shell: bash
-                  run: |
-                    set -euo pipefail
-                    yes | sdkmanager --licenses >/dev/null || true
-                    sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
-
-                - name: Unit tests, lint and builds
-                  run: >-
-                    gradle --no-daemon --stacktrace
-                    :app:testDebugUnitTest
-                    :app:testReleaseUnitTest
-                    :app:lintDebug
-                    :app:assembleDebug
-                    :app:assembleRelease
-
-                - name: Upload Debug APK and reports
-                  if: always()
-                  uses: actions/upload-artifact@v4
-                  with:
-                    name: Tianji-CI-${{ github.sha }}
-                    path: |
-                      app/build/outputs/apk/debug/app-debug.apk
-                      app/build/reports/tests/
-                      app/build/reports/lint-results-debug.html
-                    if-no-files-found: warn
-                    retention-days: 14
-          EOF
-          rm -rf release-staging ci-nativev5
-          find . -maxdepth 1 -type d -name 'ci-v*' -exec rm -rf {} +
-          find . -maxdepth 1 -type f -name 'RELEASE_NOTES_v*.md' ! -name 'RELEASE_NOTES_v5.7.3.md' -delete
-          find . -maxdepth 1 -type f \( -name '*TRIGGER*.txt' -o -name 'VERIFY_*.txt' \) -delete
-          rm -f \
-            .github/workflows/build-v5.7.3-unsigned-tools.yml \
-            .github/workflows/watch-v5.7.3-unsigned-build.yml \
-            .github/workflows/finalize-v5.7.3-cleanup.yml
-          git add -A
-          git commit -m 'release: keep only Tianji v5.7.3 latest source'
-          git push origin HEAD:main
-          echo "CLEAN_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          printf '%s\n' "$(git rev-parse HEAD)" > /tmp/tianji-release/RELEASE_SOURCE_SHA.txt
+          CLEAN_SOURCE_SHA=''
+          for i in $(seq 1 180); do
+            ENCODED="$(gh api "/repos/${GITHUB_REPOSITORY}/contents/CLEAN_SOURCE_READY.txt?ref=main" --jq '.content' 2>/dev/null || true)"
+            if [ -n "$ENCODED" ]; then
+              CLEAN_SOURCE_SHA="$(printf '%s' "$ENCODED" | base64 -d | tr -d '\r\n')"
+              break
+            fi
+            sleep 10
+          done
+          [[ "$CLEAN_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch origin main --tags --force
+          git cat-file -e "${CLEAN_SOURCE_SHA}^{commit}"
+          git show "${CLEAN_SOURCE_SHA}:app/build.gradle.kts" | grep -Fq 'versionCode = 40'
+          git show "${CLEAN_SOURCE_SHA}:app/build.gradle.kts" | grep -Fq 'versionName = "5.7.3"'
+          git show "${CLEAN_SOURCE_SHA}:app/src/main/res/values/strings.xml" | grep -Fq '<string name="app_name">天机</string>'
+          echo "CLEAN_SOURCE_SHA=$CLEAN_SOURCE_SHA" >> "$GITHUB_ENV"
+          printf '%s\n' "$CLEAN_SOURCE_SHA" > /tmp/tianji-release/RELEASE_SOURCE_SHA.txt
 
       - name: Create Tianji v5.7.3 formal release
         shell: bash
@@ -170,24 +119,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch origin --tags --force
           gh release delete v5.7.3 --cleanup-tag --yes >/dev/null 2>&1 || true
           git push origin :refs/tags/v5.7.3 >/dev/null 2>&1 || true
           git tag -a v5.7.3 "$CLEAN_SOURCE_SHA" -m '天机 v5.7.3'
           git push origin refs/tags/v5.7.3
-          gh release create v5.7.3 \
-            --verify-tag \
+          git show "${CLEAN_SOURCE_SHA}:RELEASE_NOTES_v5.7.3.md" > /tmp/tianji-release/RELEASE_NOTES.txt
+          gh release create v5.7.3 --verify-tag \
             --title '天机 v5.7.3' \
-            --notes-file RELEASE_NOTES_v5.7.3.md \
-            /tmp/tianji-release/*
+            --notes-file /tmp/tianji-release/RELEASE_NOTES.txt \
+            /tmp/tianji-release/Tianji-v5.7.3-nativev5-release.apk \
+            /tmp/tianji-release/Tianji-v5.7.3-nativev5-SHA256.txt \
+            /tmp/tianji-release/SIGNING_CERT_SHA256.txt \
+            /tmp/tianji-release/APK_VERIFY.txt \
+            /tmp/tianji-release/APK_BADGING.txt \
+            /tmp/tianji-release/RELEASE_SOURCE_SHA.txt
           ASSETS="$(gh release view v5.7.3 --json assets --jq '.assets[].name')"
-          for asset in \
-            Tianji-v5.7.3-nativev5-release.apk \
-            Tianji-v5.7.3-nativev5-SHA256.txt \
-            SIGNING_CERT_SHA256.txt \
-            APK_VERIFY.txt \
-            APK_BADGING.txt \
-            RELEASE_SOURCE_SHA.txt; do
+          for asset in Tianji-v5.7.3-nativev5-release.apk Tianji-v5.7.3-nativev5-SHA256.txt SIGNING_CERT_SHA256.txt APK_VERIFY.txt APK_BADGING.txt RELEASE_SOURCE_SHA.txt; do
             grep -Fxq "$asset" <<<"$ASSETS"
           done
 
@@ -241,16 +188,36 @@ jobs:
             gh api --method DELETE "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}" || true
           done < <(gh api --paginate "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" --jq '.artifacts[].id')
 
-      - name: Verify latest-only repository state
+      - name: Verify latest-only repository state and record success
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          RELEASES="$(gh release list --limit 100 --json tagName --jq '.[].tagName')"
-          test "$RELEASES" = 'v5.7.3'
-          BRANCHES="$(git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}' | sort)"
-          test "$BRANCHES" = 'main'
-          TAGS="$(git ls-remote --tags origin 'refs/tags/*' | awk '{print $2}' | sed -e 's#refs/tags/##' -e 's/\^{}//' | sort -u)"
-          test "$TAGS" = 'v5.7.3'
+          test "$(gh release list --limit 100 --json tagName --jq '.[].tagName')" = 'v5.7.3'
+          test "$(git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}' | sort)" = 'main'
+          test "$(git ls-remote --tags origin 'refs/tags/*' | awk '{print $2}' | sed -e 's#refs/tags/##' -e 's/\^{}//' | sort -u)" = 'v5.7.3'
           gh release view v5.7.3 --json isDraft,isPrerelease,tagName,name --jq 'select(.isDraft == false and .isPrerelease == false and .tagName == "v5.7.3" and .name == "天机 v5.7.3")' >/dev/null
+          git fetch origin main --force
+          git reset --hard origin/main
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          rm -f CLEAN_SOURCE_READY.txt ci-v573/FINALIZER_STARTED.txt ci-v573/FINALIZER_RESULT.json
+          mkdir -p ci-v573
+          cat > ci-v573/FINALIZER_SUCCESS.txt <<EOF
+          status=success
+          version_name=5.7.3
+          version_code=40
+          package_name=com.tianji.probabilitylab.nativev5
+          app_name=天机
+          tag=v5.7.3
+          source_sha=${CLEAN_SOURCE_SHA}
+          apk_sha256=${EXPECTED_APK_SHA256}
+          signing_cert_sha256=${EXPECTED_CERT_SHA256}
+          releases_remaining=v5.7.3
+          branches_remaining=main
+          completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          git add -A
+          git commit -m 'release: record Tianji v5.7.3 latest-only success [skip ci]'
+          git push origin HEAD:main
