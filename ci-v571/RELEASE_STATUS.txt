@@ -1,0 +1,9 @@
+status=success
+version_name=5.7.1
+version_code=38
+tag=v5.7.1
+source_sha=5ccd81fe530aef375c12e182ea89fcd1f7f3650c
+signing_cert_sha256=5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed
+apk=Tianji-v5.7.1-release.apk
+signing_source=protected_artifact_8842385591
+checked_at=2026-08-04T01:16:18Z
