@@ -38,11 +38,13 @@ class AiFreeChatTest {
     }
 
     @Test
-    fun builtInPersonasAreCompleteAndResolvable() {
-        assertEquals(10, AiChatPersona.values().size)
-        assertEquals(AiChatPersona.HISTORY, AiChatPersona.fromId("history"))
+    fun builtInPersonasAreCompleteAndLegacyIdsRemainResolvable() {
+        assertEquals(3, AiChatPersona.entries.size)
+        assertEquals(AiChatPersona.COMPREHENSIVE, AiChatPersona.fromId("history"))
+        assertEquals(AiChatPersona.TREND, AiChatPersona.fromId("regime_state"))
+        assertEquals(AiChatPersona.RISK_AUDIT, AiChatPersona.fromId("adaptive_learning"))
         assertEquals(AiChatPersona.COMPREHENSIVE, AiChatPersona.fromId("unknown"))
-        AiChatPersona.values().forEach { persona ->
+        AiChatPersona.entries.forEach { persona ->
             assertTrue(persona.displayName.isNotBlank())
             assertTrue(persona.instruction.isNotBlank())
             assertTrue(persona.quickPrompts.size >= 3)
