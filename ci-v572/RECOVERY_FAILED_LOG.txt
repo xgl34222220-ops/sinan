@@ -1,0 +1,303 @@
+recover-publish	Explicitly dispatch signed release workflow	﻿2026-08-04T03:52:37.4259460Z ##[group]Run set -euo pipefail
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4260648Z ^[[36;1mset -euo pipefail^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4263340Z ^[[36;1mRUN_ID="$(gh run list --workflow release.yml --commit "$TAG_COMMIT" --event workflow_dispatch --limit 1 --json databaseId,status --jq '.[0].databaseId // empty')"^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4266382Z ^[[36;1mif [[ -z "$RUN_ID" ]]; then^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4267653Z ^[[36;1m  gh workflow run release.yml --ref v5.7.2^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4268910Z ^[[36;1mfi^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4269761Z ^[[36;1mfor _ in $(seq 1 80); do^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4272374Z ^[[36;1m  RUN_ID="$(gh run list --workflow release.yml --commit "$TAG_COMMIT" --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')"^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4275285Z ^[[36;1m  [[ -n "$RUN_ID" ]] && break^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4276410Z ^[[36;1m  sleep 3^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4277287Z ^[[36;1mdone^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4278132Z ^[[36;1mtest -n "$RUN_ID"^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4279218Z ^[[36;1mgh run watch "$RUN_ID" --exit-status^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4280727Z ^[[36;1mecho "RELEASE_RUN_ID=$RUN_ID" >> "$GITHUB_ENV"^[[0m
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4330948Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4332335Z env:
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4333345Z   TAG_COMMIT: e193dd90e842cee831f137a3cf6bc2a3b81d8630
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4343385Z   GH_TOKEN: ***
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:37.4344281Z ##[endgroup]
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:39.0944638Z https://github.com/xgl34222220-ops/tianji/actions/runs/30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:43.6356261Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:43.6357059Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:43.6357461Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:43.6357822Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:43.6358084Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:43.6358162Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:43.6358368Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:47.0515799Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:47.0516396Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:47.0516896Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:47.0517273Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:47.0517578Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:47.0517700Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:47.0517992Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:50.4731388Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:50.4731912Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:50.4732430Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:50.4732903Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:50.4733236Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:50.4733381Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:50.4733654Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:50.4734000Z   * Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:53.8780521Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:53.8781082Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:53.8781519Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:53.8781876Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:53.8782136Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:53.8782222Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:53.8782632Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:53.8782926Z   * Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2624778Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2625364Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2626290Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2626634Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2626869Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2626957Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2627156Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2627415Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2627641Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2627992Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2628208Z   * Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2628431Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2628646Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2628927Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2629270Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2629566Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2630096Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2630363Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:52:57.2630587Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6375355Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6375859Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6376383Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6376917Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6377237Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6377347Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6377601Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6377970Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6378277Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6378591Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6378873Z   * Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6379171Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6379468Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6379845Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6380311Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6380718Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6381081Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6381360Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:00.6381585Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0530851Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0531423Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0533797Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0534641Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0535287Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0535460Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0535764Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0536173Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0536637Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0536885Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0537108Z   * Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0537343Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0537669Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0538455Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0539050Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0539547Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0539796Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0540302Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:04.0540657Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4415810Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4416162Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4416567Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4417015Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4417245Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4417330Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4417526Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4417798Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4418022Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4418254Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4418464Z   * Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4418689Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4418908Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4419184Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4419578Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4419867Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4420117Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4420389Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:07.4421005Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8252194Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8252647Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8253067Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8253403Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8253640Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8253720Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8253917Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8254187Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8254419Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8254653Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8254869Z   * Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8255347Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8255573Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8255853Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8256763Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8257058Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8257305Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8257582Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:10.8257806Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2863045Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2863419Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2863814Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2864153Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2864399Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2864476Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2864670Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2865141Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2865369Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2865600Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2865814Z   * Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2866029Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2866243Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2866669Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2867003Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2867288Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2867538Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2867839Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:14.2868062Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6343394Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6343882Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6344290Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6344626Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6344861Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6345202Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6345400Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6345666Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6345900Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6346127Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6346339Z   * Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6346554Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6346825Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6347129Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6347458Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6347742Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6348005Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6348268Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:17.6348488Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0566224Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0566702Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0567166Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0567499Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0567726Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0567812Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0568007Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0568270Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0568494Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0568721Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0568953Z   ✓ Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0569227Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0569446Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0569717Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0570062Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0570870Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0571123Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0571394Z   * Post Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0571629Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:21.0571843Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4667025Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4667399Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4667811Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4668184Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4668423Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4668507Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4668706Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4668969Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4669198Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4669969Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4670193Z   ✓ Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4670417Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4670633Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4670898Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4671258Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4671548Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4671794Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4672059Z   * Post Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4672293Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:24.4672511Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8498162Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8498534Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8498924Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8499263Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8499507Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8499584Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8499782Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8500124Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8500353Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8500580Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8500812Z   ✓ Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8501027Z   * Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8501255Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8501522Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8501856Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8502137Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8502383Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8502647Z   * Post Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8502877Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:27.8503093Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2531386Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2531835Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2532342Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2532785Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2533168Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2533274Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2533526Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2533877Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2534170Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2534471Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2534788Z   ✓ Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2535400Z   ✓ Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2535627Z   * Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2535898Z   * Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2536237Z   * Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2536523Z   * Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2536772Z   * Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2537036Z   * Post Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2537316Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:31.2537545Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6489542Z Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6489994Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6490404Z * v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6490784Z Triggered via workflow_dispatch less than a minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6491008Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6491097Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6491290Z * release (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6491549Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6492232Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6492455Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6492686Z   ✓ Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6492923Z   ✓ Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6493160Z   ✓ Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6493438Z   X Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6493801Z   - Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6494128Z   - Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6494386Z   - Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6494653Z   * Post Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6495100Z   * Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:34.6495341Z   * Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0319418Z X v5.7.2 Tianji Release · 30875985854
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0320357Z Triggered via workflow_dispatch about 1 minute ago
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0320598Z 
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0320678Z JOBS
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0320879Z X release in 47s (ID 91887431299)
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0321175Z   ✓ Set up job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0321420Z   ✓ Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0321646Z   ✓ Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0321875Z   ✓ Set up Android SDK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0322117Z   ✓ Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0322365Z   ✓ Install Android SDK 36
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0322647Z   X Restore and verify protected signing identity
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0323000Z   - Verify version, test and build signed APK
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0323299Z   - Publish GitHub Release
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0323554Z   - Upload verified release artifacts
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0323875Z   ✓ Post Set up Gradle 8.13
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0324133Z   ✓ Post Set up Java 17
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0324376Z   ✓ Post Checkout tag
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0324618Z   ✓ Complete job
+recover-publish	Explicitly dispatch signed release workflow	2026-08-04T03:53:38.0351097Z ##[error]Process completed with exit code 1.
