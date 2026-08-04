@@ -3,6 +3,8 @@ name: Tianji Validate
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [feature/ui-polish-v581]
   workflow_dispatch:
 
 permissions:
