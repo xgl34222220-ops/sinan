@@ -1,0 +1,4 @@
+version=5.7.2
+version_code=39
+tag=v5.7.2
+requested_at=2026-08-04T03:53:00Z
