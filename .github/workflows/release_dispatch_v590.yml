@@ -14,6 +14,8 @@ on:
 permissions:
   actions: write
   contents: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: tianji-v5.9.0-dispatch
@@ -47,4 +49,6 @@ jobs:
             exit 0
           fi
           gh workflow run release.yml --repo "$REPO" --ref main
+          gh api "repos/$REPO/issues/59/comments" \
+            -f body='🚀 天机 v5.9.0 正式签名构建已派发，正在执行单元测试、Lint、签名与升级证书校验。'
           echo 'Tianji v5.9.0 release workflow dispatched.'
