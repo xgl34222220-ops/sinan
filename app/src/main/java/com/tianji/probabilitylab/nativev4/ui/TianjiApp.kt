@@ -19,8 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,17 +48,21 @@ import kotlinx.coroutines.launch
 @Composable
 fun TianjiApp() {
     val context = LocalContext.current
-    val runtime = remember(context.applicationContext) { TianjiRuntime.from(context.applicationContext) }
+    val runtime = remember(context.applicationContext) {
+        TianjiRuntime.from(context.applicationContext)
+    }
     val controller = runtime.appController
     val chatController = runtime.chatController
     val appearance = remember { AppearanceStore(context.applicationContext) }
     val paletteMode by appearance.palette.collectAsState(initial = PaletteMode.MONET)
     val scope = rememberCoroutineScope()
     val state = controller.state
+
     val refreshSafely: () -> Unit = {
         if (!state.isAiAnalyzing) controller.refresh()
     }
     val chatRunning = chatController.session.isRunning
+
     LaunchedEffect(state.isAiAnalyzing, chatRunning, chatController.session.progress) {
         if (state.isAiAnalyzing || chatRunning) {
             val title = when {
@@ -77,18 +81,21 @@ fun TianjiApp() {
             AiForegroundService.hide(context)
         }
     }
+
     LaunchedEffect(state.snapshot?.latest?.period, state.snapshot?.history?.size) {
         state.snapshot?.let(chatController::settleCandidates)
     }
-    var destination by rememberSaveable { mutableStateOf(NavDestination.FORECAST) }
-    var showChat by rememberSaveable { mutableStateOf(false) }
+
     val density = LocalDensity.current
-    val accessibleDensity = remember(density.density, density.fontScale) {
+    val readableDensity = remember(density.density, density.fontScale) {
         Density(
             density = density.density,
-            fontScale = maxOf(density.fontScale, 1.08f),
+            fontScale = maxOf(density.fontScale, 1.10f),
         )
     }
+
+    var destination by rememberSaveable { mutableStateOf(NavDestination.FORECAST) }
+    var showChat by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = showChat || destination != NavDestination.FORECAST) {
         if (showChat) showChat = false else destination = NavDestination.FORECAST
@@ -96,43 +103,33 @@ fun TianjiApp() {
 
     TianjiTheme(mode = paletteMode, lottery = state.lottery) {
         val colors = LocalTianjiColors.current
-        CompositionLocalProvider(LocalDensity provides accessibleDensity) {
-            Box(Modifier.fillMaxSize().background(colors.page)) {
+        CompositionLocalProvider(LocalDensity provides readableDensity) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colors.page),
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.systemBars)
                         .background(
                             Brush.verticalGradient(
-                                listOf(colors.page, colors.pageSoft, colors.page),
+                                listOf(
+                                    colors.page,
+                                    colors.pageSoft,
+                                    colors.page,
+                                ),
                             ),
                         ),
                 ) {
-                    Canvas(Modifier.fillMaxSize()) {
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                listOf(colors.amber.copy(alpha = 0.085f), Color.Transparent),
-                            ),
-                            radius = size.width * 0.86f,
-                            center = Offset(size.width * -0.02f, size.height * 0.02f),
-                        )
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                listOf(colors.accent.copy(alpha = 0.10f), Color.Transparent),
-                            ),
-                            radius = size.width * 0.82f,
-                            center = Offset(size.width * 1.05f, size.height * 0.32f),
-                        )
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                listOf(colors.green.copy(alpha = 0.04f), Color.Transparent),
-                            ),
-                            radius = size.width * 0.70f,
-                            center = Offset(size.width * 0.42f, size.height * 1.04f),
-                        )
-                    }
+                    TianjiBackdrop()
+
                     Column(Modifier.fillMaxSize()) {
-                        AppHeader(state.isRefreshing, refreshSafely)
+                        AppHeader(
+                            isRefreshing = state.isRefreshing,
+                            onRefresh = refreshSafely,
+                        )
                         Box(Modifier.weight(1f)) {
                             AnimatedContent(
                                 targetState = destination,
@@ -152,21 +149,25 @@ fun TianjiApp() {
                                         onCancelAi = controller::cancelAi,
                                         modifier = Modifier.fillMaxSize(),
                                     )
+
                                     NavDestination.ROLLING -> RollingScreen(
-                                        state,
-                                        controller::selectLottery,
-                                        Modifier.fillMaxSize(),
+                                        state = state,
+                                        onSelectLottery = controller::selectLottery,
+                                        modifier = Modifier.fillMaxSize(),
                                     )
+
                                     NavDestination.EVIDENCE -> EvidenceScreen(
-                                        state,
-                                        controller::selectLottery,
-                                        Modifier.fillMaxSize(),
+                                        state = state,
+                                        onSelectLottery = controller::selectLottery,
+                                        modifier = Modifier.fillMaxSize(),
                                     )
+
                                     NavDestination.ARCHIVE -> ArchiveScreen(
-                                        state,
-                                        controller::selectLottery,
-                                        Modifier.fillMaxSize(),
+                                        state = state,
+                                        onSelectLottery = controller::selectLottery,
+                                        modifier = Modifier.fillMaxSize(),
                                     )
+
                                     NavDestination.DATA -> DataScreen(
                                         state = state,
                                         paletteMode = paletteMode,
@@ -189,6 +190,7 @@ fun TianjiApp() {
                                     )
                                 }
                             }
+
                             BottomNavigation(
                                 selected = destination,
                                 onSelected = { destination = it },
@@ -196,15 +198,17 @@ fun TianjiApp() {
                                     .align(Alignment.BottomCenter)
                                     .padding(start = 13.dp, end = 13.dp, bottom = 11.dp),
                             )
+
                             AiChatFloatingButton(
                                 onClick = { showChat = true },
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
-                                    .padding(end = 19.dp, bottom = 90.dp),
+                                    .padding(end = 18.dp, bottom = 91.dp),
                             )
                         }
                     }
                 }
+
                 if (showChat) {
                     AiChatDialog(
                         controller = chatController,
@@ -221,11 +225,50 @@ fun TianjiApp() {
     }
 }
 
+@Composable
+private fun TianjiBackdrop() {
+    val colors = LocalTianjiColors.current
+    Canvas(Modifier.fillMaxSize()) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    colors.amber.copy(alpha = if (colors.isOled) 0.035f else 0.070f),
+                    Color.Transparent,
+                ),
+            ),
+            radius = size.width * 0.82f,
+            center = Offset(size.width * -0.05f, size.height * 0.04f),
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    colors.accent.copy(alpha = if (colors.isOled) 0.055f else 0.095f),
+                    Color.Transparent,
+                ),
+            ),
+            radius = size.width * 0.78f,
+            center = Offset(size.width * 1.04f, size.height * 0.30f),
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    colors.green.copy(alpha = if (colors.isOled) 0.018f else 0.035f),
+                    Color.Transparent,
+                ),
+            ),
+            radius = size.width * 0.70f,
+            center = Offset(size.width * 0.40f, size.height * 1.02f),
+        )
+    }
+}
+
 private fun pageTransform(from: Int, to: Int): ContentTransform {
     val direction = if (to >= from) 1 else -1
     return (
-        slideInHorizontally(tween(250)) { it / 6 * direction } + fadeIn(tween(210))
+        slideInHorizontally(tween(260)) { it / 7 * direction } +
+            fadeIn(tween(220))
         ) togetherWith (
-        slideOutHorizontally(tween(190)) { -it / 8 * direction } + fadeOut(tween(150))
+        slideOutHorizontally(tween(190)) { -it / 9 * direction } +
+            fadeOut(tween(150))
         )
 }
