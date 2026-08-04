@@ -84,7 +84,10 @@ fun TianjiApp() {
     var showChat by rememberSaveable { mutableStateOf(false) }
     val density = LocalDensity.current
     val accessibleDensity = remember(density.density, density.fontScale) {
-        Density(density.density, density.fontScale)
+        Density(
+            density = density.density,
+            fontScale = maxOf(density.fontScale, 1.08f),
+        )
     }
 
     BackHandler(enabled = showChat || destination != NavDestination.FORECAST) {
@@ -99,22 +102,33 @@ fun TianjiApp() {
                     modifier = Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.systemBars)
-                        .background(colors.page),
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(colors.page, colors.pageSoft, colors.page),
+                            ),
+                        ),
                 ) {
                     Canvas(Modifier.fillMaxSize()) {
                         drawCircle(
                             brush = Brush.radialGradient(
-                                listOf(Color(0xFFFF8A1F).copy(alpha = 0.07f), Color.Transparent),
+                                listOf(colors.amber.copy(alpha = 0.085f), Color.Transparent),
                             ),
-                            radius = size.width * 0.75f,
-                            center = Offset(size.width * 0.05f, 0f),
+                            radius = size.width * 0.86f,
+                            center = Offset(size.width * -0.02f, size.height * 0.02f),
                         )
                         drawCircle(
                             brush = Brush.radialGradient(
-                                listOf(colors.accent.copy(alpha = 0.065f), Color.Transparent),
+                                listOf(colors.accent.copy(alpha = 0.10f), Color.Transparent),
                             ),
-                            radius = size.width * 0.72f,
-                            center = Offset(size.width * 1.08f, size.height * 0.34f),
+                            radius = size.width * 0.82f,
+                            center = Offset(size.width * 1.05f, size.height * 0.32f),
+                        )
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                listOf(colors.green.copy(alpha = 0.04f), Color.Transparent),
+                            ),
+                            radius = size.width * 0.70f,
+                            center = Offset(size.width * 0.42f, size.height * 1.04f),
                         )
                     }
                     Column(Modifier.fillMaxSize()) {
@@ -180,13 +194,13 @@ fun TianjiApp() {
                                 onSelected = { destination = it },
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                                    .padding(start = 13.dp, end = 13.dp, bottom = 11.dp),
                             )
                             AiChatFloatingButton(
                                 onClick = { showChat = true },
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
-                                    .padding(end = 18.dp, bottom = 84.dp),
+                                    .padding(end = 19.dp, bottom = 90.dp),
                             )
                         }
                     }
@@ -210,8 +224,8 @@ fun TianjiApp() {
 private fun pageTransform(from: Int, to: Int): ContentTransform {
     val direction = if (to >= from) 1 else -1
     return (
-        slideInHorizontally(tween(280)) { it / 5 * direction } + fadeIn(tween(220))
+        slideInHorizontally(tween(250)) { it / 6 * direction } + fadeIn(tween(210))
         ) togetherWith (
-        slideOutHorizontally(tween(220)) { -it / 7 * direction } + fadeOut(tween(170))
+        slideOutHorizontally(tween(190)) { -it / 8 * direction } + fadeOut(tween(150))
         )
 }
