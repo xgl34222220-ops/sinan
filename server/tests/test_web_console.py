@@ -14,13 +14,14 @@ class WebConsoleRenderTests(unittest.TestCase):
     def test_login_pages_render(self) -> None:
         configured = login_page(True)
         unconfigured = login_page(False)
-        self.assertIn("安全登录到云端管理面板", configured)
+        self.assertIn("进入控制台管理云端服务", configured)
         self.assertIn("disabled", unconfigured)
 
     def test_admin_page_renders(self) -> None:
         value = admin_page()
         self.assertIn("天机控制台", value)
-        self.assertIn("/admin/api/ai", value)
+        self.assertIn("/admin/api/ai/profiles", value)
+        self.assertIn("/admin/api/ai/auto", value)
         self.assertIn("/admin/api/state", value)
 
 
