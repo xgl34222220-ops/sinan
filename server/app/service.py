@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
-import threading
 import time
 from typing import Any
 
@@ -15,15 +14,46 @@ from .predictor import predict
 from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
-SERVICE_VERSION = "1.2.0"
+SERVICE_VERSION = "1.3.0"
 SAFETY_WINDOW_MS = 5_000
-_AI_EXECUTOR = ThreadPoolExecutor(max_workers=max(1, len(LOTTERIES)), thread_name_prefix="tianji-ai")
-_AI_LOCK = threading.Lock()
-_AI_INFLIGHT: set[tuple[str, str, str]] = set()
+AI_RETRY_AFTER_MS = 30_000
+_AI_EXECUTOR = ThreadPoolExecutor(
+    max_workers=max(2, len(LOTTERIES)),
+    thread_name_prefix="tianji-ai",
+)
 
 
 def _state(key: str, value: dict[str, Any]) -> None:
     database.set_state(key, json.dumps(value, ensure_ascii=False))
+
+
+def _ai_job_state(
+    spec: LotterySpec,
+    *,
+    status: str,
+    target_period: str,
+    model: str,
+    message: str = "",
+    started_at_epoch_ms: int | None = None,
+    latency_ms: int | None = None,
+) -> None:
+    now = int(time.time() * 1000)
+    payload: dict[str, Any] = {
+        "status": status,
+        "target_period": target_period,
+        "model": model,
+        "message": message[:500],
+        "updated_at_epoch_ms": now,
+    }
+    if started_at_epoch_ms is not None:
+        payload["started_at_epoch_ms"] = started_at_epoch_ms
+    if latency_ms is not None:
+        payload["latency_ms"] = latency_ms
+    if status == "queued":
+        payload["queued_at_epoch_ms"] = now
+    if status in {"completed", "duplicate", "discarded", "error"}:
+        payload["completed_at_epoch_ms"] = now
+    _state(f"ai_job:{spec.key}", payload)
 
 
 def _target_is_open(spec: LotterySpec, trained_through_period: str, target_period: str) -> bool:
@@ -42,32 +72,44 @@ def _run_ai_prediction(
     trained_through_period: str,
     ai_config: RuntimeAiConfig,
 ) -> None:
-    key = (spec.key, target_period, ai_config.model)
     started = int(time.time() * 1000)
+    database.finish_forecast_job(
+        lottery=spec.key,
+        target_period=target_period,
+        source="ai",
+        status="running",
+        model=ai_config.model,
+    )
+    _ai_job_state(
+        spec,
+        status="running",
+        target_period=target_period,
+        model=ai_config.model,
+        started_at_epoch_ms=started,
+    )
     try:
-        _state(
-            f"ai_job:{spec.key}",
-            {
-                "status": "running",
-                "target_period": target_period,
-                "model": ai_config.model,
-                "started_at_epoch_ms": started,
-            },
-        )
         result = ai.analyze(history, target_period, ai_config)
         if not _target_is_open(spec, trained_through_period, target_period):
-            _state(
-                f"ai_job:{spec.key}",
-                {
-                    "status": "discarded",
-                    "target_period": target_period,
-                    "model": ai_config.model,
-                    "message": "AI 完成时目标期已经封盘，结果未写入前向档案",
-                    "started_at_epoch_ms": started,
-                    "completed_at_epoch_ms": int(time.time() * 1000),
-                },
+            message = "AI 完成时目标期已经封盘，结果未写入前向档案"
+            database.finish_forecast_job(
+                lottery=spec.key,
+                target_period=target_period,
+                source="ai",
+                status="discarded",
+                message=message,
+                model=ai_config.model,
+            )
+            _ai_job_state(
+                spec,
+                status="discarded",
+                target_period=target_period,
+                model=ai_config.model,
+                message=message,
+                started_at_epoch_ms=started,
+                latency_ms=result.latency_ms,
             )
             return
+
         inserted = database.save_forecast(
             lottery=spec.key,
             target_period=target_period,
@@ -81,31 +123,53 @@ def _run_ai_prediction(
             analysis=f"{result.analysis} · 云端耗时 {result.latency_ms / 1000:.1f}s",
             risk_note=result.risk_note,
         )
-        _state(
-            f"ai_job:{spec.key}",
-            {
-                "status": "completed" if inserted is not None else "duplicate",
-                "target_period": target_period,
-                "model": ai_config.model,
-                "latency_ms": result.latency_ms,
-                "started_at_epoch_ms": started,
-                "completed_at_epoch_ms": int(time.time() * 1000),
-            },
+        final_status = "completed" if inserted is not None else "duplicate"
+        final_message = "AI 前向结果已冻结" if inserted is not None else "该目标期已有更早冻结的 AI 结果"
+        database.finish_forecast_job(
+            lottery=spec.key,
+            target_period=target_period,
+            source="ai",
+            status="completed",
+            message=final_message,
+            model=result.model,
+        )
+        database.delete_state(f"ai_error:{spec.key}")
+        _ai_job_state(
+            spec,
+            status=final_status,
+            target_period=target_period,
+            model=result.model,
+            message=final_message,
+            started_at_epoch_ms=started,
+            latency_ms=result.latency_ms,
         )
     except Exception as exc:
+        message = str(exc)[:500]
         error = {
             "status": "error",
-            "message": str(exc)[:500],
+            "message": message,
             "target_period": target_period,
             "model": ai_config.model,
             "started_at_epoch_ms": started,
             "completed_at_epoch_ms": int(time.time() * 1000),
         }
-        _state(f"ai_job:{spec.key}", error)
+        database.finish_forecast_job(
+            lottery=spec.key,
+            target_period=target_period,
+            source="ai",
+            status="error",
+            message=message,
+            model=ai_config.model,
+        )
         _state(f"ai_error:{spec.key}", error)
-    finally:
-        with _AI_LOCK:
-            _AI_INFLIGHT.discard(key)
+        _ai_job_state(
+            spec,
+            status="error",
+            target_period=target_period,
+            model=ai_config.model,
+            message=message,
+            started_at_epoch_ms=started,
+        )
 
 
 def _schedule_ai_prediction(
@@ -115,19 +179,23 @@ def _schedule_ai_prediction(
     trained_through_period: str,
     ai_config: RuntimeAiConfig,
 ) -> bool:
-    key = (spec.key, target_period, ai_config.model)
-    with _AI_LOCK:
-        if key in _AI_INFLIGHT:
-            return False
-        _AI_INFLIGHT.add(key)
-    _state(
-        f"ai_job:{spec.key}",
-        {
-            "status": "queued",
-            "target_period": target_period,
-            "model": ai_config.model,
-            "queued_at_epoch_ms": int(time.time() * 1000),
-        },
+    lease_ms = max(180_000, ai_config.timeout_seconds * 1000 + 60_000)
+    claimed = database.claim_forecast_job(
+        lottery=spec.key,
+        target_period=target_period,
+        source="ai",
+        model=ai_config.model,
+        lease_ms=lease_ms,
+        retry_after_ms=AI_RETRY_AFTER_MS,
+    )
+    if not claimed:
+        return False
+
+    _ai_job_state(
+        spec,
+        status="queued",
+        target_period=target_period,
+        model=ai_config.model,
     )
     _AI_EXECUTOR.submit(
         _run_ai_prediction,
@@ -140,7 +208,13 @@ def _schedule_ai_prediction(
     return True
 
 
-def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
+def _minimum_ai_lead_ms(ai_config: RuntimeAiConfig) -> int:
+    # 不能在临近开奖时才发起长请求。120 秒超时配置至少预留 150 秒，
+    # 同时上限控制在 4 分钟，避免五分钟彩种永远没有可用窗口。
+    return min(240_000, max(90_000, ai_config.timeout_seconds * 1000 + 30_000))
+
+
+def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]:
     spec = LOTTERIES.get(lottery_key)
     if spec is None:
         raise KeyError(f"未知彩种：{lottery_key}")
@@ -159,7 +233,8 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
     scheduled: list[str] = []
     errors: dict[str, str] = {}
     now_ms = int(time.time() * 1000)
-    before_safety_window = next_draw_at is None or now_ms < next_draw_at - SAFETY_WINDOW_MS
+    remaining_ms = None if next_draw_at is None else next_draw_at - now_ms
+    before_safety_window = remaining_ms is None or remaining_ms > SAFETY_WINDOW_MS
     target_candidate = bool(
         next_period
         and next_period != "待同步"
@@ -167,7 +242,7 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
         and database.get_draw(lottery_key, next_period) is None
     )
 
-    # 先落盘同步状态，避免预测过程异常时页面仍显示上一次旧期号。
+    ai_config = load_ai_config()
     base_result: dict[str, Any] = {
         "lottery": lottery_key,
         "latest_period": latest.period,
@@ -178,9 +253,11 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
         "generated": generated,
         "scheduled": scheduled,
         "errors": errors,
-        "ai_model": load_ai_config().model,
+        "ai_model": ai_config.model,
+        "ai_allowed": allow_ai,
         "server_time_epoch_ms": server_time,
         "next_draw_at_epoch_ms": next_draw_at,
+        "remaining_to_draw_ms": remaining_ms,
         "completed_at_epoch_ms": int(time.time() * 1000),
     }
     _state(f"cycle:{lottery_key}", base_result)
@@ -217,15 +294,24 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
                     },
                 )
 
-        ai_config = load_ai_config()
-        if ai_config.complete and not database.has_forecast(
-            lottery_key,
-            next_period,
-            "ai",
-            ai_config.model,
+        ai_has_time = remaining_ms is None or remaining_ms > _minimum_ai_lead_ms(ai_config)
+        if (
+            allow_ai
+            and ai_config.complete
+            and ai_has_time
+            and not database.has_forecast(lottery_key, next_period, "ai", ai_config.model)
         ):
             if _schedule_ai_prediction(spec, history, next_period, latest.period, ai_config):
                 scheduled.append("ai")
+        elif allow_ai and ai_config.complete and not ai_has_time:
+            errors["ai"] = "距离开奖时间不足，本期不再启动新的 AI 请求"
+            _ai_job_state(
+                spec,
+                status="skipped",
+                target_period=next_period,
+                model=ai_config.model,
+                message=errors["ai"],
+            )
 
     base_result.update(
         {
@@ -239,18 +325,32 @@ def run_lottery_cycle(lottery_key: str) -> dict[str, Any]:
     return base_result
 
 
-def run_all_cycles() -> dict[str, Any]:
+def run_all_cycles(allow_ai: bool = True) -> dict[str, Any]:
     started = int(time.time() * 1000)
     results: dict[str, Any] = {}
     errors: dict[str, str] = {}
-    for lottery_key in LOTTERIES:
-        try:
-            results[lottery_key] = run_lottery_cycle(lottery_key)
-        except Exception as exc:
-            errors[lottery_key] = str(exc)[:500]
+
+    # 两个彩种并发同步，避免幸运飞艇历史接口较慢时把澳洲幸运10排在后面。
+    keys = list(LOTTERIES)
+    with ThreadPoolExecutor(
+        max_workers=max(1, len(keys)),
+        thread_name_prefix="tianji-cycle",
+    ) as pool:
+        futures = {
+            pool.submit(run_lottery_cycle, lottery_key, allow_ai): lottery_key
+            for lottery_key in keys
+        }
+        for future in as_completed(futures):
+            lottery_key = futures[future]
+            try:
+                results[lottery_key] = future.result()
+            except Exception as exc:
+                errors[lottery_key] = str(exc)[:500]
+
     heartbeat = {
         "started_at_epoch_ms": started,
         "completed_at_epoch_ms": int(time.time() * 1000),
+        "ai_allowed": allow_ai,
         "results": results,
         "errors": errors,
     }
