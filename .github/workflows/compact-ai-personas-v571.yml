@@ -1,0 +1,236 @@
+name: Compact Tianji AI personas v5.7.1
+
+on:
+  push:
+    branches:
+      - fix/ai-true-independence-v5.7.1
+    paths:
+      - PERSONA_V571_TRIGGER.txt
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: compact-ai-personas-v571
+  cancel-in-progress: false
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/ai-true-independence-v5.7.1
+          fetch-depth: 0
+
+      - name: Replace ten personas with three
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiFreeChat.kt')
+          text = path.read_text()
+          replacement = r'''enum class AiChatPersona(
+              val id: String,
+              val displayName: String,
+              val description: String,
+              val instruction: String,
+              val quickPrompts: List<String>,
+          ) {
+              COMPREHENSIVE(
+                  id = "comprehensive",
+                  displayName = "大数据规律",
+                  description = "多窗口频率、遗漏、转移、贝叶斯收缩与随机性诊断",
+                  instruction = "你是彩票大数据规律分析师。只依据客户端提供的真实开奖历史，自行从20/40/60/120期频率、当前与历史遗漏、条件后继转移、号码密度、跨名次差异、贝叶斯样本收缩和熵/随机性中提取证据。预测时至少使用三类相互独立的信号，并报告样本量、信号强弱和冲突。遗漏久不代表必出，连续出现不代表必降温，小样本转移不得包装成规律。先比较十个名次，再给出证据相对充分的名次、六码和不确定性；没有稳定优势时必须直说。",
+                  quickPrompts = listOf(
+                      "用大数据规律分析十个名次，选出证据相对最清晰的一名并给出六码",
+                      "分析第一名20、60、120期频率、遗漏和后继转移，过滤小样本噪声",
+                      "检查当前历史是否接近随机分布，并说明哪些所谓规律不可靠",
+                  ),
+              ),
+              TREND(
+                  id = "trend",
+                  displayName = "走势分析",
+                  description = "多尺度趋势、波动、稳定性与状态切换建模",
+                  instruction = "你是彩票多尺度走势分析师。重点比较20/40/60/120期窗口的方向、斜率、动量、波动率、稳定性和可能的状态切换，并横向比较十个名次。只有多个窗口方向一致、差异超过噪声且样本充分时才称为趋势；短窗突变必须与长窗基线和随机波动对照。明确区分升温、降温、震荡、稳定和结构切换，给出边界号码与反转风险，不得把走势图形当成必然延续。",
+                  quickPrompts = listOf(
+                      "比较十个名次的多尺度走势，找出状态最清晰的一名并给出六码",
+                      "分析第一名20、40、60、120期的升温、降温和波动情况",
+                      "判断当前是否出现状态切换，并列出支持证据和反转风险",
+                  ),
+              ),
+              RISK_AUDIT(
+                  id = "risk_audit",
+                  displayName = "综合预测",
+                  description = "融合独立信号、前向验证、概率校准与过拟合审计",
+                  instruction = "你是彩票综合预测与模型审计专家。先独立完成规律建模和走势分析，再对频率、遗漏、转移、状态、稳定性和可用的真实前向结算进行证据融合。不同信号高度相关时不得重复计权；连续未中时复盘失效因素并改变策略。输出名次、六码、七码边界、主要支持、主要冲突和置信程度，同时检查短窗过拟合、样本偏差、概率过度集中和第6/第7名边界过小。证据弱时应降低确定性或明确本期没有强候选，不得承诺准确率、盈利或必中。",
+                  quickPrompts = listOf(
+                      "综合规律与走势生成本期预测，给出名次、六码、边界和风险",
+                      "复盘最近真实前向结果，指出失效因素并调整下一期策略",
+                      "审计当前候选是否过拟合，并给出更稳健的综合结果",
+                  ),
+              );
+
+              companion object {
+                  fun fromId(id: String?): AiChatPersona = when (id) {
+                      null, "", "comprehensive", "history", "omission", "transition", "bayes_big_data" ->
+                          COMPREHENSIVE
+                      "trend", "regime_state" -> TREND
+                      "adaptive_learning", "universal_consensus", "risk_audit" -> RISK_AUDIT
+                      else -> entries.firstOrNull { it.id == id } ?: COMPREHENSIVE
+                  }
+              }
+          }
+
+          '''
+          pattern = re.compile(r'enum class AiChatPersona\([\s\S]*?\n}\n\ndata class AiChatMessage\(')
+          match = pattern.search(text)
+          if not match:
+              raise SystemExit('AiChatPersona enum block not found')
+          text = text[:match.start()] + replacement + 'data class AiChatMessage(' + text[match.end():]
+          path.write_text(text)
+
+          notes = Path('RELEASE_NOTES_v5.7.1.md')
+          note_text = notes.read_text() if notes.exists() else '# 天机 v5.7.1\n'
+          section = '''
+
+## 三个人设大数据重构
+
+- 将十个高度重叠的人设收敛为“大数据规律、走势分析、综合预测”三个角色。
+- 大数据规律负责多窗口频率、遗漏、转移、贝叶斯收缩和随机性诊断。
+- 走势分析负责20/40/60/120期方向、波动、稳定性和状态切换。
+- 综合预测负责独立信号融合、真实前向复盘、边界稳定性和过拟合审计。
+- 旧人设 ID 自动迁移到最接近的新角色，历史对话继续可用。
+'''
+          if '## 三个人设大数据重构' not in note_text:
+              notes.write_text(note_text.rstrip() + section + '\n')
+          PY
+
+      - name: Add persona migration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiChatPersonaTest.kt <<'EOF'
+          package com.tianji.probabilitylab.nativev4.ai
+
+          import org.junit.Assert.assertEquals
+          import org.junit.Test
+
+          class AiChatPersonaTest {
+              @Test
+              fun onlyThreeFocusedPersonasRemain() {
+                  assertEquals(3, AiChatPersona.entries.size)
+                  assertEquals(
+                      listOf("大数据规律", "走势分析", "综合预测"),
+                      AiChatPersona.entries.map(AiChatPersona::displayName),
+                  )
+              }
+
+              @Test
+              fun legacyPersonaIdsMigrateWithoutBreakingArchives() {
+                  assertEquals(AiChatPersona.COMPREHENSIVE, AiChatPersona.fromId("history"))
+                  assertEquals(AiChatPersona.COMPREHENSIVE, AiChatPersona.fromId("bayes_big_data"))
+                  assertEquals(AiChatPersona.TREND, AiChatPersona.fromId("regime_state"))
+                  assertEquals(AiChatPersona.RISK_AUDIT, AiChatPersona.fromId("adaptive_learning"))
+                  assertEquals(AiChatPersona.RISK_AUDIT, AiChatPersona.fromId("universal_consensus"))
+              }
+          }
+          EOF
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Run full Android verification
+        id: verify
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:testReleaseUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :app:assembleRelease \
+            2>&1 | tee persona-v571-build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Record and commit result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          code='${{ steps.verify.outputs.exit_code }}'
+          mkdir -p ci-v571
+          if [[ "$code" == '0' ]]; then
+            cat > ci-v571/PERSONA_STATUS.txt <<EOF
+          status=success
+          source_sha=$(git rev-parse HEAD)
+          checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          persona_count=3
+          personas=大数据规律,走势分析,综合预测
+          legacy_persona_migration=passed
+          debug_release_tests=passed
+          lint_debug=passed
+          debug_apk=passed
+          r8_release_apk=passed
+          EOF
+            rm -f ci-v571/PERSONA_ERROR.txt
+            rm -f PERSONA_V571_TRIGGER.txt
+            rm -f .github/workflows/compact-ai-personas-v571.yml
+          else
+            cat > ci-v571/PERSONA_STATUS.txt <<EOF
+          status=build_failure
+          source_sha=$(git rev-parse HEAD)
+          checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gradle_exit=${code:-unknown}
+          EOF
+            tail -n 320 persona-v571-build.log > ci-v571/PERSONA_ERROR.txt
+          fi
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiFreeChat.kt \
+            app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiChatPersonaTest.kt \
+            RELEASE_NOTES_v5.7.1.md \
+            ci-v571/PERSONA_STATUS.txt
+          if [[ -f ci-v571/PERSONA_ERROR.txt ]]; then
+            git add -- ci-v571/PERSONA_ERROR.txt
+          fi
+          if [[ ! -e PERSONA_V571_TRIGGER.txt ]]; then
+            git rm --ignore-unmatch -- PERSONA_V571_TRIGGER.txt
+          fi
+          if [[ ! -e .github/workflows/compact-ai-personas-v571.yml ]]; then
+            git rm --ignore-unmatch -- .github/workflows/compact-ai-personas-v571.yml
+          fi
+          git commit -m "feat: compact AI analysis into three data personas"
+          git push origin HEAD:fix/ai-true-independence-v5.7.1
+
+          test "$code" = '0'
