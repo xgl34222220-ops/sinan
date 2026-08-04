@@ -1,11 +1,13 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,14 +72,17 @@ fun AppHeader(isRefreshing: Boolean, onRefresh: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(68.dp)
+            .height(66.dp)
             .background(
                 Brush.verticalGradient(
-                    listOf(colors.header, colors.header.copy(alpha = 0.94f)),
+                    listOf(
+                        colors.header,
+                        colors.header.copy(alpha = 0.92f),
+                    ),
                 ),
             )
             .border(width = 0.5.dp, color = colors.line)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -86,44 +92,67 @@ fun AppHeader(isRefreshing: Boolean, onRefresh: () -> Unit) {
                 contentDescription = "天机",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .shadow(
-                        elevation = 10.dp,
-                        shape = RoundedCornerShape(14.dp),
-                        ambientColor = colors.accent.copy(alpha = 0.35f),
-                        spotColor = colors.accent.copy(alpha = 0.35f),
+                        elevation = 6.dp,
+                        shape = RoundedCornerShape(15.dp),
+                        ambientColor = colors.accent.copy(alpha = 0.20f),
+                        spotColor = colors.accent.copy(alpha = 0.20f),
                     )
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(15.dp))
                     .border(
-                        1.dp,
-                        colors.accent.copy(alpha = 0.48f),
-                        RoundedCornerShape(14.dp),
+                        width = 1.dp,
+                        color = colors.accent.copy(alpha = 0.30f),
+                        shape = RoundedCornerShape(15.dp),
                     ),
             )
             Spacer(Modifier.width(11.dp))
             Column {
-                Text(
-                    text = "天机",
-                    color = colors.text,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.2.sp,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "天机",
+                        color = colors.text,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.6.sp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.green.copy(alpha = 0.10f))
+                            .border(1.dp, colors.green.copy(alpha = 0.18f), CircleShape)
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                    ) {
+                        Text(
+                            text = "实时",
+                            color = colors.green,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "开奖概率实验室",
+                    text = "真实前向验证 · AI 分析实验室",
                     color = colors.textDim,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.25.sp,
                 )
             }
         }
+
         Box(
             modifier = Modifier
-                .size(42.dp)
+                .size(43.dp)
+                .shadow(
+                    elevation = 2.dp,
+                    shape = RoundedCornerShape(15.dp),
+                    ambientColor = Color.Black.copy(alpha = 0.12f),
+                    spotColor = Color.Black.copy(alpha = 0.12f),
+                )
                 .clip(RoundedCornerShape(15.dp))
-                .background(colors.glassStrong)
+                .background(colors.glass)
                 .border(1.dp, colors.lineStrong, RoundedCornerShape(15.dp))
                 .clickable(enabled = !isRefreshing, onClick = onRefresh),
             contentAlignment = Alignment.Center,
@@ -136,10 +165,10 @@ fun AppHeader(isRefreshing: Boolean, onRefresh: () -> Unit) {
                 )
             } else {
                 Icon(
-                    Icons.Rounded.Refresh,
+                    imageVector = Icons.Rounded.Refresh,
                     contentDescription = "刷新",
                     tint = colors.textSoft,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(21.dp),
                 )
             }
         }
@@ -156,57 +185,61 @@ fun GameSwitcher(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(66.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .height(60.dp)
+            .clip(RoundedCornerShape(21.dp))
             .background(colors.glass)
-            .border(1.dp, colors.line, RoundedCornerShape(20.dp))
+            .border(1.dp, colors.line, RoundedCornerShape(21.dp))
             .padding(5.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         LotteryType.entries.forEach { lottery ->
             val active = selected == lottery
             val accent = if (lottery == LotteryType.XYFT) colors.amber else colors.violet
+            val background by animateColorAsState(
+                targetValue = if (active) accent.copy(alpha = 0.14f) else Color.Transparent,
+                label = "lottery-background",
+            )
+            val scale by animateFloatAsState(
+                targetValue = if (active) 1f else 0.985f,
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 520f),
+                label = "lottery-scale",
+            )
+            val interaction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        if (active) {
-                            Brush.linearGradient(
-                                listOf(
-                                    accent.copy(alpha = 0.22f),
-                                    colors.glassStrong,
-                                ),
-                            )
-                        } else {
-                            Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
-                        },
-                    )
+                    .scale(scale)
+                    .clip(RoundedCornerShape(17.dp))
+                    .background(background)
                     .border(
                         width = 1.dp,
-                        color = if (active) accent.copy(alpha = 0.34f) else Color.Transparent,
-                        shape = RoundedCornerShape(16.dp),
+                        color = if (active) accent.copy(alpha = 0.28f) else Color.Transparent,
+                        shape = RoundedCornerShape(17.dp),
                     )
-                    .clickable { onSelect(lottery) }
-                    .padding(horizontal = 11.dp, vertical = 7.dp),
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onClick = { onSelect(lottery) },
+                    )
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Column {
                     Text(
                         text = lottery.displayName,
                         color = if (active) colors.text else colors.textSoft,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                     )
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(1.dp))
                     Text(
-                        lottery.subtitle,
+                        text = lottery.subtitle,
                         color = if (active) accent else colors.textDim,
-                        fontSize = 9.sp,
-                        lineHeight = 12.sp,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -215,7 +248,7 @@ fun GameSwitcher(
                     Box(
                         Modifier
                             .align(Alignment.BottomCenter)
-                            .fillMaxWidth(0.62f)
+                            .fillMaxWidth(0.52f)
                             .height(2.dp)
                             .clip(CircleShape)
                             .background(accent),
@@ -237,15 +270,18 @@ fun SurfaceCard(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 10.dp,
+                elevation = if (colors.isOled) 0.dp else 3.dp,
                 shape = RoundedCornerShape(radius),
-                ambientColor = Color.Black.copy(alpha = 0.20f),
-                spotColor = Color.Black.copy(alpha = 0.20f),
+                ambientColor = Color.Black.copy(alpha = 0.12f),
+                spotColor = Color.Black.copy(alpha = 0.12f),
             )
             .clip(RoundedCornerShape(radius))
             .background(
                 Brush.linearGradient(
-                    listOf(colors.surfaceStrong, colors.surface),
+                    listOf(
+                        colors.surfaceStrong,
+                        colors.surface,
+                    ),
                 ),
             )
             .border(1.dp, colors.line, RoundedCornerShape(radius)),
@@ -262,47 +298,55 @@ fun SectionTitle(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = LocalTianjiColors.current
-    Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         if (icon != null) {
             Box(
                 modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(13.dp))
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .background(colors.accentSoft)
                     .border(
-                        1.dp,
-                        colors.accent.copy(alpha = 0.20f),
-                        RoundedCornerShape(13.dp),
+                        width = 1.dp,
+                        color = colors.accent.copy(alpha = 0.18f),
+                        shape = RoundedCornerShape(14.dp),
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, null, tint = colors.accent, modifier = Modifier.size(19.dp))
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = colors.accent,
+                    modifier = Modifier.size(20.dp),
+                )
             }
             Spacer(Modifier.width(11.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                localizedSectionEyebrow(eyebrow),
+                text = localizedSectionEyebrow(eyebrow),
                 color = colors.accent,
-                fontSize = 9.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 0.6.sp,
+                letterSpacing = 0.35.sp,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                title,
+                text = title,
                 color = colors.text,
                 fontSize = 18.sp,
                 lineHeight = 23.sp,
                 fontWeight = FontWeight.ExtraBold,
             )
             detail?.let {
-                Spacer(Modifier.height(5.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    it,
+                    text = it,
                     color = colors.textDim,
-                    fontSize = 10.sp,
-                    lineHeight = 15.sp,
+                    fontSize = 11.sp,
+                    lineHeight = 17.sp,
                 )
             }
         }
@@ -318,35 +362,35 @@ fun LotteryBall(
     muted: Boolean = false,
 ) {
     val pair = ballColors(number)
-    val alpha = if (muted) 0.46f else 1f
+    val alpha = if (muted) 0.44f else 1f
     Box(
         modifier = modifier
             .size(size)
             .shadow(
-                elevation = if (muted) 2.dp else 7.dp,
+                elevation = if (muted) 1.dp else 4.dp,
                 shape = CircleShape,
-                ambientColor = pair.second.copy(alpha = 0.30f),
-                spotColor = pair.second.copy(alpha = 0.30f),
+                ambientColor = pair.second.copy(alpha = 0.20f),
+                spotColor = pair.second.copy(alpha = 0.20f),
             )
             .clip(CircleShape)
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.64f * alpha),
+                        Color.White.copy(alpha = 0.42f * alpha),
                         pair.first.copy(alpha = alpha),
                         pair.second.copy(alpha = alpha),
                     ),
-                    radius = size.value * 1.5f,
+                    radius = size.value * 1.45f,
                 ),
             )
-            .border(1.dp, Color.White.copy(alpha = 0.24f * alpha), CircleShape),
+            .border(1.dp, Color.White.copy(alpha = 0.22f * alpha), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            Modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(3.dp)
-                .border(1.dp, Color.White.copy(alpha = 0.12f * alpha), CircleShape),
+                .border(1.dp, Color.White.copy(alpha = 0.10f * alpha), CircleShape),
         )
         Text(
             text = number.toString(),
@@ -365,30 +409,24 @@ fun LotteryBall(
 fun EvidencePill(mode: EvidenceMode, text: String? = null) {
     val colors = LocalTianjiColors.current
     val positive = mode == EvidenceMode.CERTIFIED
-    val tint = if (positive) colors.green else colors.textSoft
+    val tint = if (positive) colors.green else colors.amber
     Row(
         modifier = Modifier
             .clip(CircleShape)
-            .background(
-                if (positive) colors.green.copy(alpha = 0.10f) else colors.glassStrong,
-            )
-            .border(
-                1.dp,
-                if (positive) colors.green.copy(alpha = 0.25f) else colors.line,
-                CircleShape,
-            )
-            .padding(horizontal = 11.dp, vertical = 8.dp),
+            .background(tint.copy(alpha = 0.08f))
+            .border(1.dp, tint.copy(alpha = 0.20f), CircleShape)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier
+            modifier = Modifier
                 .size(7.dp)
                 .clip(CircleShape)
-                .background(if (positive) colors.green else colors.textDim),
+                .background(tint),
         )
         Spacer(Modifier.width(7.dp))
         Text(
-            text ?: if (positive) "前向证据通过" else "影子观察 · 尚未认证",
+            text = text ?: if (positive) "前向证据通过" else "影子观察 · 尚未认证",
             color = tint,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
@@ -397,31 +435,43 @@ fun EvidencePill(mode: EvidenceMode, text: String? = null) {
 }
 
 @Composable
-fun MetricTile(label: String, value: String, note: String, modifier: Modifier = Modifier) {
+fun MetricTile(
+    label: String,
+    value: String,
+    note: String,
+    modifier: Modifier = Modifier,
+) {
     val colors = LocalTianjiColors.current
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(17.dp))
             .background(colors.glassStrong)
-            .border(1.dp, colors.line, RoundedCornerShape(16.dp))
+            .border(1.dp, colors.line, RoundedCornerShape(17.dp))
             .padding(horizontal = 12.dp, vertical = 13.dp),
     ) {
-        Text(label, color = colors.textDim, fontSize = 10.sp)
-        Spacer(Modifier.height(5.dp))
         Text(
-            value,
+            text = label,
+            color = colors.textDim,
+            fontSize = 10.sp,
+            lineHeight = 14.sp,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = value,
             color = colors.text,
-            fontSize = 17.sp,
+            fontSize = 18.sp,
+            lineHeight = 22.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(5.dp))
         Text(
-            note,
+            text = note,
             color = colors.textDim,
             fontSize = 9.sp,
-            maxLines = 1,
+            lineHeight = 13.sp,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -439,39 +489,44 @@ fun BottomNavigation(
             .fillMaxWidth()
             .height(70.dp)
             .shadow(
-                elevation = 20.dp,
-                shape = RoundedCornerShape(25.dp),
-                ambientColor = Color.Black.copy(alpha = 0.48f),
-                spotColor = Color.Black.copy(alpha = 0.48f),
+                elevation = if (colors.isOled) 0.dp else 10.dp,
+                shape = RoundedCornerShape(24.dp),
+                ambientColor = Color.Black.copy(alpha = 0.25f),
+                spotColor = Color.Black.copy(alpha = 0.25f),
             )
-            .clip(RoundedCornerShape(25.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(
                 Brush.linearGradient(
-                    listOf(colors.navSurface, colors.navSurface.copy(alpha = 0.94f)),
+                    listOf(
+                        colors.navSurface,
+                        colors.navSurface.copy(alpha = 0.96f),
+                    ),
                 ),
             )
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(25.dp))
+            .border(1.dp, colors.lineStrong, RoundedCornerShape(24.dp))
             .padding(6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         NavDestination.entries.forEach { item ->
             val active = item == selected
             val scale by animateFloatAsState(
-                targetValue = if (active) 1f else 0.95f,
-                animationSpec = spring(dampingRatio = 0.75f),
+                targetValue = if (active) 1f else 0.96f,
+                animationSpec = spring(dampingRatio = 0.80f, stiffness = 480f),
                 label = "nav-scale",
             )
+            val interaction = remember { MutableInteractionSource() }
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
+                    .scale(scale)
                     .clip(RoundedCornerShape(18.dp))
                     .background(
                         if (active) {
                             Brush.linearGradient(
                                 listOf(
-                                    colors.accent.copy(alpha = 0.20f),
-                                    colors.accentSoft.copy(alpha = 0.70f),
+                                    colors.accent.copy(alpha = 0.16f),
+                                    colors.accentSoft.copy(alpha = 0.68f),
                                 ),
                             )
                         } else {
@@ -479,24 +534,27 @@ fun BottomNavigation(
                         },
                     )
                     .border(
-                        1.dp,
-                        if (active) colors.accent.copy(alpha = 0.20f) else Color.Transparent,
-                        RoundedCornerShape(18.dp),
+                        width = 1.dp,
+                        color = if (active) colors.accent.copy(alpha = 0.17f) else Color.Transparent,
+                        shape = RoundedCornerShape(18.dp),
                     )
-                    .clickable { onSelected(item) }
-                    .scale(scale),
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onClick = { onSelected(item) },
+                    ),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 Icon(
-                    item.icon,
-                    item.label,
+                    imageVector = item.icon,
+                    contentDescription = item.label,
                     tint = if (active) colors.accent else colors.textDim,
                     modifier = Modifier.size(if (active) 22.dp else 20.dp),
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    item.label,
+                    text = item.label,
                     color = if (active) colors.text else colors.textDim,
                     fontSize = 10.sp,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
@@ -513,36 +571,43 @@ fun EmptyState(title: String, detail: String, loading: Boolean = false) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 38.dp),
+                .padding(horizontal = 24.dp, vertical = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (loading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(31.dp),
                     color = colors.accent,
                     strokeWidth = 2.dp,
                 )
             } else {
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(17.dp))
-                        .background(colors.glassStrong),
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(colors.glassStrong)
+                        .border(1.dp, colors.line, RoundedCornerShape(18.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        Icons.Rounded.Dataset,
-                        null,
+                        imageVector = Icons.Rounded.Dataset,
+                        contentDescription = null,
                         tint = colors.textDim,
                         modifier = Modifier.size(27.dp),
                     )
                 }
             }
             Spacer(Modifier.height(15.dp))
-            Text(title, color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
             Text(
-                detail,
+                text = title,
+                color = colors.text,
+                fontSize = 16.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(7.dp))
+            Text(
+                text = detail,
                 color = colors.textDim,
                 fontSize = 11.sp,
                 lineHeight = 17.sp,
@@ -554,7 +619,12 @@ fun EmptyState(title: String, detail: String, loading: Boolean = false) {
 @Composable
 fun SelectedCheck() {
     val colors = LocalTianjiColors.current
-    Icon(Icons.Rounded.Check, null, tint = colors.text, modifier = Modifier.size(14.dp))
+    Icon(
+        imageVector = Icons.Rounded.Check,
+        contentDescription = null,
+        tint = colors.text,
+        modifier = Modifier.size(14.dp),
+    )
 }
 
 private fun localizedSectionEyebrow(value: String): String = when (value) {
@@ -573,6 +643,7 @@ private fun localizedSectionEyebrow(value: String): String = when (value) {
     "MIUIX APPEARANCE" -> "界面外观"
     "RECENT HISTORY" -> "最近开奖"
     "AI PROFILES" -> "AI 配置"
+    "LIVE DRAW" -> "实时开奖"
     else -> value
 }
 
