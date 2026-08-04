@@ -55,7 +55,10 @@ def enhance_console_html(value: str) -> str:
             '<meta name="viewport" '
             'content="width=device-width,initial-scale=1,viewport-fit=cover">'
         )
-    style = f"<style>/* Tianji Cloud Console V5 */{style_text}</style>"
+    style = (
+        f"<style>/* Tianji Cloud Console V5 | Cloud Console V3 compatibility */"
+        f"{style_text}</style>"
+    )
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"
     if "</head>" in value:
         value = value.replace("</head>", head_meta + style + "</head>", 1)
