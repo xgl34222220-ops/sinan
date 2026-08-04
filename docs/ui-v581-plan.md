@@ -18,4 +18,5 @@
 ## 验证
 
 - 服务端 Python 语法检查通过。
-- Android、Lint、服务端测试和构建由 PR CI 验证。
+- 新增 PR Android、Lint、Debug APK 与服务端校验工作流。
+- 合并前以 PR CI 结果为准。
