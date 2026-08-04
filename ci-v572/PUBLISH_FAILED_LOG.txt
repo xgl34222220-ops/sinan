@@ -1,0 +1,17 @@
+publish	Wait for signed release workflow	﻿2026-08-04T03:49:23.2221963Z ##[group]Run set -euo pipefail
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2222381Z ^[[36;1mset -euo pipefail^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2222697Z ^[[36;1mRUN_ID=""^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2222972Z ^[[36;1mfor _ in $(seq 1 80); do^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2223766Z ^[[36;1m  RUN_ID="$(gh run list --workflow release.yml --commit "$TAG_COMMIT" --limit 5 --json databaseId,event,status --jq '[.[] | select(.event == "push")][0].databaseId // empty')"^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2224568Z ^[[36;1m  [[ -n "$RUN_ID" ]] && break^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2224884Z ^[[36;1m  sleep 3^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2225506Z ^[[36;1mdone^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2293318Z ^[[36;1mtest -n "$RUN_ID"^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2293913Z ^[[36;1mgh run watch "$RUN_ID" --exit-status^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2294583Z ^[[36;1mecho "RELEASE_RUN_ID=$RUN_ID" >> "$GITHUB_ENV"^[[0m
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2348561Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2348996Z env:
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2349308Z   TAG_COMMIT: e193dd90e842cee831f137a3cf6bc2a3b81d8630
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2352380Z   GH_TOKEN: ***
+publish	Wait for signed release workflow	2026-08-04T03:49:23.2352651Z ##[endgroup]
+publish	Wait for signed release workflow	2026-08-04T03:54:06.0003473Z ##[error]Process completed with exit code 1.
