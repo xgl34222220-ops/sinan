@@ -1,0 +1,116 @@
+name: Recover and publish Tianji v5.7.2
+
+on:
+  push:
+    branches: [main]
+    paths: [RECOVER_PUBLISH_V572_TRIGGER.txt]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: tianji-v5.7.2-recovery-publish
+  cancel-in-progress: false
+
+jobs:
+  recover-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout main and release tag
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate immutable release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags --force
+          git rev-parse --verify refs/tags/v5.7.2
+          TAG_COMMIT="$(git rev-list -n1 v5.7.2)"
+          test "$(git show v5.7.2:app/build.gradle.kts | sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' | head -n1)" = 5.7.2
+          test "$(git show v5.7.2:app/build.gradle.kts | sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' | head -n1)" = 39
+          git show v5.7.2:RELEASE_NOTES_v5.7.2.md >/dev/null
+          echo "TAG_COMMIT=$TAG_COMMIT" >> "$GITHUB_ENV"
+
+      - name: Explicitly dispatch signed release workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID="$(gh run list --workflow release.yml --commit "$TAG_COMMIT" --event workflow_dispatch --limit 1 --json databaseId,status --jq '.[0].databaseId // empty')"
+          if [[ -z "$RUN_ID" ]]; then
+            gh workflow run release.yml --ref v5.7.2
+          fi
+          for _ in $(seq 1 80); do
+            RUN_ID="$(gh run list --workflow release.yml --commit "$TAG_COMMIT" --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+            [[ -n "$RUN_ID" ]] && break
+            sleep 3
+          done
+          test -n "$RUN_ID"
+          gh run watch "$RUN_ID" --exit-status
+          echo "RELEASE_RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+
+      - name: Verify formal release and assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view v5.7.2 --json tagName,isDraft,isPrerelease \
+            --jq 'select(.tagName == "v5.7.2" and (.isDraft | not) and (.isPrerelease | not)) | .tagName' \
+            | grep -Fxq v5.7.2
+          ASSETS="$(gh release view v5.7.2 --json assets --jq '.assets[].name')"
+          grep -Fxq 'Tianji-v5.7.2-release.apk' <<<"$ASSETS"
+          grep -Fxq 'Tianji-v5.7.2-SHA256.txt' <<<"$ASSETS"
+          grep -Fxq 'APK_VERIFY.txt' <<<"$ASSETS"
+          grep -Fxq 'APK_BADGING.txt' <<<"$ASSETS"
+          grep -Fxq 'SIGNING_CERT_SHA256.txt' <<<"$ASSETS"
+          mkdir -p /tmp/tianji-v572
+          gh release download v5.7.2 -p SIGNING_CERT_SHA256.txt -p APK_BADGING.txt -p APK_VERIFY.txt -D /tmp/tianji-v572
+          grep -qi '5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed' \
+            /tmp/tianji-v572/SIGNING_CERT_SHA256.txt
+          grep -qi '5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed' \
+            /tmp/tianji-v572/APK_VERIFY.txt
+          grep -q "package: name='com.tianji.probabilitylab.nativev4'" /tmp/tianji-v572/APK_BADGING.txt
+          grep -q "versionCode='39'" /tmp/tianji-v572/APK_BADGING.txt
+          grep -q "versionName='5.7.2'" /tmp/tianji-v572/APK_BADGING.txt
+
+      - name: Record release and clean temporary automation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-v572
+          cat > ci-v572/RELEASE_STATUS.txt <<EOF
+          status=success
+          version_name=5.7.2
+          version_code=39
+          tag=v5.7.2
+          release_run_id=${RELEASE_RUN_ID}
+          source_sha=${TAG_COMMIT}
+          signing_cert_sha256=5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed
+          apk=Tianji-v5.7.2-release.apk
+          checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- ci-v572/RELEASE_STATUS.txt
+          git rm --ignore-unmatch -- \
+            RECOVER_PUBLISH_V572_TRIGGER.txt \
+            .github/workflows/recover-publish-v5.7.2.yml \
+            PUBLISH_V572_TRIGGER.txt \
+            .github/workflows/publish-v5.7.2.yml \
+            DIAG_V572_RELEASE_TRIGGER.txt \
+            .github/workflows/diag-v5.7.2-release.yml \
+            ci-v572/PUBLISH_RUNS.json \
+            ci-v572/PUBLISH_DETAIL.json \
+            ci-v572/PUBLISH_FAILED_LOG.txt \
+            ci-v572/SIGNED_RELEASE_RUNS.json \
+            ci-v572/SIGNED_RELEASE_DETAIL.json \
+            ci-v572/SIGNED_RELEASE_FAILED_LOG.txt
+          git commit -m 'chore: record verified Tianji v5.7.2 formal release'
+          git push origin HEAD:main
