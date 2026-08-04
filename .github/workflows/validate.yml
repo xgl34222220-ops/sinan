@@ -62,6 +62,9 @@ jobs:
   server:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PYTHONPATH: server
+      TIANJI_DATABASE: ${{ runner.temp }}/tianji-validate.db
     steps:
       - name: Checkout
         uses: actions/checkout@v4

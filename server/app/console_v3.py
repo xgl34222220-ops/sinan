@@ -29,16 +29,25 @@ FILTER_PATCH = r"""
 @lru_cache(maxsize=1)
 def _assets() -> tuple[str, str]:
     root = Path(__file__).resolve().parent
-    return (
-        (root / "console_v3.css").read_text(encoding="utf-8"),
-        (root / "console_v3.js").read_text(encoding="utf-8"),
+    style_text = "\n".join(
+        (
+            (root / "console_v3.css").read_text(encoding="utf-8"),
+            (root / "console_v5.css").read_text(encoding="utf-8"),
+        )
     )
+    script_text = "\n".join(
+        (
+            (root / "console_v3.js").read_text(encoding="utf-8"),
+            (root / "console_v5.js").read_text(encoding="utf-8"),
+        )
+    )
+    return style_text, script_text
 
 
 def enhance_console_html(value: str) -> str:
     style_text, script_text = _assets()
     head_meta = (
-        '<meta name="theme-color" content="#0b0d13">'
+        '<meta name="theme-color" content="#f5f6fb">'
         '<meta name="color-scheme" content="dark light">'
     )
     if "viewport-fit=cover" not in value:
@@ -46,7 +55,10 @@ def enhance_console_html(value: str) -> str:
             '<meta name="viewport" '
             'content="width=device-width,initial-scale=1,viewport-fit=cover">'
         )
-    style = f"<style>/* Tianji Cloud Console V4 */{style_text}</style>"
+    style = (
+        f"<style>/* Tianji Cloud Console V5 | Cloud Console V3 compatibility */"
+        f"{style_text}</style>"
+    )
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"
     if "</head>" in value:
         value = value.replace("</head>", head_meta + style + "</head>", 1)

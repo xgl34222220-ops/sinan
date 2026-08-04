@@ -1,0 +1,346 @@
+/* Tianji Cloud Console V5: compact native-like hierarchy, designed around phone screens. */
+:root{
+  --v5-page:#f5f6fb;
+  --v5-page-tint:#f0efff;
+  --v5-card:color-mix(in srgb,var(--solid) 96%,var(--primary-soft) 4%);
+  --v5-soft:color-mix(in srgb,var(--soft) 92%,var(--primary-soft) 8%);
+  --v5-line:color-mix(in srgb,var(--line) 82%,var(--primary) 18%);
+  --v5-line-strong:color-mix(in srgb,var(--line) 68%,var(--primary) 32%);
+  --v5-shadow:0 5px 18px rgba(40,45,72,.065);
+  --v5-shadow-float:0 12px 34px rgba(40,45,72,.14);
+  --v5-radius-xl:22px;
+  --v5-radius-lg:18px;
+  --v5-radius-md:14px;
+}
+[data-theme="dark"]{
+  --v5-page:#0d0f16;
+  --v5-page-tint:#151426;
+  --v5-card:color-mix(in srgb,var(--solid) 96%,var(--primary-soft) 4%);
+  --v5-soft:color-mix(in srgb,var(--soft) 94%,var(--primary-soft) 6%);
+  --v5-shadow:0 6px 20px rgba(0,0,0,.20);
+  --v5-shadow-float:0 14px 40px rgba(0,0,0,.34);
+}
+
+html.tianji-console-v5{background:var(--v5-page)}
+html.tianji-console-v5 body{
+  color:var(--text);
+  background:
+    radial-gradient(circle at 12% -6%,color-mix(in srgb,var(--primary) 9%,transparent),transparent 25rem),
+    radial-gradient(circle at 100% 34%,color-mix(in srgb,var(--primary2) 6%,transparent),transparent 32rem),
+    linear-gradient(180deg,var(--v5-page-tint),var(--v5-page) 24rem);
+}
+html.tianji-console-v5 .shell{width:min(1240px,calc(100% - 28px));padding:10px 0 112px}
+html.tianji-console-v5 .topbar{
+  min-height:60px;
+  margin-bottom:15px;
+  padding:7px 9px;
+  border:1px solid var(--v5-line);
+  border-radius:19px;
+  background:color-mix(in srgb,var(--surface) 92%,transparent);
+  box-shadow:var(--v5-shadow);
+  backdrop-filter:blur(17px) saturate(120%);
+  -webkit-backdrop-filter:blur(17px) saturate(120%);
+}
+html.tianji-console-v5 .topbar .mark{width:40px;height:40px;flex-basis:40px;border-radius:14px}
+html.tianji-console-v5 .topbar .brand h1{font-size:17px}
+html.tianji-console-v5 .topbar .brand p{font-size:10px}
+html.tianji-console-v5 .topbar .icon-btn,
+html.tianji-console-v5 .topbar .status{min-height:40px;border-radius:13px;background:var(--v5-card);border-color:var(--v5-line);box-shadow:none}
+
+html.tianji-console-v5 .layout{grid-template-columns:210px minmax(0,1fr);gap:17px}
+html.tianji-console-v5 .sidebar{
+  top:84px;
+  padding:8px;
+  border:1px solid var(--v5-line);
+  border-radius:20px;
+  background:color-mix(in srgb,var(--surface) 93%,transparent);
+  box-shadow:var(--v5-shadow);
+}
+html.tianji-console-v5 .nav-btn{min-height:44px;border-radius:13px;font-size:12px}
+html.tianji-console-v5 .nav-btn.active{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 15%,transparent)}
+
+html.tianji-console-v5 .panel-head{margin:2px 2px 13px;align-items:center}
+html.tianji-console-v5 .panel-head h2{font-size:25px;line-height:1.15}
+html.tianji-console-v5 .panel-head p,
+html.tianji-console-v5 .section-head p,
+html.tianji-console-v5 .card-head p{font-size:11px;line-height:1.55}
+html.tianji-console-v5 .panel-head>.btn{white-space:nowrap;flex:0 0 auto}
+html.tianji-console-v5 .section{margin-top:12px}
+html.tianji-console-v5 .section-head{margin:0 2px 8px;align-items:center}
+html.tianji-console-v5 .section-head h2{font-size:18px}
+html.tianji-console-v5 .card-head h3{font-size:15px}
+
+html.tianji-console-v5 .card,
+html.tianji-console-v5 .metric,
+html.tianji-console-v5 .overview-card,
+html.tianji-console-v5 .diag,
+html.tianji-console-v5 .task,
+html.tianji-console-v5 .v3-card,
+html.tianji-console-v5 .v3-summary-card,
+html.tianji-console-v5 .v3-model-card,
+html.tianji-console-v5 .v3-record,
+html.tianji-console-v5 .v3-op{
+  border-color:var(--v5-line);
+  background:var(--v5-card);
+  border-radius:var(--v5-radius-lg);
+  box-shadow:var(--v5-shadow);
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}
+html.tianji-console-v5 .card-pad{padding:16px}
+html.tianji-console-v5 .card+.card{margin-top:10px}
+html.tianji-console-v5 .btn{min-height:40px;padding:0 14px;border-radius:13px;font-size:12px}
+html.tianji-console-v5 .btn.primary{box-shadow:0 7px 18px color-mix(in srgb,var(--primary) 20%,transparent)}
+html.tianji-console-v5 .badge{min-height:25px;padding:0 9px;font-size:9px}
+html.tianji-console-v5 .input{min-height:42px;border-radius:13px;font-size:12px;background:var(--v5-soft)}
+html.tianji-console-v5 .field label{font-size:10px}
+
+/* Overview */
+html.tianji-console-v5 .metrics{gap:9px}
+html.tianji-console-v5 .metric{min-height:104px;padding:14px}
+html.tianji-console-v5 .metric-label{font-size:10px}
+html.tianji-console-v5 .metric-value{margin-top:6px;font-size:20px}
+html.tianji-console-v5 .metric-foot{font-size:9px}
+html.tianji-console-v5 .overview-grid{gap:10px}
+html.tianji-console-v5 .overview-card{padding:15px}
+html.tianji-console-v5 .lottery-title h3{font-size:19px}
+html.tianji-console-v5 .lottery-title .sub{font-size:10px}
+html.tianji-console-v5 .target{padding:6px 8px;border-radius:12px;font-size:8px;background:var(--v5-soft)}
+html.tianji-console-v5 .target strong{font-size:11px}
+html.tianji-console-v5 .numbers{grid-template-columns:repeat(10,minmax(0,1fr));gap:6px;margin:12px 0}
+html.tianji-console-v5 .number{
+  aspect-ratio:1;
+  min-width:0;
+  border:0;
+  border-radius:50%;
+  color:#fff;
+  font-size:11px;
+  font-weight:850;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 4px 10px rgba(41,45,70,.10);
+}
+html.tianji-console-v5 .number:nth-child(10n+1){background:#f2c21a;color:#372b00}
+html.tianji-console-v5 .number:nth-child(10n+2){background:#2d86e8}
+html.tianji-console-v5 .number:nth-child(10n+3){background:#565c6b}
+html.tianji-console-v5 .number:nth-child(10n+4){background:#ff8b25}
+html.tianji-console-v5 .number:nth-child(10n+5){background:#35a8d8}
+html.tianji-console-v5 .number:nth-child(10n+6){background:#6a4fe8}
+html.tianji-console-v5 .number:nth-child(10n+7){background:#b7bcc7;color:#242832}
+html.tianji-console-v5 .number:nth-child(10n+8){background:#e84b45}
+html.tianji-console-v5 .number:nth-child(10n+9){background:#8f2748}
+html.tianji-console-v5 .number:nth-child(10n+10){background:#2eaf74}
+html.tianji-console-v5 .ai-strip{padding:9px 10px;border-radius:13px;background:var(--v5-soft);border-color:var(--v5-line)}
+html.tianji-console-v5 .ai-title{font-size:11px}
+html.tianji-console-v5 .ai-strip .sub{font-size:9px}
+html.tianji-console-v5 .diag-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+html.tianji-console-v5 .diag{padding:12px}
+html.tianji-console-v5 .diag-top{align-items:center}
+html.tianji-console-v5 .diag-title{font-size:11px}
+html.tianji-console-v5 .diag-body{font-size:9px;line-height:1.58}
+html.tianji-console-v5 .diag-list.v5-collapsed .diag:nth-child(n+5){display:none}
+html.tianji-console-v5 .v5-more{
+  width:100%;
+  min-height:38px;
+  margin-top:9px;
+  border:1px solid var(--v5-line);
+  border-radius:13px;
+  background:var(--v5-soft);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:760;
+}
+
+/* AI workspace */
+html.tianji-console-v5 #panel-ai>.card.card-pad:first-of-type{padding:11px}
+html.tianji-console-v5 .switch-row{padding:12px;border-radius:15px;background:var(--v5-soft)}
+html.tianji-console-v5 .switch-copy strong{font-size:12px}
+html.tianji-console-v5 .switch-copy div{font-size:9px;line-height:1.5}
+html.tianji-console-v5 .quick-card{background:linear-gradient(145deg,color-mix(in srgb,var(--solid) 97%,var(--primary-soft)),var(--v5-card))}
+html.tianji-console-v5 .quick-card:after{opacity:.55}
+html.tianji-console-v5 .provider-mark{width:43px;height:43px;border-radius:14px}
+html.tianji-console-v5 .quick-label{font-size:9px}
+html.tianji-console-v5 .quick-current{font-size:19px;line-height:1.15;overflow-wrap:anywhere}
+html.tianji-console-v5 .quick-meta{font-size:9px;line-height:1.5}
+html.tianji-console-v5 .model-switcher{gap:7px;margin-top:12px}
+html.tianji-console-v5 .model-choice{min-height:62px;padding:11px 12px;border-radius:15px;background:var(--v5-soft)}
+html.tianji-console-v5 .model-choice strong{font-size:12px}
+html.tianji-console-v5 .model-choice span{font-size:9px}
+html.tianji-console-v5 .quick-actions{display:grid;grid-template-columns:1.15fr 1fr;gap:7px;margin-top:10px}
+html.tianji-console-v5 .quick-actions .btn{width:100%;padding:0 9px}
+html.tianji-console-v5 .quick-note{font-size:9px;line-height:1.55}
+html.tianji-console-v5 .profile-grid{gap:8px}
+html.tianji-console-v5 .profile-card{padding:13px;border-radius:16px;background:var(--v5-soft)}
+html.tianji-console-v5 .profile-name{font-size:12px}
+html.tianji-console-v5 .profile-model{font-size:10px}
+html.tianji-console-v5 .profile-endpoint{font-size:9px}
+html.tianji-console-v5 .mini-btn{min-height:30px;border-radius:10px}
+html.tianji-console-v5 .manage-details{border-radius:18px;box-shadow:var(--v5-shadow)}
+html.tianji-console-v5 .manage-details>summary{padding:13px 15px}
+html.tianji-console-v5 .manage-body{padding:14px}
+
+/* Records and operations */
+html.tianji-console-v5 #recordsPro,
+html.tianji-console-v5 #opsWorkspace,
+html.tianji-console-v5 #drawWorkspace{gap:12px}
+html.tianji-console-v5 .v3-section{gap:9px}
+html.tianji-console-v5 .v3-head{align-items:center}
+html.tianji-console-v5 .v3-head h3{font-size:18px}
+html.tianji-console-v5 .v3-head p{font-size:10px;line-height:1.55}
+html.tianji-console-v5 .v3-summary{gap:8px}
+html.tianji-console-v5 .v3-summary-card{min-height:106px;padding:14px;border-radius:17px}
+html.tianji-console-v5 .v3-summary-card:before{width:110px;height:110px;right:-48px;top:-53px;opacity:.65}
+html.tianji-console-v5 .v3-summary-card:after{display:none}
+html.tianji-console-v5 .v3-summary-label{font-size:10px}
+html.tianji-console-v5 .v3-summary-value{margin-top:7px;font-size:23px}
+html.tianji-console-v5 .v3-summary-foot{margin-top:7px;font-size:9px}
+html.tianji-console-v5 .v3-window-grid{gap:7px}
+html.tianji-console-v5 .v3-window{padding:12px;border-radius:15px;background:var(--v5-card);border-color:var(--v5-line)}
+html.tianji-console-v5 .v3-window strong{margin:3px 0;font-size:17px}
+html.tianji-console-v5 .v3-window span{font-size:9px}
+html.tianji-console-v5 .v3-controls{gap:7px;padding:9px;border-radius:17px;box-shadow:var(--v5-shadow)}
+html.tianji-console-v5 .v3-select{min-height:39px;border-radius:12px;font-size:11px;background:var(--v5-soft)}
+html.tianji-console-v5 .v3-record-grid{gap:9px}
+html.tianji-console-v5 .v3-record{padding:13px;border-radius:17px}
+html.tianji-console-v5 .v3-record:before{top:14px;bottom:14px;width:3px}
+html.tianji-console-v5 .v3-source-mark{width:35px;height:35px;flex-basis:35px;border-radius:12px}
+html.tianji-console-v5 .v3-record-title{font-size:12px}
+html.tianji-console-v5 .v3-record-main{margin-top:11px}
+html.tianji-console-v5 .v3-rank{font-size:18px}
+html.tianji-console-v5 .v3-balls{gap:5px;margin-top:9px;padding:8px;border-radius:13px}
+html.tianji-console-v5 .v3-ball{width:27px;height:27px;border-radius:50%;font-size:10px;background:var(--solid)}
+html.tianji-console-v5 .v3-record-foot{margin-top:9px;font-size:9px}
+html.tianji-console-v5 .v3-model-card{padding:13px;border-radius:16px}
+html.tianji-console-v5 .v3-model-metrics{gap:6px;margin-top:8px}
+html.tianji-console-v5 .v3-mini{padding:8px;border-radius:11px;background:var(--v5-soft)}
+html.tianji-console-v5 .v3-mini strong{font-size:13px}
+html.tianji-console-v5 .v3-draw{padding:14px}
+html.tianji-console-v5 .v3-countdown{font-size:20px}
+html.tianji-console-v5 .v3-task-row{gap:7px;margin-top:10px}
+html.tianji-console-v5 .v3-task-chip{padding:9px;border-radius:13px;background:var(--v5-soft)}
+html.tianji-console-v5 .v3-task-chip strong{font-size:10px}
+html.tianji-console-v5 .v3-task-chip span{font-size:8px}
+html.tianji-console-v5 .v3-ops-grid{gap:8px}
+html.tianji-console-v5 .v3-op{padding:13px}
+html.tianji-console-v5 .v3-op-icon{width:34px;height:34px;border-radius:12px}
+html.tianji-console-v5 .v3-op h4{margin-top:8px;font-size:12px}
+html.tianji-console-v5 .v3-op-value{margin-top:4px;font-size:17px}
+html.tianji-console-v5 .v3-op p{font-size:9px}
+html.tianji-console-v5 .v3-integrity{gap:6px}
+html.tianji-console-v5 .v3-integrity-item{padding:9px;border-radius:12px;background:var(--v5-soft)}
+html.tianji-console-v5 .v3-timeline{padding:4px 12px}
+html.tianji-console-v5 .v3-event{grid-template-columns:74px 12px minmax(0,1fr);gap:8px;padding:10px 0}
+
+/* Settings */
+html.tianji-console-v5 #panel-security .card-pad{padding:15px}
+html.tianji-console-v5 #panel-security .form-grid{gap:9px}
+html.tianji-console-v5 #panel-security .task{padding:12px;border-radius:15px;background:var(--v5-soft)}
+
+/* Bottom navigation */
+html.tianji-console-v5 .mobile-nav{
+  background:color-mix(in srgb,var(--solid) 94%,transparent)!important;
+  border-color:var(--v5-line)!important;
+  box-shadow:var(--v5-shadow-float)!important;
+  backdrop-filter:blur(18px) saturate(120%)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(120%)!important;
+}
+html.tianji-console-v5 .mobile-nav .nav-btn.active{background:var(--primary-soft)}
+
+@media(max-width:1040px){
+  html.tianji-console-v5 .layout{grid-template-columns:182px minmax(0,1fr);gap:12px}
+  html.tianji-console-v5 .v3-summary,
+  html.tianji-console-v5 .v3-ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@media(max-width:740px){
+  html.tianji-console-v5 body{font-size:13px;background-attachment:scroll}
+  html.tianji-console-v5 .shell{width:100%;padding:4px 12px calc(94px + env(safe-area-inset-bottom))}
+  html.tianji-console-v5 .topbar{
+    position:relative;
+    top:auto;
+    z-index:20;
+    justify-content:flex-end;
+    min-height:44px;
+    margin:0 0 2px;
+    padding:2px 0;
+    border:0;
+    border-radius:0;
+    background:transparent;
+    box-shadow:none;
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+  html.tianji-console-v5 .topbar .brand,
+  html.tianji-console-v5 .topbar .status{display:none!important}
+  html.tianji-console-v5 .topbar .toolbar{gap:6px;margin-left:auto}
+  html.tianji-console-v5 .topbar .icon-btn{width:40px;height:40px;min-height:40px;border-radius:13px;background:var(--v5-card);box-shadow:var(--v5-shadow)}
+  html.tianji-console-v5 .layout{display:block}
+  html.tianji-console-v5 .sidebar{display:none}
+  html.tianji-console-v5 .panel-head{margin:0 2px 12px;gap:8px}
+  html.tianji-console-v5 .panel-head h2{font-size:25px}
+  html.tianji-console-v5 .panel-head p{font-size:10px;line-height:1.5}
+  html.tianji-console-v5 .panel-head>.btn{min-height:38px;padding:0 12px;font-size:11px;white-space:nowrap}
+  html.tianji-console-v5 .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  html.tianji-console-v5 .metric{min-height:92px;padding:12px}
+  html.tianji-console-v5 .metric-value{font-size:18px}
+  html.tianji-console-v5 .overview-grid{grid-template-columns:1fr}
+  html.tianji-console-v5 .overview-card{padding:13px}
+  html.tianji-console-v5 .numbers{gap:4px;margin:10px 0}
+  html.tianji-console-v5 .number{font-size:10px}
+  html.tianji-console-v5 .diag-list{grid-template-columns:1fr}
+  html.tianji-console-v5 .card-pad{padding:14px}
+  html.tianji-console-v5 .v3-draw-grid{grid-template-columns:1fr}
+  html.tianji-console-v5 .v3-task-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.tianji-console-v5 .v3-ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.tianji-console-v5 .v3-controls{position:relative;top:auto;grid-template-columns:repeat(2,minmax(0,1fr));box-shadow:var(--v5-shadow)}
+  html.tianji-console-v5 .v3-record-grid,
+  html.tianji-console-v5 .v3-model-grid{grid-template-columns:1fr}
+  html.tianji-console-v5 .mobile-nav{
+    left:12px!important;
+    right:12px!important;
+    bottom:calc(8px + env(safe-area-inset-bottom))!important;
+    padding:4px!important;
+    border-radius:20px!important;
+  }
+  html.tianji-console-v5 .mobile-nav .nav-btn,
+  html.tianji-console-v5 .mobile-nav.compact .nav-btn{
+    min-height:54px!important;
+    padding:0!important;
+    border-radius:15px!important;
+    gap:2px!important;
+    font-size:9px!important;
+  }
+  html.tianji-console-v5 .mobile-nav .nav-btn svg{width:18px!important;height:18px!important}
+  html.tianji-console-v5 .mobile-nav.compact .nav-btn span{display:inline!important}
+}
+
+@media(max-width:560px){
+  html.tianji-console-v5 .panel-head h2{font-size:24px}
+  html.tianji-console-v5 .section-head h2{font-size:17px}
+  html.tianji-console-v5 .lottery-title h3{font-size:18px}
+  html.tianji-console-v5 .target{max-width:42%;overflow-wrap:anywhere}
+  html.tianji-console-v5 .v3-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;padding:0}
+  html.tianji-console-v5 .v3-summary-card{min-width:0;min-height:96px;padding:12px}
+  html.tianji-console-v5 .v3-summary-value{font-size:21px}
+  html.tianji-console-v5 .v3-window-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.tianji-console-v5 .v3-controls{grid-template-columns:1fr 1fr;padding:8px}
+  html.tianji-console-v5 .v3-record-main{display:flex;align-items:flex-end}
+  html.tianji-console-v5 .v3-period{text-align:right;display:block}
+  html.tianji-console-v5 .v3-model-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.tianji-console-v5 .model-switcher{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.tianji-console-v5 .profile-grid{grid-template-columns:1fr}
+  html.tianji-console-v5 .form-grid{grid-template-columns:1fr}
+  html.tianji-console-v5 .field.full{grid-column:auto}
+  html.tianji-console-v5 .quick-top{align-items:center}
+  html.tianji-console-v5 .quick-actions{grid-template-columns:1fr 1fr}
+  html.tianji-console-v5 .v3-integrity{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.tianji-console-v5 .v3-event{grid-template-columns:58px 9px minmax(0,1fr)}
+}
+
+@media(max-width:390px){
+  html.tianji-console-v5 .shell{padding-left:9px;padding-right:9px}
+  html.tianji-console-v5 .panel-head h2{font-size:22px}
+  html.tianji-console-v5 .panel-head>.btn{padding:0 10px}
+  html.tianji-console-v5 .number{font-size:9px}
+  html.tianji-console-v5 .quick-actions{grid-template-columns:1fr}
+  html.tianji-console-v5 .v3-task-row{grid-template-columns:1fr}
+  html.tianji-console-v5 .v3-controls{grid-template-columns:1fr}
+}
