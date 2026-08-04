@@ -67,7 +67,7 @@ jobs:
           set -euo pipefail
           mkdir -p .signing signing-backup
           STORE_PASSWORD="$(openssl rand -hex 32)"
-          KEY_PASSWORD="$(openssl rand -hex 32)"
+          KEY_PASSWORD="$STORE_PASSWORD"
           KEY_ALIAS='tianji-nativev6-release'
           echo "::add-mask::$STORE_PASSWORD"
           echo "::add-mask::$KEY_PASSWORD"
