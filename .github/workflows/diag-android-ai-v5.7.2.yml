@@ -1,0 +1,42 @@
+name: Diagnose Android AI v5.7.2 dispatcher
+
+on:
+  push:
+    branches: [main]
+    paths: [DIAG_ANDROID_AI_V572.txt]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record dispatcher status
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-v572
+          gh run list --workflow dispatch-android-ai-v5.7.2.yml --limit 5 \
+            --json databaseId,status,conclusion,event,headSha,url,createdAt > ci-v572/DISPATCH_RUNS.json
+          RUN_ID="$(jq -r '.[0].databaseId // empty' ci-v572/DISPATCH_RUNS.json)"
+          if [[ -n "$RUN_ID" ]]; then
+            gh run view "$RUN_ID" --json databaseId,status,conclusion,event,headSha,url,jobs \
+              > ci-v572/DISPATCH_DETAIL.json
+            if [[ "$(jq -r '.status' ci-v572/DISPATCH_DETAIL.json)" == completed && \
+                  "$(jq -r '.conclusion' ci-v572/DISPATCH_DETAIL.json)" != success ]]; then
+              gh run view "$RUN_ID" --log-failed > ci-v572/DISPATCH_FAILED_LOG.txt || true
+            fi
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-v572
+          git commit -m 'ci: record Android AI v5.7.2 dispatcher diagnostics'
+          git push origin HEAD:main
