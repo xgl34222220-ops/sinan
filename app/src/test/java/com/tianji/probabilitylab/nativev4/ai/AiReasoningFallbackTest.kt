@@ -28,13 +28,13 @@ class AiReasoningFallbackTest {
         assertFalse(value.expectsReasoning)
     }
 
-    @Test fun formalAutoKeepsBoundedThinking() {
+    @Test fun formalAutoPrioritizesBoundedCompletion() {
         val value = AiReasoningEngine.resolveForecast(config(AiReasoningMode.AUTO))
         assertTrue(value.sendControl)
-        assertTrue(value.enableThinking)
-        assertTrue(value.expectsReasoning)
-        assertEquals("high", value.effort)
-        assertTrue(value.displayLabel.contains("限时收口"))
+        assertFalse(value.enableThinking)
+        assertFalse(value.expectsReasoning)
+        assertEquals(null, value.effort)
+        assertTrue(value.displayLabel.contains("自动省时"))
     }
 
     @Test fun formalHighKeepsMaxThinkingWithDeadline() {
