@@ -24,7 +24,7 @@ from .db import database
 from .models import ForecastModel, HealthModel, LOTTERIES, SnapshotModel
 from .runtime_config import RuntimeAiConfig, load_ai_config, save_ai_config
 from .service import SERVICE_VERSION, run_all_cycles, snapshot
-from .web_ui import admin_page, login_page, public_page
+from .web_console import admin_page, login_page, public_page
 
 
 app = FastAPI(
