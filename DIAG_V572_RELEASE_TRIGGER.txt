@@ -1,2 +1,3 @@
-requested_at=2026-08-04T04:00:00Z
-retry=5
+requested_at=2026-08-04T04:02:00Z
+retry=6
+purpose=inventory_non_expired_signing_artifacts
