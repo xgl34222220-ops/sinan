@@ -2,7 +2,13 @@ package com.tianji.probabilitylab.nativev4.ui
 
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -34,25 +41,26 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.StopCircle
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -60,14 +68,18 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -88,26 +100,53 @@ import com.tianji.probabilitylab.nativev4.ai.AiChatMessage
 import com.tianji.probabilitylab.nativev4.ai.AiChatPersona
 import com.tianji.probabilitylab.nativev4.ai.AiChatRole
 import com.tianji.probabilitylab.nativev4.ai.AiChatSession
-import com.tianji.probabilitylab.nativev4.ai.AiJudgementMode
 import com.tianji.probabilitylab.nativev4.ai.AiConfig
+import com.tianji.probabilitylab.nativev4.ai.AiJudgementMode
 import com.tianji.probabilitylab.nativev4.model.DrawSnapshot
 import com.tianji.probabilitylab.nativev4.model.ForecastReport
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
-fun AiChatFloatingButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun AiChatFloatingButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = LocalTianjiColors.current
-    FloatingActionButton(
-        onClick = onClick,
-        modifier = modifier.size(52.dp),
-        shape = RoundedCornerShape(18.dp),
-        containerColor = colors.accent,
+    Surface(
+        modifier = modifier
+            .height(52.dp)
+            .shadow(
+                elevation = if (colors.isOled) 0.dp else 10.dp,
+                shape = RoundedCornerShape(19.dp),
+                ambientColor = colors.accent.copy(alpha = 0.25f),
+                spotColor = colors.accent.copy(alpha = 0.25f),
+            )
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(19.dp),
+        color = colors.accent,
         contentColor = Color.White,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
     ) {
-        Icon(Icons.Rounded.ChatBubble, contentDescription = "打开分析对话")
+        Row(
+            modifier = Modifier.padding(horizontal = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.ChatBubble,
+                contentDescription = "打开分析对话",
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "AI 对话",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
     }
 }
 
@@ -124,6 +163,8 @@ fun AiChatDialog(
     val colors = LocalTianjiColors.current
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+
     var speechEngine by remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(context.applicationContext) {
         var engine: TextToSpeech? = null
@@ -183,7 +224,9 @@ fun AiChatDialog(
             addAll(modelCatalogs[config.id].orEmpty())
             addAll(config.provider.fallbackModels)
         }
-        if (session.profileId == config?.id) session.model.takeIf(String::isNotBlank)?.let(::add)
+        if (session.profileId == config?.id) {
+            session.model.takeIf(String::isNotBlank)?.let(::add)
+        }
     }.map(String::trim).filter(String::isNotBlank).distinct()
 
     val models = modelOptions(selectedConfig)
@@ -198,7 +241,16 @@ fun AiChatDialog(
     var showNewConversation by rememberSaveable { mutableStateOf(false) }
     var showControls by rememberSaveable { mutableStateOf(false) }
     var moreExpanded by rememberSaveable { mutableStateOf(false) }
+    var followLatest by rememberSaveable { mutableStateOf(true) }
+
     val listState = rememberLazyListState()
+    val isNearBottom by remember {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+            layout.totalItemsCount == 0 || lastVisible >= layout.totalItemsCount - 2
+        }
+    }
 
     fun openContext(config: AiConfig?, model: String) {
         controller.selectContext(
@@ -213,18 +265,34 @@ fun AiChatDialog(
     }
 
     val signature = completeConfigs.joinToString("|") { "${it.id}:${it.model}" } +
-        modelCatalogs.entries.sortedBy { it.key }.joinToString("|") { it.value.joinToString(",") }
+        modelCatalogs.entries.sortedBy { it.key }
+            .joinToString("|") { it.value.joinToString(",") }
+
     LaunchedEffect(signature, lotteryKey, targetPeriod, snapshot?.latest?.period) {
         openContext(selectedConfig, selectedModel)
     }
+
+    LaunchedEffect(listState.isScrollInProgress, isNearBottom) {
+        if (listState.isScrollInProgress) followLatest = isNearBottom
+    }
+
+    LaunchedEffect(session.messages.size, session.candidates.size) {
+        val last = listState.layoutInfo.totalItemsCount - 1
+        if (last >= 0 && (followLatest || session.messages.lastOrNull()?.role == AiChatRole.USER)) {
+            followLatest = true
+            listState.animateScrollToItem(last)
+        }
+    }
+
     LaunchedEffect(
-        session.messages.size,
         session.messages.lastOrNull()?.content?.length,
         session.isRunning,
-        session.candidates.size,
+        session.progress,
     ) {
-        val last = session.messages.lastIndex
-        if (last >= 0) listState.animateScrollToItem(last)
+        val last = listState.layoutInfo.totalItemsCount - 1
+        if (last >= 0 && followLatest && isNearBottom) {
+            listState.scrollToItem(last)
+        }
     }
 
     fun submit(value: String) {
@@ -233,10 +301,21 @@ fun AiChatDialog(
         val activeSnapshot = snapshot
         val activeReport = report
         val question = value.trim()
-        if (config == null || activeSnapshot == null || activeReport == null || question.isBlank()) return
+        if (
+            config == null ||
+            activeSnapshot == null ||
+            activeReport == null ||
+            question.isBlank() ||
+            controller.session.isRunning
+        ) {
+            return
+        }
         input = ""
+        followLatest = true
         controller.send(
-            config = config.copy(model = controller.session.model.ifBlank { selectedModel }),
+            config = config.copy(
+                model = controller.session.model.ifBlank { selectedModel },
+            ),
             snapshot = activeSnapshot,
             report = activeReport,
             question = question,
@@ -253,142 +332,248 @@ fun AiChatDialog(
         submit(prompt)
     }
 
+    val ready = selectedConfig != null && snapshot != null && report != null
+    val persona = AiChatPersona.fromId(session.personaId)
+
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
         Surface(
-            modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.systemBars),
             color = colors.page,
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize().imePadding().padding(horizontal = 14.dp),
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                colors.page,
+                                colors.pageSoft,
+                                colors.page,
+                            ),
+                        ),
+                    ),
             ) {
-                ChatTopBar(
-                    session = session,
-                    onNew = { showNewConversation = true },
-                    onHistory = { showHistory = true },
-                    onClose = onDismiss,
-                    onMore = { moreExpanded = true },
-                    moreExpanded = moreExpanded,
-                    dismissMore = { moreExpanded = false },
-                    onRefresh = onRefresh,
-                    onClear = controller::clear,
-                    onDelete = controller::deleteCurrent,
-                )
-
-                SessionControlStrip(
-                    expanded = showControls,
-                    onToggle = { showControls = !showControls },
-                    configs = completeConfigs,
-                    selectedConfig = selectedConfig,
-                    models = models,
-                    selectedModel = selectedModel,
-                    session = session,
-                    snapshot = snapshot,
-                    report = report,
-                    onConfig = { config ->
-                        val next = modelOptions(config).firstOrNull { it == config.model }
-                            ?: modelOptions(config).firstOrNull().orEmpty()
-                        openContext(config, next)
-                    },
-                    onModel = { openContext(selectedConfig, it) },
-                    onPersona = controller::selectPersona,
-                    onJudgementMode = controller::selectJudgementMode,
-                )
-
-                val candidatesByMessage = session.candidates.groupBy(AiChatCandidateRecord::messageId)
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .imePadding(),
                 ) {
-                    if (session.messages.isEmpty()) {
-                        item("welcome") {
-                            WelcomePanel(
-                                persona = AiChatPersona.fromId(session.personaId),
-                                enabled = selectedConfig != null && snapshot != null && report != null,
-                                onPrompt = ::submit,
-                            )
-                        }
-                    }
-                    items(session.messages, key = AiChatMessage::id) { message ->
-                        ChatMessageBubble(
-                            message = message,
-                            isStreaming = message.id == session.streamingMessageId && session.isRunning,
-                            canRepeat = !session.isRunning,
-                            onCopy = { copyMessage(message) },
-                            onSpeak = { speakMessage(message) },
-                            onRepeat = { repeatMessage(message) },
-                        )
-                        candidatesByMessage[message.id].orEmpty().forEach { record ->
-                            Spacer(Modifier.height(8.dp))
-                            ChatPredictionCard(record)
-                        }
-                    }
-                    val detached = session.candidates.filter { it.messageId.isBlank() }
-                    items(detached, key = AiChatCandidateRecord::id) { record -> ChatPredictionCard(record) }
-                    if (session.isRunning) {
-                        item("running") { StreamingStatus(session.progress, controller::cancel) }
-                    }
-                    session.rolloverNotice?.let { notice ->
-                        item("rollover") { SystemEventChip(notice) }
-                    }
-                    session.error?.let { error ->
-                        item("error") {
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = colors.red.copy(alpha = 0.08f),
-                            ) {
-                                Text(
-                                    error,
-                                    color = colors.red,
-                                    fontSize = 12.5.sp,
-                                    lineHeight = 18.sp,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                    ChatTopBar(
+                        session = session,
+                        selectedModel = selectedModel,
+                        onNew = { showNewConversation = true },
+                        onHistory = { showHistory = true },
+                        onClose = onDismiss,
+                        onMore = { moreExpanded = true },
+                        moreExpanded = moreExpanded,
+                        dismissMore = { moreExpanded = false },
+                        onRefresh = onRefresh,
+                        onClear = controller::clear,
+                        onDelete = controller::deleteCurrent,
+                    )
+
+                    SessionControlCard(
+                        expanded = showControls,
+                        onToggle = { showControls = !showControls },
+                        configs = completeConfigs,
+                        selectedConfig = selectedConfig,
+                        models = models,
+                        selectedModel = selectedModel,
+                        session = session,
+                        snapshot = snapshot,
+                        report = report,
+                        onConfig = { config ->
+                            val next = modelOptions(config).firstOrNull { it == config.model }
+                                ?: modelOptions(config).firstOrNull().orEmpty()
+                            openContext(config, next)
+                        },
+                        onModel = { openContext(selectedConfig, it) },
+                        onPersona = controller::selectPersona,
+                        onJudgementMode = controller::selectJudgementMode,
+                    )
+
+                    val candidatesByMessage = session.candidates.groupBy(
+                        AiChatCandidateRecord::messageId,
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    ) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = 14.dp,
+                                end = 14.dp,
+                                top = 14.dp,
+                                bottom = 18.dp,
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(13.dp),
+                        ) {
+                            if (session.messages.isEmpty()) {
+                                item("welcome") {
+                                    WelcomePanel(
+                                        persona = persona,
+                                        enabled = ready,
+                                        onPrompt = ::submit,
+                                    )
+                                }
+                            }
+
+                            items(
+                                items = session.messages,
+                                key = AiChatMessage::id,
+                            ) { message ->
+                                ChatMessageBubble(
+                                    message = message,
+                                    model = selectedModel,
+                                    isStreaming = message.id == session.streamingMessageId &&
+                                        session.isRunning,
+                                    canRepeat = !session.isRunning,
+                                    onCopy = { copyMessage(message) },
+                                    onSpeak = { speakMessage(message) },
+                                    onRepeat = { repeatMessage(message) },
                                 )
+                                candidatesByMessage[message.id].orEmpty().forEach { record ->
+                                    Spacer(Modifier.height(8.dp))
+                                    ChatPredictionCard(record)
+                                }
+                            }
+
+                            val detached = session.candidates.filter { it.messageId.isBlank() }
+                            items(
+                                items = detached,
+                                key = AiChatCandidateRecord::id,
+                            ) { record ->
+                                ChatPredictionCard(record)
+                            }
+
+                            val streamingMessage = session.messages.firstOrNull {
+                                it.id == session.streamingMessageId
+                            }
+                            if (session.isRunning && streamingMessage?.content.isNullOrBlank()) {
+                                item("running") {
+                                    StreamingStatus(
+                                        progress = session.progress,
+                                        onCancel = controller::cancel,
+                                    )
+                                }
+                            }
+
+                            session.rolloverNotice?.let { notice ->
+                                item("rollover") { SystemEventChip(notice) }
+                            }
+
+                            session.error?.let { error ->
+                                item("error") {
+                                    ErrorMessage(text = error)
+                                }
+                            }
+                        }
+
+                        AnimatedVisibility(
+                            visible = !isNearBottom &&
+                                listState.layoutInfo.totalItemsCount > 0,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 18.dp, bottom = 14.dp),
+                            enter = fadeIn() + slideInVertically { it / 2 },
+                            exit = fadeOut() + slideOutVertically { it / 2 },
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .shadow(
+                                        elevation = 6.dp,
+                                        shape = CircleShape,
+                                        ambientColor = Color.Black.copy(alpha = 0.20f),
+                                        spotColor = Color.Black.copy(alpha = 0.20f),
+                                    )
+                                    .clickable {
+                                        followLatest = true
+                                        val last = listState.layoutInfo.totalItemsCount - 1
+                                        if (last >= 0) {
+                                            scope.launch { listState.animateScrollToItem(last) }
+                                        }
+                                    },
+                                shape = CircleShape,
+                                color = colors.surfaceStrong,
+                                border = BorderStroke(1.dp, colors.lineStrong),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                                        contentDescription = "回到底部",
+                                        tint = colors.textSoft,
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                ChatComposer(
-                    input = input,
-                    onInput = { input = it },
-                    enabled = selectedConfig != null && snapshot != null && report != null && !session.isRunning,
-                    isRunning = session.isRunning,
-                    placeholder = AiChatPersona.fromId(session.personaId).quickPrompts.firstOrNull()
-                        ?: "继续追问，或告诉它上一期哪里需要调整",
-                    onSend = { submit(input) },
-                    onStop = controller::cancel,
-                )
+                    ChatComposer(
+                        input = input,
+                        onInput = { input = it },
+                        ready = ready,
+                        isRunning = session.isRunning,
+                        placeholder = persona.quickPrompts.firstOrNull()
+                            ?: "继续追问，或告诉它上一期哪里需要调整",
+                        suggestions = persona.quickPrompts.take(3),
+                        onSuggestion = ::submit,
+                        onSend = { submit(input) },
+                        onStop = controller::cancel,
+                    )
+                }
             }
         }
     }
 
     if (showHistory) {
         ConversationHistoryDialog(
-            items = controller.archives.filter { lotteryKey.isBlank() || it.lotteryKey == lotteryKey },
+            items = controller.archives.filter {
+                lotteryKey.isBlank() || it.lotteryKey == lotteryKey
+            },
             currentId = session.archiveId,
-            onOpen = { controller.openArchive(it); showHistory = false },
+            onOpen = {
+                controller.openArchive(it)
+                showHistory = false
+            },
             onDismiss = { showHistory = false },
         )
     }
+
     if (showNewConversation) {
         NewConversationDialog(
             hasHistory = session.messages.isNotEmpty(),
             onBlank = {
                 controller.newConversation(
-                    selectedConfig?.id.orEmpty(), selectedConfig?.displayName.orEmpty(), selectedModel,
-                    lotteryKey, targetPeriod, inheritStrategy = false,
+                    selectedConfig?.id.orEmpty(),
+                    selectedConfig?.displayName.orEmpty(),
+                    selectedModel,
+                    lotteryKey,
+                    targetPeriod,
+                    inheritStrategy = false,
                 )
                 showNewConversation = false
             },
             onContinue = {
                 controller.newConversation(
-                    selectedConfig?.id.orEmpty(), selectedConfig?.displayName.orEmpty(), selectedModel,
-                    lotteryKey, targetPeriod, inheritStrategy = true,
+                    selectedConfig?.id.orEmpty(),
+                    selectedConfig?.displayName.orEmpty(),
+                    selectedModel,
+                    lotteryKey,
+                    targetPeriod,
+                    inheritStrategy = true,
                 )
                 showNewConversation = false
             },
@@ -400,6 +585,7 @@ fun AiChatDialog(
 @Composable
 private fun ChatTopBar(
     session: AiChatSession,
+    selectedModel: String,
     onNew: () -> Unit,
     onHistory: () -> Unit,
     onClose: () -> Unit,
@@ -412,91 +598,148 @@ private fun ChatTopBar(
 ) {
     val colors = LocalTianjiColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().height(54.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(66.dp)
+            .background(colors.header)
+            .border(width = 0.5.dp, color = colors.line)
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier.size(44.dp),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "返回",
+                tint = colors.textSoft,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.accentSoft)
+                .border(
+                    width = 1.dp,
+                    color = colors.accent.copy(alpha = 0.18f),
+                    shape = RoundedCornerShape(14.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                "天机",
+                text = session.title.ifBlank { "新对话" },
                 color = colors.text,
-                fontSize = 17.sp,
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
-                session.title.ifBlank { "新对话" },
+                text = selectedModel.ifBlank { "请选择模型" },
                 color = colors.textDim,
-                fontSize = 9.5.sp,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        ContextUsagePill(session.contextUsagePercent)
-        SmallTopAction(onClick = onNew, enabled = !session.isRunning) {
-            Icon(Icons.Rounded.Add, "新建对话", tint = colors.textSoft, modifier = Modifier.size(19.dp))
+
+        IconButton(
+            onClick = onHistory,
+            enabled = !session.isRunning,
+            modifier = Modifier.size(40.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.History,
+                contentDescription = "对话历史",
+                tint = colors.textSoft,
+                modifier = Modifier.size(20.dp),
+            )
         }
-        SmallTopAction(onClick = onHistory, enabled = !session.isRunning) {
-            Icon(Icons.Rounded.History, "对话历史", tint = colors.textSoft, modifier = Modifier.size(18.dp))
+
+        IconButton(
+            onClick = onNew,
+            enabled = !session.isRunning,
+            modifier = Modifier.size(40.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = "新建对话",
+                tint = colors.textSoft,
+                modifier = Modifier.size(21.dp),
+            )
         }
+
         Box {
-            SmallTopAction(onClick = onMore, enabled = !session.isRunning) {
-                Icon(Icons.Rounded.MoreVert, "更多", tint = colors.textSoft, modifier = Modifier.size(19.dp))
+            IconButton(
+                onClick = onMore,
+                enabled = !session.isRunning,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.MoreVert,
+                    contentDescription = "更多",
+                    tint = colors.textSoft,
+                    modifier = Modifier.size(21.dp),
+                )
             }
-            DropdownMenu(expanded = moreExpanded, onDismissRequest = dismissMore) {
+            DropdownMenu(
+                expanded = moreExpanded,
+                onDismissRequest = dismissMore,
+            ) {
                 DropdownMenuItem(
                     text = { Text("刷新开奖历史") },
-                    leadingIcon = { Icon(Icons.Rounded.Refresh, null) },
-                    onClick = { dismissMore(); onRefresh() },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    },
+                    onClick = {
+                        dismissMore()
+                        onRefresh()
+                    },
                 )
                 DropdownMenuItem(
                     text = { Text("清空当前对话") },
-                    leadingIcon = { Icon(Icons.Rounded.DeleteSweep, null) },
-                    onClick = { dismissMore(); onClear() },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.DeleteSweep, contentDescription = null)
+                    },
+                    onClick = {
+                        dismissMore()
+                        onClear()
+                    },
                 )
                 DropdownMenuItem(
                     text = { Text("删除当前会话") },
-                    leadingIcon = { Icon(Icons.Rounded.DeleteSweep, null) },
-                    onClick = { dismissMore(); onDelete() },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Close, contentDescription = null)
+                    },
+                    onClick = {
+                        dismissMore()
+                        onDelete()
+                    },
                 )
             }
         }
-        SmallTopAction(onClick = onClose) {
-            Icon(Icons.Rounded.Close, "关闭", tint = colors.textSoft, modifier = Modifier.size(20.dp))
-        }
     }
 }
 
 @Composable
-private fun SmallTopAction(
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    content: @Composable () -> Unit,
-) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(38.dp)) { content() }
-}
-
-@Composable
-private fun ContextUsagePill(percent: Int) {
-    val colors = LocalTianjiColors.current
-    val tint = when {
-        percent >= 80 -> colors.amber
-        percent >= 55 -> colors.accent
-        else -> colors.green
-    }
-    Surface(shape = RoundedCornerShape(10.dp), color = tint.copy(alpha = 0.08f)) {
-        Text(
-            "${percent.coerceIn(0, 100)}%",
-            color = tint,
-            fontSize = 8.5.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-        )
-    }
-    Spacer(Modifier.width(2.dp))
-}
-
-@Composable
-private fun SessionControlStrip(
+private fun SessionControlCard(
     expanded: Boolean,
     onToggle: () -> Unit,
     configs: List<AiConfig>,
@@ -514,103 +757,205 @@ private fun SessionControlStrip(
     val colors = LocalTianjiColors.current
     val persona = AiChatPersona.fromId(session.personaId)
     Surface(
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
-        shape = RoundedCornerShape(14.dp),
-        color = Color.White.copy(alpha = 0.025f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .animateContentSize(),
+        shape = RoundedCornerShape(19.dp),
+        color = colors.glass,
+        border = BorderStroke(1.dp, colors.line),
     ) {
         Column {
             Row(
-                modifier = Modifier.fillMaxWidth().height(48.dp).clickable(onClick = onToggle)
-                    .padding(horizontal = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 13.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Tune, null, tint = colors.accent, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(9.dp))
-                Text(
-                    selectedModel.ifBlank { "选择模型" },
-                    color = colors.text,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "${session.judgementMode.label} · ${persona.displayName}",
-                    color = colors.accent,
-                    fontSize = 8.5.sp,
-                    maxLines = 1,
-                    modifier = Modifier.padding(horizontal = 7.dp),
-                )
-                Text(
-                    report?.targetPeriod?.let { "期$it" } ?: "待同步",
-                    color = colors.textDim,
-                    fontSize = 8.5.sp,
-                    maxLines = 1,
-                )
-                Spacer(Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .size(35.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.accentSoft),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = null,
+                        tint = colors.accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = selectedModel.ifBlank { "选择模型" },
+                        color = colors.text,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${session.judgementMode.label} · ${persona.displayName}",
+                        color = colors.textDim,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp,
+                        maxLines = 1,
+                    )
+                }
+                ContextUsagePill(session.contextUsagePercent)
+                Spacer(Modifier.width(7.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = colors.accent.copy(alpha = 0.09f),
+                ) {
+                    Text(
+                        text = report?.targetPeriod?.let { "第$it 期" } ?: "待同步",
+                        color = colors.accent,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                    )
+                }
+                Spacer(Modifier.width(5.dp))
                 Icon(
-                    if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                    if (expanded) "收起" else "展开",
+                    imageVector = if (expanded) {
+                        Icons.Rounded.KeyboardArrowUp
+                    } else {
+                        Icons.Rounded.KeyboardArrowDown
+                    },
+                    contentDescription = if (expanded) "收起" else "展开",
                     tint = colors.textDim,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(20.dp),
                 )
             }
-            if (expanded) {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.line.copy(alpha = 0.4f)))
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 5.dp)) {
-                    SelectorRow(
-                        label = "配置",
-                        value = selectedConfig?.displayName ?: "未配置",
-                        options = configs.map { it.id to it.displayName },
-                        selectedKey = selectedConfig?.id.orEmpty(),
-                        onSelect = { id -> configs.firstOrNull { it.id == id }?.let(onConfig) },
+
+            AnimatedVisibility(visible = expanded) {
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(colors.line),
                     )
-                    SelectorRow(
-                        label = "模型",
-                        value = selectedModel.ifBlank { "未选择" },
-                        options = models.map { it to it },
-                        selectedKey = selectedModel,
-                        onSelect = onModel,
-                    )
-                    SelectorRow(
-                        label = "人设",
-                        value = persona.displayName,
-                        options = AiChatPersona.entries.map { it.id to it.displayName },
-                        selectedKey = session.personaId,
-                        onSelect = onPersona,
-                    )
-                    SelectorRow(
-                        label = "判断",
-                        value = session.judgementMode.label,
-                        options = AiJudgementMode.entries.map { it.name to it.label },
-                        selectedKey = session.judgementMode.name,
-                        onSelect = { value -> onJudgementMode(AiJudgementMode.fromId(value)) },
-                    )
-                    val ready = snapshot != null && report != null && selectedConfig != null
-                    Text(
-                        if (ready) "${snapshot!!.history.takeLast(120).size}期真实接口历史" else "请先准备开奖历史和完整AI配置",
-                        color = if (ready) colors.green else colors.amber,
-                        fontSize = 8.5.sp,
-                        modifier = Modifier.padding(start = 62.dp, top = 2.dp, bottom = 3.dp),
-                    )
-                    val learning = session.learningProfile
-                    Text(
-                        "持续学习 ${learning.settled}期 · 六码 ${(learning.top6Rate * 100).toInt()}% · 连续未中 ${learning.missStreak}期",
-                        color = if (learning.missStreak >= 3) colors.amber else colors.accent,
-                        fontSize = 8.5.sp,
-                        modifier = Modifier.padding(start = 62.dp, top = 2.dp),
-                    )
-                    Text(
-                        learning.lastChange,
-                        color = colors.textDim,
-                        fontSize = 8.sp,
-                        lineHeight = 12.sp,
-                        modifier = Modifier.padding(start = 62.dp, top = 2.dp, bottom = 5.dp),
-                    )
+                    Column(
+                        modifier = Modifier.padding(
+                            start = 13.dp,
+                            end = 13.dp,
+                            top = 6.dp,
+                            bottom = 12.dp,
+                        ),
+                    ) {
+                        SelectorRow(
+                            label = "配置",
+                            value = selectedConfig?.displayName ?: "未配置",
+                            options = configs.map { it.id to it.displayName },
+                            selectedKey = selectedConfig?.id.orEmpty(),
+                            onSelect = { id ->
+                                configs.firstOrNull { it.id == id }?.let(onConfig)
+                            },
+                        )
+                        SelectorRow(
+                            label = "模型",
+                            value = selectedModel.ifBlank { "未选择" },
+                            options = models.map { it to it },
+                            selectedKey = selectedModel,
+                            onSelect = onModel,
+                        )
+                        SelectorRow(
+                            label = "人设",
+                            value = persona.displayName,
+                            options = AiChatPersona.entries.map { it.id to it.displayName },
+                            selectedKey = session.personaId,
+                            onSelect = onPersona,
+                        )
+                        SelectorRow(
+                            label = "判断",
+                            value = session.judgementMode.label,
+                            options = AiJudgementMode.entries.map { it.name to it.label },
+                            selectedKey = session.judgementMode.name,
+                            onSelect = { value ->
+                                onJudgementMode(AiJudgementMode.fromId(value))
+                            },
+                        )
+
+                        val ready = snapshot != null && report != null && selectedConfig != null
+                        val learning = session.learningProfile
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 7.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = colors.surfaceSoft,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            ) {
+                                Text(
+                                    text = if (ready) {
+                                        "${snapshot!!.history.takeLast(120).size} 期真实接口历史已准备"
+                                    } else {
+                                        "请先准备开奖历史和完整 AI 配置"
+                                    },
+                                    color = if (ready) colors.green else colors.amber,
+                                    fontSize = 10.sp,
+                                    lineHeight = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "持续学习 ${learning.settled} 期 · 六码 " +
+                                        "${(learning.top6Rate * 100).toInt()}% · 连续未中 " +
+                                        "${learning.missStreak} 期",
+                                    color = if (learning.missStreak >= 3) {
+                                        colors.amber
+                                    } else {
+                                        colors.textSoft
+                                    },
+                                    fontSize = 10.sp,
+                                    lineHeight = 15.sp,
+                                )
+                                if (learning.lastChange.isNotBlank()) {
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        text = learning.lastChange,
+                                        color = colors.textDim,
+                                        fontSize = 10.sp,
+                                        lineHeight = 15.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ContextUsagePill(percent: Int) {
+    val colors = LocalTianjiColors.current
+    val tint = when {
+        percent >= 80 -> colors.amber
+        percent >= 55 -> colors.accent
+        else -> colors.green
+    }
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = tint.copy(alpha = 0.08f),
+    ) {
+        Text(
+            text = "${percent.coerceIn(0, 100)}%",
+            color = tint,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+        )
     }
 }
 
@@ -626,29 +971,55 @@ private fun SelectorRow(
     var expanded by remember { mutableStateOf(false) }
     Box {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(enabled = options.isNotEmpty()) { expanded = true }
-                .padding(vertical = 9.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = options.isNotEmpty()) { expanded = true }
+                .padding(vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, color = colors.textDim, fontSize = 11.sp, modifier = Modifier.width(62.dp))
             Text(
-                value,
+                text = label,
+                color = colors.textDim,
+                fontSize = 11.sp,
+                modifier = Modifier.width(54.dp),
+            )
+            Text(
+                text = value,
                 color = colors.textSoft,
                 fontSize = 12.sp,
+                lineHeight = 17.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            Icon(Icons.Rounded.KeyboardArrowDown, null, tint = colors.textDim, modifier = Modifier.size(18.dp))
+            Icon(
+                imageVector = Icons.Rounded.KeyboardArrowDown,
+                contentDescription = null,
+                tint = colors.textDim,
+                modifier = Modifier.size(18.dp),
+            )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
             options.forEach { (key, text) ->
                 DropdownMenuItem(
                     text = {
-                        Text(text, fontWeight = if (key == selectedKey) FontWeight.Bold else FontWeight.Normal)
+                        Text(
+                            text = text,
+                            fontWeight = if (key == selectedKey) {
+                                FontWeight.Bold
+                            } else {
+                                FontWeight.Normal
+                            },
+                        )
                     },
-                    onClick = { expanded = false; onSelect(key) },
+                    onClick = {
+                        expanded = false
+                        onSelect(key)
+                    },
                 )
             }
         }
@@ -656,42 +1027,100 @@ private fun SelectorRow(
 }
 
 @Composable
-private fun WelcomePanel(persona: AiChatPersona, enabled: Boolean, onPrompt: (String) -> Unit) {
+private fun WelcomePanel(
+    persona: AiChatPersona,
+    enabled: Boolean,
+    onPrompt: (String) -> Unit,
+) {
     val colors = LocalTianjiColors.current
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            modifier = Modifier.size(42.dp).clip(RoundedCornerShape(15.dp))
-                .background(colors.accent.copy(alpha = 0.1f)),
+            modifier = Modifier
+                .size(54.dp)
+                .clip(RoundedCornerShape(19.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            colors.accent.copy(alpha = 0.18f),
+                            colors.accentSoft,
+                        ),
+                    ),
+                )
+                .border(
+                    width = 1.dp,
+                    color = colors.accent.copy(alpha = 0.20f),
+                    shape = RoundedCornerShape(19.dp),
+                ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.AutoAwesome, null, tint = colors.accent, modifier = Modifier.size(20.dp))
+            Icon(
+                imageVector = Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(25.dp),
+            )
         }
-        Spacer(Modifier.height(10.dp))
-        Text("开始分析", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(13.dp))
         Text(
-            "默认独立于本机候选，并根据真实前向结果持续纠偏",
-            color = colors.textDim,
-            fontSize = 9.5.sp,
-            modifier = Modifier.padding(top = 3.dp, bottom = 13.dp),
+            text = "和天机一起分析",
+            color = colors.text,
+            fontSize = 19.sp,
+            lineHeight = 25.sp,
+            fontWeight = FontWeight.ExtraBold,
         )
+        Text(
+            text = "基于真实开奖历史独立分析，并持续记录前向结果",
+            color = colors.textDim,
+            fontSize = 11.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier.padding(top = 5.dp, bottom = 17.dp),
+        )
+
         persona.quickPrompts.take(3).forEach { prompt ->
             Surface(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
                     .clickable(enabled = enabled) { onPrompt(prompt) },
-                shape = RoundedCornerShape(14.dp),
-                color = Color.White.copy(alpha = 0.025f),
+                shape = RoundedCornerShape(17.dp),
+                color = colors.glass,
+                border = BorderStroke(1.dp, colors.line),
             ) {
-                Text(
-                    prompt,
-                    color = if (enabled) colors.textSoft else colors.textDim,
-                    fontSize = 11.5.sp,
-                    lineHeight = 17.sp,
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        tint = if (enabled) colors.accent else colors.textDim,
+                        modifier = Modifier.size(17.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = prompt,
+                        color = if (enabled) colors.textSoft else colors.textDim,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
+        }
+
+        if (!enabled) {
+            Text(
+                text = "请先同步开奖数据并配置可用的 AI 模型",
+                color = colors.amber,
+                fontSize = 10.sp,
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 12.dp),
+            )
         }
     }
 }
@@ -699,6 +1128,7 @@ private fun WelcomePanel(persona: AiChatPersona, enabled: Boolean, onPrompt: (St
 @Composable
 private fun ChatMessageBubble(
     message: AiChatMessage,
+    model: String,
     isStreaming: Boolean,
     canRepeat: Boolean,
     onCopy: () -> Unit,
@@ -706,22 +1136,40 @@ private fun ChatMessageBubble(
     onRepeat: () -> Unit,
 ) {
     val colors = LocalTianjiColors.current
+
     if (message.role == AiChatRole.SYSTEM) {
         SystemEventChip(message.content)
         return
     }
+
     if (message.role == AiChatRole.USER) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.End,
+        ) {
             SelectionContainer {
                 Text(
-                    message.content,
+                    text = message.content,
                     color = colors.text,
                     fontSize = 13.sp,
-                    lineHeight = 19.sp,
-                    modifier = Modifier.widthIn(max = 286.dp)
-                        .clip(RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp))
-                        .background(colors.accent.copy(alpha = 0.13f))
-                        .padding(horizontal = 13.dp, vertical = 10.dp),
+                    lineHeight = 20.sp,
+                    modifier = Modifier
+                        .widthIn(max = 310.dp)
+                        .clip(RoundedCornerShape(19.dp, 19.dp, 7.dp, 19.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    colors.accent.copy(alpha = 0.22f),
+                                    colors.accent.copy(alpha = 0.12f),
+                                ),
+                            ),
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = colors.accent.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(19.dp, 19.dp, 7.dp, 19.dp),
+                        )
+                        .padding(horizontal = 14.dp, vertical = 11.dp),
                 )
             }
             ChatMessageActions(
@@ -730,48 +1178,109 @@ private fun ChatMessageBubble(
                 onCopy = onCopy,
                 onSpeak = onSpeak,
                 onRepeat = onRepeat,
+                alignEnd = true,
             )
         }
         return
     }
 
-    Column(Modifier.fillMaxWidth().animateContentSize()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.AutoAwesome, null, tint = colors.accent, modifier = Modifier.size(13.dp))
-            Spacer(Modifier.width(5.dp))
-            Text("天机", color = colors.accent, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.height(5.dp))
-        val visible = when {
-            message.content.isNotBlank() && isStreaming -> message.content + " ▍"
-            message.content.isNotBlank() -> message.content
-            isStreaming -> "正在思考，等待第一段正文…"
-            else -> ""
-        }
-        SelectionContainer {
-            ChatMarkdownText(
-                text = visible,
-                color = if (message.content.isBlank()) colors.textDim else colors.textSoft,
-                fontSize = 13.5.sp,
-                lineHeight = 21.sp,
-            )
-        }
-        message.latencyMs?.let {
-            Text(
-                "${it / 1_000.0}s",
-                color = colors.textDim,
-                fontSize = 8.5.sp,
-                modifier = Modifier.padding(top = 5.dp),
-            )
-        }
-        if (!isStreaming && message.content.isNotBlank()) {
-            ChatMessageActions(
-                role = message.role,
-                enabled = canRepeat,
-                onCopy = onCopy,
-                onSpeak = onSpeak,
-                onRepeat = onRepeat,
-            )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 8.dp),
+        color = colors.surface,
+        border = BorderStroke(1.dp, colors.line),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.accentSoft),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        tint = colors.accent,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "天机",
+                        color = colors.text,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = model.ifBlank { "AI 分析" },
+                        color = colors.textDim,
+                        fontSize = 9.sp,
+                        lineHeight = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (isStreaming) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(13.dp),
+                            color = colors.accent,
+                            strokeWidth = 1.8.dp,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "生成中",
+                            color = colors.accent,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                } else {
+                    message.latencyMs?.let {
+                        Text(
+                            text = "${it / 1_000.0}s",
+                            color = colors.textDim,
+                            fontSize = 9.sp,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(11.dp))
+
+            val visible = when {
+                message.content.isNotBlank() && isStreaming -> message.content + " ▍"
+                message.content.isNotBlank() -> message.content
+                isStreaming -> "正在整理分析结果…"
+                else -> ""
+            }
+
+            SelectionContainer {
+                ChatMarkdownText(
+                    text = visible,
+                    color = if (message.content.isBlank()) colors.textDim else colors.textSoft,
+                    fontSize = 13.5.sp,
+                    lineHeight = 21.sp,
+                )
+            }
+
+            if (!isStreaming && message.content.isNotBlank()) {
+                ChatMessageActions(
+                    role = message.role,
+                    enabled = canRepeat,
+                    onCopy = onCopy,
+                    onSpeak = onSpeak,
+                    onRepeat = onRepeat,
+                )
+            }
         }
     }
 }
@@ -783,72 +1292,166 @@ private fun ChatMessageActions(
     onCopy: () -> Unit,
     onSpeak: () -> Unit,
     onRepeat: () -> Unit,
+    alignEnd: Boolean = false,
 ) {
     Row(
-        modifier = Modifier.padding(top = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        horizontalArrangement = if (alignEnd) {
+            Arrangement.End
+        } else {
+            Arrangement.Start
+        },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChatMessageAction("复制", true, onCopy)
-        ChatMessageAction("朗读", true, onSpeak)
         ChatMessageAction(
-            if (role == AiChatRole.USER) "再次提问" else "重新回答",
-            enabled,
-            onRepeat,
+            icon = Icons.Rounded.ContentCopy,
+            label = "复制",
+            enabled = true,
+            onClick = onCopy,
+        )
+        Spacer(Modifier.width(4.dp))
+        ChatMessageAction(
+            icon = Icons.Rounded.VolumeUp,
+            label = "朗读",
+            enabled = true,
+            onClick = onSpeak,
+        )
+        Spacer(Modifier.width(4.dp))
+        ChatMessageAction(
+            icon = Icons.Rounded.Replay,
+            label = if (role == AiChatRole.USER) "再次提问" else "重新回答",
+            enabled = enabled,
+            onClick = onRepeat,
         )
     }
 }
 
 @Composable
-private fun ChatMessageAction(label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun ChatMessageAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
     val colors = LocalTianjiColors.current
-    Text(
-        label,
-        color = if (enabled) colors.textDim else colors.textDim.copy(alpha = 0.38f),
-        fontSize = 9.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.clip(RoundedCornerShape(9.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 7.dp, vertical = 4.dp),
-    )
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = Color.Transparent,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (enabled) colors.textDim else colors.textDim.copy(alpha = 0.35f),
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = label,
+                color = if (enabled) colors.textDim else colors.textDim.copy(alpha = 0.35f),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
 }
 
 @Composable
 private fun SystemEventChip(text: String) {
     val colors = LocalTianjiColors.current
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(
-            text,
+            text = text,
             color = colors.textDim,
             fontSize = 10.sp,
             lineHeight = 15.sp,
-            modifier = Modifier.widthIn(max = 350.dp).clip(RoundedCornerShape(12.dp))
-                .background(Color.White.copy(alpha = 0.03f))
-                .padding(horizontal = 11.dp, vertical = 7.dp),
+            modifier = Modifier
+                .widthIn(max = 350.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(colors.surfaceSoft)
+                .border(1.dp, colors.line, RoundedCornerShape(13.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         )
     }
 }
 
 @Composable
-private fun StreamingStatus(progress: String, onCancel: () -> Unit) {
+private fun StreamingStatus(
+    progress: String,
+    onCancel: () -> Unit,
+) {
     val colors = LocalTianjiColors.current
-    Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
-            .background(colors.accent.copy(alpha = 0.055f))
-            .padding(horizontal = 12.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = colors.accent.copy(alpha = 0.06f),
+        border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.14f)),
     ) {
-        CircularProgressIndicator(modifier = Modifier.size(15.dp), color = colors.accent, strokeWidth = 2.dp)
-        Spacer(Modifier.width(9.dp))
-        Text(
-            progress.ifBlank { "正在继续生成…" },
-            color = colors.textDim,
-            fontSize = 10.5.sp,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Rounded.StopCircle, "停止", tint = colors.amber, modifier = Modifier.size(20.dp))
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                color = colors.accent,
+                strokeWidth = 2.dp,
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "天机正在分析",
+                    color = colors.text,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = progress.ifBlank { "正在读取历史并整理回答…" },
+                    color = colors.textDim,
+                    fontSize = 10.sp,
+                    lineHeight = 15.sp,
+                )
+            }
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier.size(34.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.StopCircle,
+                    contentDescription = "停止",
+                    tint = colors.amber,
+                    modifier = Modifier.size(21.dp),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun ErrorMessage(text: String) {
+    val colors = LocalTianjiColors.current
+    Surface(
+        shape = RoundedCornerShape(17.dp),
+        color = colors.red.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, colors.red.copy(alpha = 0.16f)),
+    ) {
+        Text(
+            text = text,
+            color = colors.red,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+        )
     }
 }
 
@@ -858,42 +1461,58 @@ private fun ChatPredictionCard(record: AiChatCandidateRecord) {
     val hit = record.actualNumber?.let { it in record.prediction.top6 }
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(15.dp),
+        shape = RoundedCornerShape(18.dp),
         color = colors.accent.copy(alpha = 0.055f),
+        border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.13f)),
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "第${record.prediction.position + 1}名",
-                    color = colors.accent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    " · 目标期${record.targetPeriod}",
-                    color = colors.textDim,
-                    fontSize = 8.5.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                hit?.let {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        if (it) "命中" else "未中",
-                        color = if (it) colors.green else colors.amber,
-                        fontSize = 8.5.sp,
+                        text = "第${record.prediction.position + 1}名候选",
+                        color = colors.text,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                     )
+                    Text(
+                        text = "目标期 ${record.targetPeriod}",
+                        color = colors.textDim,
+                        fontSize = 9.sp,
+                    )
+                }
+                hit?.let {
+                    Surface(
+                        shape = CircleShape,
+                        color = (if (it) colors.green else colors.amber).copy(alpha = 0.10f),
+                    ) {
+                        Text(
+                            text = if (it) "命中" else "未中",
+                            color = if (it) colors.green else colors.amber,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.height(9.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                record.prediction.top6.forEach { number -> NumberBall(number) }
+            Spacer(Modifier.height(11.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                record.prediction.top6.forEach { number ->
+                    LotteryBall(number = number, size = 32.dp)
+                }
             }
             record.actualNumber?.let { actual ->
                 Text(
-                    "实际号码 $actual · 仅用于本对话复盘",
+                    text = "实际号码 $actual · 仅用于本对话复盘",
                     color = colors.textDim,
-                    fontSize = 8.5.sp,
-                    modifier = Modifier.padding(top = 7.dp),
+                    fontSize = 9.sp,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.padding(top = 9.dp),
                 )
             }
         }
@@ -901,81 +1520,145 @@ private fun ChatPredictionCard(record: AiChatCandidateRecord) {
 }
 
 @Composable
-private fun NumberBall(number: Int) {
-    val colors = LocalTianjiColors.current
-    Box(
-        modifier = Modifier.size(30.dp).clip(CircleShape)
-            .background(colors.accent.copy(alpha = 0.13f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(number.toString(), color = colors.text, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
 private fun ChatComposer(
     input: String,
     onInput: (String) -> Unit,
-    enabled: Boolean,
+    ready: Boolean,
     isRunning: Boolean,
     placeholder: String,
+    suggestions: List<String>,
+    onSuggestion: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
 ) {
     val colors = LocalTianjiColors.current
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = Color.White.copy(alpha = 0.04f),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.header)
+            .border(width = 0.5.dp, color = colors.line)
+            .padding(top = 8.dp, bottom = 7.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(start = 14.dp, top = 8.dp, end = 6.dp, bottom = 7.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            BasicTextField(
-                value = input,
-                onValueChange = onInput,
-                enabled = enabled,
-                modifier = Modifier.weight(1f).padding(bottom = 4.dp),
-                textStyle = TextStyle(color = colors.text, fontSize = 13.sp, lineHeight = 19.sp),
-                cursorBrush = SolidColor(colors.accent),
-                minLines = 1,
-                maxLines = 4,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { if (enabled && input.isNotBlank()) onSend() }),
-                decorationBox = { inner ->
-                    Box {
-                        if (input.isBlank()) {
-                            Text(
-                                placeholder,
-                                color = colors.textDim,
-                                fontSize = 10.5.sp,
-                                lineHeight = 16.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        inner()
-                    }
-                },
-            )
-            Spacer(Modifier.width(7.dp))
-            Button(
-                onClick = if (isRunning) onStop else onSend,
-                enabled = isRunning || (enabled && input.isNotBlank()),
-                modifier = Modifier.size(40.dp),
-                shape = CircleShape,
-                contentPadding = PaddingValues(0.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) colors.amber else colors.accent,
-                ),
+        if (input.isBlank() && !isRunning && ready && suggestions.isNotEmpty()) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Icon(
-                    if (isRunning) Icons.Rounded.StopCircle else Icons.AutoMirrored.Rounded.Send,
-                    if (isRunning) "停止" else "发送",
-                    tint = Color.White,
-                    modifier = Modifier.size(19.dp),
+                items(suggestions) { suggestion ->
+                    Surface(
+                        modifier = Modifier.clickable { onSuggestion(suggestion) },
+                        shape = CircleShape,
+                        color = colors.surfaceSoft,
+                        border = BorderStroke(1.dp, colors.line),
+                    ) {
+                        Text(
+                            text = suggestion,
+                            color = colors.textDim,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .widthIn(max = 220.dp)
+                                .padding(horizontal = 11.dp, vertical = 7.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            shape = RoundedCornerShape(21.dp),
+            color = colors.glass,
+            border = BorderStroke(1.dp, colors.lineStrong),
+        ) {
+            Row(
+                modifier = Modifier.padding(
+                    start = 14.dp,
+                    top = 8.dp,
+                    end = 7.dp,
+                    bottom = 8.dp,
+                ),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                BasicTextField(
+                    value = input,
+                    onValueChange = onInput,
+                    enabled = ready,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(bottom = 4.dp),
+                    textStyle = TextStyle(
+                        color = colors.text,
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
+                    ),
+                    cursorBrush = SolidColor(colors.accent),
+                    minLines = 1,
+                    maxLines = 6,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (ready && !isRunning && input.isNotBlank()) onSend()
+                        },
+                    ),
+                    decorationBox = { inner ->
+                        Box {
+                            if (input.isBlank()) {
+                                Text(
+                                    text = when {
+                                        !ready -> "请先同步数据并配置 AI"
+                                        isRunning -> "可先输入下一条问题，生成结束后发送"
+                                        else -> placeholder
+                                    },
+                                    color = colors.textDim,
+                                    fontSize = 11.sp,
+                                    lineHeight = 16.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            inner()
+                        }
+                    },
                 )
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clickable(
+                            enabled = isRunning || (ready && input.isNotBlank()),
+                            onClick = if (isRunning) onStop else onSend,
+                        ),
+                    shape = CircleShape,
+                    color = when {
+                        isRunning -> colors.amber
+                        ready && input.isNotBlank() -> colors.accent
+                        else -> colors.surfaceSoft
+                    },
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isRunning) {
+                                Icons.Rounded.StopCircle
+                            } else {
+                                Icons.AutoMirrored.Rounded.Send
+                            },
+                            contentDescription = if (isRunning) "停止" else "发送",
+                            tint = if (
+                                isRunning || (ready && input.isNotBlank())
+                            ) {
+                                Color.White
+                            } else {
+                                colors.textDim
+                            },
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -991,63 +1674,133 @@ private fun ConversationHistoryDialog(
     val colors = LocalTianjiColors.current
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 660.dp),
-            shape = RoundedCornerShape(26.dp),
-            color = colors.page,
-            border = androidx.compose.foundation.BorderStroke(1.dp, colors.line),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 680.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = colors.surfaceStrong,
+            border = BorderStroke(1.dp, colors.lineStrong),
         ) {
-            Column(Modifier.padding(18.dp)) {
+            Column(modifier = Modifier.padding(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("对话历史", color = colors.text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                        Text("重新打开后可继续聊天", color = colors.textDim, fontSize = 10.5.sp)
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(colors.accentSoft),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.History,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(20.dp),
+                        )
                     }
-                    IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "关闭", tint = colors.textSoft) }
+                    Spacer(Modifier.width(11.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "对话历史",
+                            color = colors.text,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "打开后可继续追问和复盘",
+                            color = colors.textDim,
+                            fontSize = 10.sp,
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "关闭",
+                            tint = colors.textSoft,
+                        )
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(items.sortedByDescending(AiChatArchiveSummary::updatedAtEpochMs), key = AiChatArchiveSummary::id) { item ->
+
+                Spacer(Modifier.height(14.dp))
+
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    items(
+                        items = items.sortedByDescending(
+                            AiChatArchiveSummary::updatedAtEpochMs,
+                        ),
+                        key = AiChatArchiveSummary::id,
+                    ) { item ->
                         Surface(
-                            modifier = Modifier.fillMaxWidth().clickable { onOpen(item.id) },
-                            shape = RoundedCornerShape(17.dp),
-                            color = if (item.id == currentId) colors.accent.copy(alpha = 0.09f)
-                                else Color.White.copy(alpha = 0.03f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpen(item.id) },
+                            shape = RoundedCornerShape(18.dp),
+                            color = if (item.id == currentId) {
+                                colors.accent.copy(alpha = 0.10f)
+                            } else {
+                                colors.surface
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (item.id == currentId) {
+                                    colors.accent.copy(alpha = 0.20f)
+                                } else {
+                                    colors.line
+                                },
+                            ),
                         ) {
-                            Column(Modifier.padding(13.dp)) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        item.title,
+                                        text = item.title,
                                         color = colors.text,
-                                        fontSize = 13.5.sp,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    Text(formatTime(item.updatedAtEpochMs), color = colors.textDim, fontSize = 9.sp)
+                                    Text(
+                                        text = formatTime(item.updatedAtEpochMs),
+                                        color = colors.textDim,
+                                        fontSize = 9.sp,
+                                    )
                                 }
                                 Text(
-                                    "${item.model} · ${item.messageCount}条 · 目标期${item.targetPeriod.ifBlank { "待同步" }}",
+                                    text = "${item.model} · ${item.messageCount} 条 · " +
+                                        "目标期 ${item.targetPeriod.ifBlank { "待同步" }}",
                                     color = colors.accent,
-                                    fontSize = 9.5.sp,
+                                    fontSize = 9.sp,
+                                    lineHeight = 14.sp,
                                     modifier = Modifier.padding(top = 4.dp),
                                 )
                                 if (item.preview.isNotBlank()) {
                                     Text(
-                                        item.preview,
+                                        text = item.preview,
                                         color = colors.textDim,
-                                        fontSize = 10.5.sp,
+                                        fontSize = 10.sp,
                                         lineHeight = 15.sp,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 5.dp),
+                                        modifier = Modifier.padding(top = 6.dp),
                                     )
                                 }
                             }
                         }
                     }
+
                     if (items.isEmpty()) {
-                        item { Text("暂无对话", color = colors.textDim, modifier = Modifier.padding(24.dp)) }
+                        item {
+                            Text(
+                                text = "暂无对话记录",
+                                color = colors.textDim,
+                                modifier = Modifier.padding(24.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -1065,24 +1818,34 @@ private fun NewConversationDialog(
     val colors = LocalTianjiColors.current
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(26.dp),
-            color = colors.page,
-            border = androidx.compose.foundation.BorderStroke(1.dp, colors.line),
+            shape = RoundedCornerShape(28.dp),
+            color = colors.surfaceStrong,
+            border = BorderStroke(1.dp, colors.lineStrong),
         ) {
-            Column(Modifier.padding(20.dp)) {
-                Text("新建对话", color = colors.text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    "空白开始，或只继承策略摘要与复盘结论。",
-                    color = colors.textDim,
-                    fontSize = 10.5.sp,
-                    modifier = Modifier.padding(top = 5.dp, bottom = 14.dp),
+                    text = "新建对话",
+                    color = colors.text,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
                 )
-                ChoiceCard("空白新对话", "不带入任何旧上下文", onBlank)
+                Text(
+                    text = "选择从零开始，或只继承策略摘要与复盘结论。",
+                    color = colors.textDim,
+                    fontSize = 11.sp,
+                    lineHeight = 17.sp,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 15.dp),
+                )
+                ChoiceCard(
+                    title = "空白新对话",
+                    subtitle = "不带入任何旧上下文",
+                    onClick = onBlank,
+                )
                 Spacer(Modifier.height(9.dp))
                 ChoiceCard(
-                    "继承策略继续",
-                    "保留明确调整要求、近期候选与开奖复盘",
-                    onContinue,
+                    title = "继承策略继续",
+                    subtitle = "保留明确调整要求、近期候选与开奖复盘",
+                    onClick = onContinue,
                     enabled = hasHistory,
                 )
             }
@@ -1091,27 +1854,58 @@ private fun NewConversationDialog(
 }
 
 @Composable
-private fun ChoiceCard(title: String, subtitle: String, onClick: () -> Unit, enabled: Boolean = true) {
+private fun ChoiceCard(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
     val colors = LocalTianjiColors.current
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(17.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
         color = colors.accent.copy(alpha = if (enabled) 0.075f else 0.025f),
+        border = BorderStroke(
+            1.dp,
+            if (enabled) colors.accent.copy(alpha = 0.13f) else colors.line,
+        ),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(
-                title,
-                color = if (enabled) colors.text else colors.textDim,
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                subtitle,
-                color = colors.textDim,
-                fontSize = 10.sp,
-                lineHeight = 15.sp,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(colors.accentSoft),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = null,
+                    tint = if (enabled) colors.accent else colors.textDim,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Column {
+                Text(
+                    text = title,
+                    color = if (enabled) colors.text else colors.textDim,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = subtitle,
+                    color = colors.textDim,
+                    fontSize = 10.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
         }
     }
 }
