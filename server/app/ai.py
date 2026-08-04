@@ -84,7 +84,7 @@ def _response_text(payload: dict[str, Any]) -> str:
                     parts.append(part["text"])
         if parts:
             return "\n".join(parts)
-    raise ValueError("AI 接口没有返回正文")
+    return ""
 
 
 def _headers(config: RuntimeAiConfig) -> dict[str, str]:
@@ -103,6 +103,35 @@ def _models_endpoint(endpoint: str) -> str:
     if value.endswith("/v1"):
         return value + "/models"
     return value + "/models"
+
+
+def _is_official_deepseek(config: RuntimeAiConfig) -> bool:
+    endpoint = config.endpoint.lower()
+    return "api.deepseek.com" in endpoint and config.model.lower().startswith("deepseek-")
+
+
+def _deepseek_fast_mode(body: dict[str, Any], *, max_tokens: int) -> dict[str, Any]:
+    """DeepSeek V4 默认开启思考；短测试和限时 JSON 任务显式关闭思考。"""
+    result = dict(body)
+    result["thinking"] = {"type": "disabled"}
+    result["max_tokens"] = max_tokens
+    result.pop("reasoning_effort", None)
+    return result
+
+
+def _post_json(
+    client: httpx.Client,
+    *,
+    endpoint: str,
+    headers: dict[str, str],
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    response = client.post(endpoint, headers=headers, json=body)
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("AI 接口返回格式异常")
+    return payload
 
 
 def discover_models(config: RuntimeAiConfig | None = None) -> AiConnectionResult:
@@ -138,7 +167,7 @@ def discover_models(config: RuntimeAiConfig | None = None) -> AiConnectionResult
 
 
 def test_connection(config: RuntimeAiConfig | None = None) -> AiConnectionResult:
-    """真实调用当前模型，而不是只验证 /models 列表接口。"""
+    """真实调用当前模型，并确保能返回最终正文。"""
     active = config or load_ai_config()
     if not active.complete:
         raise RuntimeError("请先完整配置 HTTPS 接口、模型和 API Key")
@@ -157,7 +186,7 @@ def test_connection(config: RuntimeAiConfig | None = None) -> AiConnectionResult
         body: dict[str, Any] = {
             "model": active.model,
             "input": "只回复：OK",
-            "max_output_tokens": 16,
+            "max_output_tokens": 64,
         }
     else:
         body = {
@@ -165,22 +194,37 @@ def test_connection(config: RuntimeAiConfig | None = None) -> AiConnectionResult
             "messages": [{"role": "user", "content": "只回复：OK"}],
             "temperature": 0,
             "stream": False,
-            "max_tokens": 16,
+            "max_tokens": 64,
         }
+        if _is_official_deepseek(active):
+            body = _deepseek_fast_mode(body, max_tokens=64)
 
     started = time.monotonic()
     with httpx.Client(
         timeout=httpx.Timeout(min(active.timeout_seconds, 60), connect=10.0),
         follow_redirects=True,
     ) as client:
-        response = client.post(active.endpoint, headers=_headers(active), json=body)
-        response.raise_for_status()
-        payload = response.json()
-    if not isinstance(payload, dict):
-        raise ValueError("AI 接口返回格式异常")
-    text = _response_text(payload).strip()
+        payload = _post_json(
+            client,
+            endpoint=active.endpoint,
+            headers=_headers(active),
+            body=body,
+        )
+        text = _response_text(payload).strip()
+        if not text and not is_responses:
+            retry_body = dict(body)
+            retry_body["max_tokens"] = 256
+            if _is_official_deepseek(active):
+                retry_body = _deepseek_fast_mode(retry_body, max_tokens=256)
+            payload = _post_json(
+                client,
+                endpoint=active.endpoint,
+                headers=_headers(active),
+                body=retry_body,
+            )
+            text = _response_text(payload).strip()
     if not text:
-        raise ValueError("模型调用成功但没有返回正文")
+        raise ValueError("模型接口已响应，但最终回答为空；系统已关闭思考模式并自动重试，仍未获得正文")
     latency_ms = int((time.monotonic() - started) * 1000)
     return AiConnectionResult(
         latency_ms=latency_ms,
@@ -240,7 +284,10 @@ def analyze(
             "temperature": 0.15,
             "stream": False,
             "response_format": {"type": "json_object"},
+            "max_tokens": 900,
         }
+        if _is_official_deepseek(active):
+            body = _deepseek_fast_mode(body, max_tokens=900)
 
     started = time.monotonic()
     with httpx.Client(
@@ -249,14 +296,41 @@ def analyze(
     ) as client:
         response = client.post(endpoint, headers=_headers(active), json=body)
         if response.status_code >= 400 and not is_responses and "response_format" in body:
-            body.pop("response_format", None)
-            response = client.post(endpoint, headers=_headers(active), json=body)
+            retry_body = dict(body)
+            retry_body.pop("response_format", None)
+            response = client.post(endpoint, headers=_headers(active), json=retry_body)
         response.raise_for_status()
         payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("AI 返回格式异常")
+        text = _response_text(payload).strip()
+
+        # DeepSeek 官方说明 JSON Output 偶尔可能返回空正文。
+        # 空正文时自动去掉 response_format 再请求一次，仍要求只输出 JSON。
+        if not text and not is_responses:
+            retry_body = dict(body)
+            retry_body.pop("response_format", None)
+            retry_messages = list(retry_body.get("messages") or [])
+            retry_messages.append(
+                {
+                    "role": "user",
+                    "content": "上一次返回为空。请立即只返回一行完整 JSON，不要解释，不要留空。",
+                }
+            )
+            retry_body["messages"] = retry_messages
+            if _is_official_deepseek(active):
+                retry_body = _deepseek_fast_mode(retry_body, max_tokens=1200)
+            retry_payload = _post_json(
+                client,
+                endpoint=endpoint,
+                headers=_headers(active),
+                body=retry_body,
+            )
+            text = _response_text(retry_payload).strip()
     latency_ms = int((time.monotonic() - started) * 1000)
-    if not isinstance(payload, dict):
-        raise ValueError("AI 返回格式异常")
-    result = _extract_json(_response_text(payload))
+    if not text:
+        raise ValueError("模型接口已响应，但预测正文为空；系统已关闭思考模式并自动重试，仍未获得结果")
+    result = _extract_json(text)
     position = int(result.get("position", 0)) - 1
     if position not in range(10):
         raise ValueError("AI 返回的名次无效")
