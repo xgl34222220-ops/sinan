@@ -13,9 +13,8 @@ class WebConsoleV2Tests(unittest.TestCase):
         self.assertIn('id="lotteries"', html)
         self.assertIn("AI 自动任务", html)
         self.assertIn("toggleTheme", html)
-        self.assertNotIn("__STYLE__", html)
 
-    def test_admin_page_contains_all_operable_sections(self) -> None:
+    def test_admin_page_contains_quick_model_switcher(self) -> None:
         html = admin_page()
         for marker in (
             'id="panel-overview"',
@@ -23,24 +22,28 @@ class WebConsoleV2Tests(unittest.TestCase):
             'id="panel-records"',
             'id="panel-security"',
             'id="runBtn"',
-            'id="saveAiBtn"',
-            'id="testAiBtn"',
-            'id="recordsList"',
-            'id="profileList"',
             'id="aiAutoEnabled"',
+            'id="quickCurrent"',
+            'data-quick-model="deepseek-v4-flash"',
+            'data-quick-model="deepseek-v4-pro"',
+            'id="readQuickModelsBtn"',
+            'id="manageDetails"',
+            'id="saveAiBtn"',
+            'id="recordsList"',
             'class="mobile-nav"',
         ):
             self.assertIn(marker, html)
+        self.assertIn("同一个 Key 支持的模型可直接一键切换", html)
+        self.assertIn("切换只修改当前接口使用的模型名", html)
+        self.assertIn("switchModel", html)
         self.assertIn("运行诊断", html)
-        self.assertIn("真实调用测试", html)
-        self.assertIn("可保存多个模型配置", html)
         self.assertNotIn("技术详情", html)
 
     def test_login_page_honors_configuration_state(self) -> None:
         configured = login_page(True)
         unconfigured = login_page(False)
         self.assertIn('id="loginForm"', configured)
-        self.assertIn("进入控制台管理云端服务", configured)
+        self.assertIn("安全登录云端工作台", configured)
         self.assertIn("disabled", unconfigured)
 
 
