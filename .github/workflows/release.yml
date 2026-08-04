@@ -108,6 +108,14 @@ jobs:
           printf 'TIANJI_KEY_PASSWORD=%s\n' "$KEY_PASSWORD" >> "$GITHUB_ENV"
           printf 'CERT_SHA256=%s\n' "$CERT_SHA256" >> "$GITHUB_ENV"
 
+      - name: Preserve private signing backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tianji-v5.8.0-nativev6-signing-backup
+          path: signing-backup/Tianji-v5.8.0-nativev6-signing-backup.zip
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Test and build signed release APK
         shell: bash
         run: |
@@ -119,19 +127,32 @@ jobs:
           mkdir -p dist
           APK="dist/Tianji-v${VERSION}-nativev6-release.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+
+      - name: Verify signed release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="dist/Tianji-v${VERSION}-nativev6-release.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" \
-            verify --verbose --print-certs "$APK" | tee dist/APK_VERIFY.txt
+            verify --verbose --print-certs "$APK" > dist/APK_VERIFY.txt
+          cat dist/APK_VERIFY.txt
           grep -q 'Verified using v2 scheme.*true' dist/APK_VERIFY.txt
           grep -q 'Verified using v3 scheme.*true' dist/APK_VERIFY.txt
-          grep -qi "$CERT_SHA256" dist/APK_VERIFY.txt
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" \
-            | head -n 5 | tee dist/APK_BADGING.txt
+          APK_CERT_SHA256="$(
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' dist/APK_VERIFY.txt \
+              | head -n1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]'
+          )"
+          test -n "$APK_CERT_SHA256"
+          test "$APK_CERT_SHA256" = "$CERT_SHA256"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > dist/APK_BADGING.txt
+          head -n 5 dist/APK_BADGING.txt
           grep -q "package: name='$APP_ID'" dist/APK_BADGING.txt
           grep -q "versionCode='$VERSION_CODE'" dist/APK_BADGING.txt
           grep -q "versionName='$VERSION'" dist/APK_BADGING.txt
           printf '%s\n' "$CERT_SHA256" > dist/SIGNING_CERT_SHA256.txt
           sha256sum "$APK" > "dist/Tianji-v${VERSION}-nativev6-SHA256.txt"
-          unzip -t "$APK" >/dev/null
 
       - name: Create release tag
         shell: bash
@@ -160,14 +181,6 @@ jobs:
               --notes-file "$NOTES" \
               dist/*
           fi
-
-      - name: Upload private signing backup temporarily
-        uses: actions/upload-artifact@v4
-        with:
-          name: Tianji-v5.8.0-nativev6-signing-backup
-          path: signing-backup/Tianji-v5.8.0-nativev6-signing-backup.zip
-          if-no-files-found: error
-          retention-days: 1
 
       - name: Upload verified release artifacts
         uses: actions/upload-artifact@v4
