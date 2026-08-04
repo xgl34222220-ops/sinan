@@ -1,0 +1,9 @@
+status=success
+release=v5.7.2
+package_name=com.tianji.probabilitylab.nativev5
+signing_key_artifact_id=8880536983
+recovery_password_artifact_id=8880537212
+apk_artifact_id=8880537524
+github_temporary_artifacts_deleted=true
+private_session_backup_retained=true
+cleaned_at=2026-08-04T04:58:02Z
