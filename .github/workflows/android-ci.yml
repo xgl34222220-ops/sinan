@@ -56,11 +56,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ci-signing-tools/lib
+          mkdir -p ci-signing-tools/lib ci-signing-tools/lib64
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" ci-signing-tools/
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" ci-signing-tools/
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" ci-signing-tools/
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" ci-signing-tools/lib/
+          LIBCPP="$(find "$ANDROID_SDK_ROOT" -type f -name 'libc++.so' | head -n 1)"
+          test -n "$LIBCPP"
+          cp "$LIBCPP" ci-signing-tools/lib64/libc++.so
           chmod +x ci-signing-tools/apksigner ci-signing-tools/zipalign ci-signing-tools/aapt
 
       - name: Upload APKs, tools and reports
