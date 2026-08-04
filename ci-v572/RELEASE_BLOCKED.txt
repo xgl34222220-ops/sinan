@@ -1,0 +1,14 @@
+status=blocked
+version_name=5.7.2
+version_code=39
+source_sha=e193dd90e842cee831f137a3cf6bc2a3b81d8630
+expected_signing_cert_sha256=5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed
+release_published=false
+tag_rolled_back=true
+signing_secrets_available=false
+original_backup_artifact_id=8842385591
+original_backup_artifact_expired=true
+non_expired_matching_backup_found=false
+file_library_backup_found=false
+reason=original Android signing private key is unavailable; publishing with another key would break upgrade compatibility
+required_input=Tianji-v5.5.5-signing-backup-PRIVATE.zip or tianji-release-v5.5.5.jks plus SIGNING-CREDENTIALS.txt

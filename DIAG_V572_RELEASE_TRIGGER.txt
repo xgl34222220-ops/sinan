@@ -1,3 +1,0 @@
-requested_at=2026-08-04T04:05:00Z
-retry=7
-purpose=scan_all_artifact_pages_for_original_signing_backup

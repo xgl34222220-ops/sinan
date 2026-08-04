@@ -1,3 +1,0 @@
-version=5.7.2
-requested_at=2026-08-04T04:10:00Z
-reason=original_signing_private_key_unavailable

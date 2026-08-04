@@ -1,4 +1,0 @@
-version=5.7.2
-version_code=39
-requested_at=2026-08-04T03:46:16Z
-signing_cert_sha256=5f55572fa29f204edac1886aa71ec48cdbe59bd6ace90a49bef1cb090fff66ed

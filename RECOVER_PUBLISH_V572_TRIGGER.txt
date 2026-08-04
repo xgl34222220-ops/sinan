@@ -1,6 +1,0 @@
-version=5.7.2
-version_code=39
-tag=v5.7.2
-requested_at=2026-08-04T03:59:00Z
-retry=2
-signing_source=protected_artifact_8842385591
