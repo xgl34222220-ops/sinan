@@ -22,7 +22,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.tianji.probabilitylab.nativev4"
+        applicationId = "com.tianji.probabilitylab.nativev5"
         minSdk = 26
         targetSdk = 36
         versionCode = 39
