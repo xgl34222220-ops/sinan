@@ -4,7 +4,7 @@
 
 ## 当前版本
 
-- 版本：5.7.0 云端持续运行版
+- 版本：5.7.1 AI 真独立与三专家正式版
 - Android：原生 Kotlin + Jetpack Compose
 - 服务端：FastAPI + SQLite WAL + Docker Compose + Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
@@ -68,6 +68,14 @@ GET /v1/forecasts/{lottery}
 POST /v1/admin/run
 Authorization: Bearer <TIANJI_API_TOKEN>
 ```
+
+## v5.7.1 主要变化
+
+- 正式 AI 只接收真实原始开奖历史，不再注入本机选择名次、候选、概率矩阵或预计算统计。
+- 独立对话不再默认使用本机模型选中的名次；只有主动选择“参考本机”或“反向审计”时才传入本机信息。
+- 十个高度重叠的人设收敛为“大数据规律、走势分析、综合预测”三个专业角色。
+- 旧人设 ID 自动迁移到最接近的新角色，历史会话继续可用。
+- 保留 v5.7.0 云端持续运行、本地降级、管理后台、目标期校验和异步云端 AI 修复。
 
 ## v5.7.0 主要变化
 
