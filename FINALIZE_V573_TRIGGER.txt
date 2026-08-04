@@ -1,0 +1,8 @@
+version=5.7.3
+version_code=40
+package_name=com.tianji.probabilitylab.nativev5
+app_name=天机
+clean_source_sha=a97074f3bfc233b149b8e5ee26d461eee319043b
+expected_apk_sha256=2b4aef83ef2c06f82a850179020121dcde12f5a6111e814c0173f70d36991e1d
+attempt=final
+requested_at=2026-08-04T06:12:00Z
