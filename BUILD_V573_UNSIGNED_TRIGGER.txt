@@ -1,5 +1,0 @@
-version=5.7.3
-version_code=40
-package_name=com.tianji.probabilitylab.nativev5
-app_name=天机
-requested_at=2026-08-04T05:30:31Z
