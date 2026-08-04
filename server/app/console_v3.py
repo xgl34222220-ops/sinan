@@ -3,6 +3,9 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from . import web_console as _web_console
+from .public_v4 import enhance_public_html
+
 
 FILTER_PATCH = r"""
 (()=>{
@@ -54,3 +57,18 @@ def enhance_console_html(value: str) -> str:
     else:
         value += script
     return value
+
+
+def _install_public_page_v4() -> None:
+    original = _web_console.public_page
+    if getattr(original, "_tianji_public_v4", False):
+        return
+
+    def public_page_v4() -> str:
+        return enhance_public_html(original())
+
+    setattr(public_page_v4, "_tianji_public_v4", True)
+    _web_console.public_page = public_page_v4
+
+
+_install_public_page_v4()
