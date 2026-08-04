@@ -1,6 +1,0 @@
-version=5.7.2
-version_code=39
-package_name=com.tianji.probabilitylab.nativev5
-requested_at=2026-08-04T04:29:27Z
-retry=2
-source_sha=1a19b17dd361e4fc2fc4a0347bc2322c844d7ee4
