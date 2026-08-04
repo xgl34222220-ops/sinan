@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch-and-verify:
-    if: github.event.head_commit.message == 'ci: run Android AI v5.7.2 hotfix verification'
+    if: ${{ github.event.head_commit.message == 'ci: run Android AI v5.7.2 hotfix verification' }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
