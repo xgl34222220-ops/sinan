@@ -1,0 +1,40 @@
+name: Delete Tianji v5.7.3 diagnostic branch
+
+on:
+  push:
+    branches: [main]
+    paths: [DELETE_V573_DIAGNOSTIC_BRANCH_TRIGGER.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Delete temporary branch and record result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git push origin --delete tmp/observe-v573-final || true
+          BRANCHES="$(git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}' | sort)"
+          test "$BRANCHES" = 'main'
+          git pull --rebase origin main
+          mkdir -p ci-v573
+          cat > ci-v573/TEMP_BRANCH_DELETED.txt <<EOF
+          status=success
+          branches_remaining=main
+          completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          git add ci-v573/TEMP_BRANCH_DELETED.txt
+          git commit -m 'chore: confirm only main branch remains [skip ci]'
+          git push origin HEAD:main
