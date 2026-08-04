@@ -885,7 +885,7 @@ private class RemoteAiChatClient {
         }
 
         onProgress("正在连接 ${config.displayName} · ${persona.displayName}…")
-        val response = try {
+        var response = try {
             runRequest(decision)
         } catch (cause: AiChatProtocolRejectedException) {
             if (!decision.sendControl) throw cause
@@ -895,8 +895,93 @@ private class RemoteAiChatClient {
                 decision.copy(sendControl = false, enableThinking = false, effort = null),
             )
         }
-        val rawContent = extractContent(response)
-        require(rawContent.isNotBlank()) { "模型没有返回可显示的回答" }
+        var rawContent = extractContent(response)
+        if (rawContent.isBlank()) {
+            val hadReasoning = extractReasoning(response).isNotBlank()
+            publisher.reset()
+            onProgress(
+                if (hadReasoning) {
+                    "模型只返回了思考流，正在用同一模型关闭额外思考并生成最终正文…"
+                } else {
+                    "流式接口没有返回正文，正在切换同一模型的普通兼容输出…"
+                },
+            )
+            val finalizationDecision = when (decision.protocol) {
+                AiReasoningProtocol.DEEPSEEK,
+                AiReasoningProtocol.OPENROUTER,
+                AiReasoningProtocol.ENABLE_THINKING,
+                -> decision.copy(
+                    sendControl = true,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "${decision.protocol.label} · 对话正文收口",
+                )
+                AiReasoningProtocol.OPENAI,
+                AiReasoningProtocol.AUTO,
+                AiReasoningProtocol.NONE,
+                -> decision.copy(
+                    sendControl = false,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "对话正文收口",
+                )
+            }
+            val finalizationMessages = JSONArray(messages.toString()).apply {
+                put(
+                    JSONObject()
+                        .put("role", "user")
+                        .put(
+                            "content",
+                            if (wantsPrediction) {
+                                "上一请求没有产生最终正文。请立即基于同一份原始历史完成回答，不要输出思考过程，并按原要求在正文后追加完整 tianji_forecast。"
+                            } else {
+                                "上一请求没有产生最终正文。请立即基于同一上下文给出简体中文最终回答，不要输出思考过程。"
+                            },
+                        ),
+                )
+            }
+            response = try {
+                execute(
+                    endpoint = endpoint,
+                    config = config,
+                    request = requestBody(
+                        config = config,
+                        responsesApi = responsesApi,
+                        messages = finalizationMessages,
+                        decision = finalizationDecision,
+                        stream = false,
+                        wantsPrediction = wantsPrediction,
+                    ),
+                    timeoutMs = 45_000,
+                    onProgress = onProgress,
+                    publisher = publisher,
+                )
+            } catch (cause: AiChatProtocolRejectedException) {
+                execute(
+                    endpoint = endpoint,
+                    config = config,
+                    request = requestBody(
+                        config = config,
+                        responsesApi = responsesApi,
+                        messages = finalizationMessages,
+                        decision = finalizationDecision.copy(sendControl = false),
+                        stream = false,
+                        wantsPrediction = wantsPrediction,
+                    ),
+                    timeoutMs = 45_000,
+                    onProgress = onProgress,
+                    publisher = publisher,
+                )
+            }
+            rawContent = extractContent(response)
+        }
+        require(rawContent.isNotBlank()) {
+            if (extractReasoning(response).isNotBlank()) {
+                "模型只返回了思考过程；关闭思考收口后仍没有最终正文"
+            } else {
+                "模型接口已响应，但流式与普通输出均没有返回正文"
+            }
+        }
         val prediction = if (wantsPrediction) AiChatProtocol.parsePrediction(rawContent) else null
         val content = AiChatProtocol.visibleText(rawContent, prediction != null)
         publisher.finish(content)
@@ -1007,7 +1092,13 @@ private class RemoteAiChatClient {
         put("model", config.model.trim())
         put("stream", stream)
         if (config.provider != AiProvider.COMPATIBLE) {
-            put(if (responsesApi) "max_output_tokens" else "max_tokens", if (wantsPrediction) 4096 else 2048)
+            val outputBudget = when {
+                decision.expectsReasoning && wantsPrediction -> 8_192
+                decision.expectsReasoning -> 6_144
+                wantsPrediction -> 4_096
+                else -> 2_048
+            }
+            put(if (responsesApi) "max_output_tokens" else "max_tokens", outputBudget)
         }
         if (responsesApi) {
             put("store", false)
@@ -1250,9 +1341,16 @@ private class RemoteAiChatClient {
             extractTextNode(delta?.opt("content"))
                 .takeIf(String::isNotEmpty)
                 ?.let(::appendVisible)
-            extractTextNode(delta?.opt("reasoning_content"))
-                .takeIf(String::isNotEmpty)
-                ?.let(reasoning::append)
+            listOf("reasoning_content", "reasoning", "thinking").forEach { key ->
+                extractTextNode(delta?.opt(key))
+                    .takeIf(String::isNotEmpty)
+                    ?.let(reasoning::append)
+            }
+            listOf("reasoning_content", "reasoning", "thinking").forEach { key ->
+                extractTextNode(root.opt(key))
+                    .takeIf(String::isNotEmpty)
+                    ?.let(reasoning::append)
+            }
             if (rawContent.isEmpty()) {
                 val message = choice?.optJSONObject("message")
                 extractTextNode(message?.opt("content"))
@@ -1287,9 +1385,8 @@ private class RemoteAiChatClient {
             streamFailure = cause
         }
         publisher.flush()
-        if (rawContent.isBlank()) {
+        if (rawContent.isBlank() && reasoning.isBlank()) {
             streamFailure?.let { throw it }
-            error("模型没有返回可显示的流式回答")
         }
         return JSONObject()
             .put("id", responseId)

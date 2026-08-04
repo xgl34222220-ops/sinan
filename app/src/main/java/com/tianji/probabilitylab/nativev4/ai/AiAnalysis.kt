@@ -689,11 +689,49 @@ class RemoteAiAnalyzer(context: Context) {
         }
         primary.getOrNull()?.let { return it }
         val firstFailure = primary.exceptionOrNull() ?: error("AI 分析失败")
+        if (isRetriableModelOutput(firstFailure)) {
+            val finalizationDecision = when (primaryDecision.protocol) {
+                AiReasoningProtocol.DEEPSEEK,
+                AiReasoningProtocol.OPENROUTER,
+                AiReasoningProtocol.ENABLE_THINKING,
+                -> primaryDecision.copy(
+                    sendControl = true,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "${primaryDecision.protocol.label} · 同模型限时核心收口",
+                )
+                AiReasoningProtocol.OPENAI,
+                AiReasoningProtocol.AUTO,
+                AiReasoningProtocol.NONE,
+                -> primaryDecision.copy(
+                    sendControl = false,
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "同模型限时核心收口",
+                )
+            }
+            val finalizationTimeoutMs = if (config.analysisMode == AiAnalysisMode.DEEP) 35_000 else 25_000
+            onProgress(
+                "首次请求没有按时生成完整矩阵；正在用同一模型、同一份原始历史关闭额外思考并收口一次",
+                System.currentTimeMillis() - started,
+            )
+            return runCatching {
+                execute(
+                    reasoningDecision = finalizationDecision,
+                    readTimeoutMs = finalizationTimeoutMs,
+                    executionNote = "${config.analysisMode.label} · 同模型限时核心收口",
+                    fallback = true,
+                    prompt = userPrompt,
+                )
+            }.getOrElse { finalFailure ->
+                error(
+                    "首次分析失败（${firstFailure.message.orEmpty().take(90)}）；" +
+                        "同模型关闭额外思考收口仍失败（${finalFailure.message.orEmpty().take(90)}）",
+                )
+            }
+        }
         val reasoningControlFailure = isReasoningControlFailure(firstFailure, primaryDecision)
         if (!reasoningControlFailure) {
-            // Partial output is already continued inside execute(). Transport timeouts, broken
-            // streams and invalid model output must remain visible instead of silently starting a
-            // second full 60/120-period analysis.
             throw firstFailure
         }
         onProgress(
@@ -742,6 +780,22 @@ class RemoteAiAnalyzer(context: Context) {
         val responsesApi = endpoint.path.trimEnd('/').endsWith("/responses")
         var useStreaming = streamResponse && !responsesApi
         val tokenBudget = AiTokenPolicy.resolve(config, responsesApi)
+        val effectiveTokenBudget = if (
+            streamResponse && jsonOutput && config.provider != AiProvider.COMPATIBLE
+        ) {
+            AiTokenBudget(
+                parameter = tokenBudget.parameter
+                    ?: if (responsesApi) "max_output_tokens" else "max_tokens",
+                value = if (reasoningDecision.preference == AiReasoningMode.HIGH) 8_192 else 4_096,
+                label = if (reasoningDecision.preference == AiReasoningMode.HIGH) {
+                    "正式预测核心输出预算 8192 tokens · 完整矩阵到达即结束"
+                } else {
+                    "正式预测核心输出预算 4096 tokens · 完整矩阵到达即结束"
+                },
+            )
+        } else {
+            tokenBudget
+        }
 
         fun conversationMessages(includeReasoning: Boolean): JSONArray = JSONArray().apply {
             put(JSONObject().put("role", "system").put("content", systemPrompt))
@@ -768,7 +822,9 @@ class RemoteAiAnalyzer(context: Context) {
             if (useStreaming && config.provider != AiProvider.COMPATIBLE) {
                 put("stream_options", JSONObject().put("include_usage", true))
             }
-            tokenBudget.parameter?.let { parameter -> put(parameter, tokenBudget.value) }
+            effectiveTokenBudget.parameter?.let { parameter ->
+                put(parameter, effectiveTokenBudget.value)
+            }
             if (
                 !reasoningDecision.expectsReasoning &&
                 reasoningDecision.protocol != AiReasoningProtocol.OPENAI
@@ -845,7 +901,7 @@ class RemoteAiAnalyzer(context: Context) {
                     return RemoteResponse(
                         json = json,
                         latencyMs = System.currentTimeMillis() - started,
-                        tokenBudgetLabel = tokenBudget.label,
+                        tokenBudgetLabel = effectiveTokenBudget.label,
                     )
                 }
                 val body = connection.errorStream
@@ -879,10 +935,10 @@ class RemoteAiAnalyzer(context: Context) {
                 }
             } catch (_: SocketTimeoutException) {
                 onProgress(
-                    "等待模型输出超时，本次请求已停止，不会自动重新预测",
+                    "等待模型输出超时，正在交由同模型限时收口策略处理",
                     System.currentTimeMillis() - started,
                 )
-                error("模型响应超过 ${readTimeoutMs / 1_000} 秒；本次已停止，未自动重新预测")
+                error("模型响应超过 ${readTimeoutMs / 1_000} 秒")
             } catch (cause: EOFException) {
                 val message = transportFailureMessage(cause)
                 onProgress("$message，本次未自动重新预测", System.currentTimeMillis() - started)

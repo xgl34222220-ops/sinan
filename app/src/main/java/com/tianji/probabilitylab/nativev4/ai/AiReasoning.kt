@@ -133,9 +133,9 @@ object AiReasoningEngine {
             AiReasoningMode.AUTO -> when (resolved.protocol) {
                 AiReasoningProtocol.DEEPSEEK -> resolved.copy(
                     sendControl = true,
-                    enableThinking = true,
-                    effort = "high",
-                    displayLabel = "${resolved.protocol.label} · 正式预测自动思考 · 限时收口",
+                    enableThinking = false,
+                    effort = null,
+                    displayLabel = "${resolved.protocol.label} · 正式预测自动省时 · 对话保留思考",
                 )
                 AiReasoningProtocol.OPENAI,
                 AiReasoningProtocol.OPENROUTER -> resolved.copy(
