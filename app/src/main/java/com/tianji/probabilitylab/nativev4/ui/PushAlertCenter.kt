@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,6 +74,13 @@ fun PushAlertCenterScreen(
         compareByDescending<PushAlert> { it.id == focusAlertId }
             .thenByDescending { it.id },
     )
+    val modeTitle = if (status.instantReady) "FCM 即时推送" else "后台检查模式"
+    val modeDetail = if (status.instantReady) {
+        "云端检测到预警后会直接推送到当前设备"
+    } else {
+        "系统约每 ${status.fallbackMinutes} 分钟检查一次，并使用本地通知提醒"
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -82,17 +90,17 @@ fun PushAlertCenterScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .heightIn(min = 64.dp)
+                .heightIn(min = 68.dp)
                 .background(
                     Brush.verticalGradient(
                         listOf(colors.header, colors.page.copy(alpha = 0.97f)),
                     ),
                 )
                 .border(0.5.dp, colors.line)
-                .padding(horizontal = 8.dp, vertical = 7.dp),
+                .padding(horizontal = 6.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onClose) {
+            IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = "返回",
@@ -104,26 +112,28 @@ fun PushAlertCenterScreen(
                 Text(
                     "预警中心",
                     color = colors.text,
-                    fontSize = 18.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.ExtraBold,
                 )
                 Text(
-                    status.detail,
-                    color = colors.textDim,
-                    fontSize = 10.sp,
+                    modeTitle,
+                    color = if (status.registered) colors.green else colors.amber,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .size(48.dp)
+                    .padding(2.dp)
+                    .clip(RoundedCornerShape(15.dp))
                     .background(colors.glass)
-                    .border(1.dp, colors.lineStrong, RoundedCornerShape(14.dp)),
+                    .border(1.dp, colors.lineStrong, RoundedCornerShape(15.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                IconButton(onClick = onRefresh, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onRefresh, modifier = Modifier.size(44.dp)) {
                     Icon(
                         Icons.Rounded.Refresh,
                         "刷新预警",
@@ -143,12 +153,12 @@ fun PushAlertCenterScreen(
                 SurfaceCard(radius = 21.dp) {
                     Column(
                         Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(11.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 Modifier
-                                    .size(42.dp)
+                                    .size(44.dp)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(colors.accentSoft)
                                     .border(
@@ -168,16 +178,16 @@ fun PushAlertCenterScreen(
                             Spacer(Modifier.width(11.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    "预测预警推送",
+                                    "预测预警",
                                     color = colors.text,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                 )
                                 Text(
-                                    status.detail,
+                                    modeDetail,
                                     color = colors.textDim,
-                                    fontSize = 10.sp,
-                                    lineHeight = 15.sp,
+                                    fontSize = 11.sp,
+                                    lineHeight = 16.sp,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -186,23 +196,49 @@ fun PushAlertCenterScreen(
                         }
 
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(colors.surfaceStrong.copy(alpha = 0.78f))
+                                .border(1.dp, colors.line, RoundedCornerShape(14.dp))
+                                .padding(horizontal = 12.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            PushStatusBadge(
-                                label = "App 配置",
-                                ready = status.firebaseConfigured,
-                                modifier = Modifier.weight(1f),
+                            Icon(
+                                if (status.instantReady) Icons.Rounded.Cloud else Icons.Rounded.Schedule,
+                                contentDescription = null,
+                                tint = if (status.registered) colors.green else colors.amber,
+                                modifier = Modifier.size(19.dp),
                             )
-                            PushStatusBadge(
-                                label = "云端账号",
-                                ready = status.serverConfigured,
-                                modifier = Modifier.weight(1f),
-                            )
-                            PushStatusBadge(
-                                label = "设备令牌",
-                                ready = status.fcmTokenPresent,
-                                modifier = Modifier.weight(1f),
+                            Spacer(Modifier.width(9.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    modeTitle,
+                                    color = colors.text,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    if (status.registered) "设备已登记 · ${status.detail}" else status.detail,
+                                    color = colors.textDim,
+                                    fontSize = 10.sp,
+                                    lineHeight = 15.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                if (status.instantReady) "即时" else "${status.fallbackMinutes} 分钟",
+                                color = if (status.instantReady) colors.green else colors.accent,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(
+                                        (if (status.instantReady) colors.green else colors.accent)
+                                            .copy(alpha = 0.10f),
+                                    )
+                                    .padding(horizontal = 9.dp, vertical = 6.dp),
                             )
                         }
 
@@ -273,7 +309,7 @@ fun PushAlertCenterScreen(
                         Text(
                             "${alerts.count { !it.isRead }} 条未读 · 共 ${alerts.size} 条",
                             color = colors.textDim,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                         )
                     }
                     if (alerts.any { !it.isRead }) {
@@ -307,9 +343,9 @@ fun PushAlertCenterScreen(
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                             Text(
-                                "云端检测到新预警后会自动出现在这里",
+                                "后台检查到新预警后会自动出现在这里",
                                 color = colors.textDim,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                             )
                         }
                     }
@@ -328,40 +364,6 @@ fun PushAlertCenterScreen(
 }
 
 @Composable
-private fun PushStatusBadge(
-    label: String,
-    ready: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val colors = LocalTianjiColors.current
-    val tint = if (ready) colors.green else colors.amber
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(11.dp))
-            .background(tint.copy(alpha = 0.08f))
-            .border(1.dp, tint.copy(alpha = 0.20f), RoundedCornerShape(11.dp))
-            .padding(horizontal = 7.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Box(
-            Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(tint),
-        )
-        Spacer(Modifier.width(5.dp))
-        Text(
-            label,
-            color = if (ready) tint else colors.textSoft,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
 private fun AlertToggleRow(
     title: String,
     detail: String,
@@ -373,7 +375,8 @@ private fun AlertToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 9.dp),
+            .heightIn(min = 58.dp)
+            .padding(top = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
@@ -381,13 +384,13 @@ private fun AlertToggleRow(
                 icon,
                 null,
                 tint = colors.textDim,
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(20.dp),
             )
             Spacer(Modifier.width(9.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(title, color = colors.text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text(detail, color = colors.textDim, fontSize = 9.sp)
+            Text(detail, color = colors.textDim, fontSize = 10.sp, lineHeight = 15.sp)
         }
         Switch(
             checked = checked,
@@ -406,8 +409,8 @@ private fun StatusDot(status: PushConnectionStatus) {
     val colors = LocalTianjiColors.current
     val tint = when {
         status.instantReady -> colors.green
-        status.registered -> colors.amber
-        else -> colors.red
+        status.registered -> colors.accent
+        else -> colors.amber
     }
     Box(
         Modifier
@@ -504,7 +507,7 @@ private fun AlertHistoryCard(
         Text(
             formatAlertTime(alert.createdAtEpochMs),
             color = colors.textDim,
-            fontSize = 9.sp,
+            fontSize = 10.sp,
             modifier = Modifier.padding(top = 6.dp),
         )
     }
