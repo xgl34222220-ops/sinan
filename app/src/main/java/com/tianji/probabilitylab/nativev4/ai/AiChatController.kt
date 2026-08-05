@@ -88,6 +88,7 @@ class AiChatController(context: Context) {
         targetPeriod: String?,
         latestPeriod: String? = null,
         latestNumbers: List<Int> = emptyList(),
+        announceTargetTransition: Boolean = true,
     ) {
         val normalizedModel = model.trim()
         val normalizedProfile = profileId.trim()
@@ -127,7 +128,11 @@ class AiChatController(context: Context) {
                 targetPeriod = normalizedTarget,
             )
         }
-        syncTargetTransition(normalizedTarget, latestPeriod, latestNumbers)
+        if (announceTargetTransition) {
+            syncTargetTransition(normalizedTarget, latestPeriod, latestNumbers)
+        } else if (normalizedTarget.isNotBlank() && session.targetPeriod != normalizedTarget) {
+            session = session.copy(targetPeriod = normalizedTarget)
+        }
     }
 
     fun newConversation(
@@ -209,7 +214,9 @@ class AiChatController(context: Context) {
     ) {
         val text = question.trim()
         if (text.isBlank() || session.isRunning) return
-        if (AiChatProtocol.wantsPrediction(text)) {
+        val intent = AiChatIntentRouter.resolve(text)
+        AiChatProtocol.wantsPrediction(if (intent.wantsPrediction) text else "")
+        if (intent.wantsPrediction) {
             AiPredictionFreshnessGuard.error(snapshot, report)?.let { message ->
                 session = session.copy(
                     error = message,
@@ -220,7 +227,7 @@ class AiChatController(context: Context) {
             }
         }
         val activeModel = session.model.ifBlank { config.model }.trim()
-        settleCandidates(snapshot)
+        if (intent.usesLotteryContext) settleCandidates(snapshot)
         selectContext(
             profileId = config.id,
             profileName = config.displayName,
@@ -229,11 +236,16 @@ class AiChatController(context: Context) {
             targetPeriod = report.targetPeriod,
             latestPeriod = snapshot.latest.period,
             latestNumbers = snapshot.latest.numbers,
+            announceTargetTransition = intent.usesLotteryContext,
         )
         ensureContextCapacity()
         val activeConfig = config.copy(model = activeModel)
         val plan = AiChatProtocol.planContext(session.messages, session.memorySummary)
-        val previousMessages = plan.messages
+        val previousMessages = if (intent == AiChatIntent.FREE_CHAT) {
+            plan.messages.filter { it.role != AiChatRole.SYSTEM }.takeLast(16)
+        } else {
+            plan.messages
+        }
         val userMessage = AiChatMessage(
             role = AiChatRole.USER,
             content = text,
@@ -252,19 +264,27 @@ class AiChatController(context: Context) {
         // The provisional position only drives the local status card; strict independent prompts
         // omit this learning context and compare all ten positions from raw history.
         val learningPosition = requestedPosition ?: session.prediction?.position ?: 0
-        val learningProfile = learningStore.profile(
-            snapshot.lottery.apiKey,
-            config.id,
-            learningStrategy,
-            learningPosition,
-        )
-        val learningContext = learningStore.snapshot(
-            snapshot.history,
-            snapshot.lottery.apiKey,
-            config.id,
-            learningStrategy,
-            learningPosition,
-        )
+        val learningProfile = if (intent.usesLotteryContext) {
+            learningStore.profile(
+                snapshot.lottery.apiKey,
+                config.id,
+                learningStrategy,
+                learningPosition,
+            )
+        } else {
+            session.learningProfile
+        }
+        val learningContext = if (intent.usesLotteryContext) {
+            learningStore.snapshot(
+                snapshot.history,
+                snapshot.lottery.apiKey,
+                config.id,
+                learningStrategy,
+                learningPosition,
+            )
+        } else {
+            JSONObject()
+        }
         val token = generation.incrementAndGet()
         val nextTitle = if (session.messages.none { it.role == AiChatRole.USER }) {
             AiChatProtocol.buildConversationTitle(text)
@@ -275,7 +295,11 @@ class AiChatController(context: Context) {
             title = nextTitle,
             messages = session.messages + userMessage + assistantMessage,
             isRunning = true,
-            progress = "正在整理当前接口历史…",
+            progress = when (intent) {
+                AiChatIntent.FREE_CHAT -> "正在回复…"
+                AiChatIntent.LOTTERY_ANALYSIS -> "正在读取开奖历史…"
+                AiChatIntent.LOTTERY_PREDICTION -> "正在分析本期候选…"
+            },
             error = null,
             prediction = null,
             streamingMessageId = assistantMessage.id,
@@ -297,6 +321,7 @@ class AiChatController(context: Context) {
                     persona = persona,
                     judgementMode = judgementMode,
                     learningContext = learningContext,
+                    intent = intent,
                     onProgress = { progress ->
                         mainHandler.post {
                             if (generation.get() == token && session.isRunning) {
@@ -335,14 +360,19 @@ class AiChatController(context: Context) {
                                 prediction.position,
                             )
                         } ?: learningProfile
+                        val completion = if (reply.reasoningVerified && intent != AiChatIntent.FREE_CHAT) {
+                            reply.reasoningTokens?.let { "回答完成 · 推理 $it tokens" }
+                                ?: "回答完成 · 已验证模型思考"
+                        } else {
+                            "回答完成"
+                        }
                         session = session.copy(
                             isRunning = false,
-                            progress = if (reply.reasoningVerified) {
-                                reply.reasoningTokens?.let { "回答完成 · 推理 $it tokens" }
-                                    ?: "回答完成 · 已验证模型思考"
+                            progress = if (intent.usesLotteryContext) {
+                                "$completion · 已学习 ${resolvedLearning.settled} 期"
                             } else {
-                                "回答完成"
-                            } + " · 已学习 ${resolvedLearning.settled} 期",
+                                completion
+                            },
                             error = null,
                             prediction = reply.prediction,
                             candidates = nextCandidates,
@@ -365,7 +395,10 @@ class AiChatController(context: Context) {
                             },
                             isRunning = false,
                             progress = "",
-                            error = AiErrorMessages.userFacing(cause, "对话分析失败"),
+                            error = AiErrorMessages.userFacing(
+                                cause,
+                                if (intent == AiChatIntent.FREE_CHAT) "对话失败" else "对话分析失败",
+                            ),
                             streamingMessageId = null,
                             updatedAtEpochMs = System.currentTimeMillis(),
                         )
@@ -513,7 +546,14 @@ class AiChatController(context: Context) {
                 val candidate = requireNotNull(resolvedCandidate)
                 val actual = requireNotNull(candidate.actualNumber)
                 append("${candidate.targetPeriod}期第${candidate.prediction.position + 1}名实际开出$actual，")
-                append(if (actual in candidate.prediction.top6) "上期六码命中" else "上期六码未中")
+                val candidateCount = candidate.prediction.top6.size.coerceAtLeast(1)
+                append(
+                    if (actual in candidate.prediction.top6) {
+                        "上期${candidateCount}码命中"
+                    } else {
+                        "上期${candidateCount}码未中"
+                    },
+                )
                 append("；")
             } else if (resolvedPeriod.isNotBlank()) {
                 append("接口已更新到${resolvedPeriod}期；")
@@ -649,12 +689,12 @@ object AiChatContextBuilder {
         question: String,
         judgementMode: AiJudgementMode,
         learningContext: JSONObject,
+        wantsPrediction: Boolean = AiChatProtocol.wantsPrediction(question),
     ): JSONObject {
         val verifiedHistory = snapshot.history
             .filter { it.numbers.size == 10 }
             .takeLast(120)
         require(verifiedHistory.isNotEmpty()) { "没有可用于对话分析的接口历史" }
-        val wantsPrediction = AiChatProtocol.wantsPrediction(question)
         val requestedPosition = extractPosition(question)
         val positions = requestedPosition?.let(::listOf) ?: (0 until 10).toList()
         val rawWindow = when {
@@ -821,6 +861,7 @@ private class RemoteAiChatClient {
         persona: AiChatPersona,
         judgementMode: AiJudgementMode,
         learningContext: JSONObject,
+        intent: AiChatIntent,
         onProgress: (String) -> Unit,
         onStreamText: (String) -> Unit,
     ): AiChatReply {
@@ -828,11 +869,22 @@ private class RemoteAiChatClient {
         val endpoint = URL(config.endpoint.trim())
         require(endpoint.protocol == "https") { "AI 接口必须使用 HTTPS" }
         val started = System.currentTimeMillis()
-        val wantsPrediction = AiChatProtocol.wantsPrediction(question)
-        val context = AiChatContextBuilder.build(
-            snapshot, report, question, judgementMode, learningContext,
-        )
-        val decision = AiReasoningEngine.resolve(config)
+        val wantsPrediction = intent.wantsPrediction
+        AiChatProtocol.wantsPrediction(if (wantsPrediction) question else "")
+        val context = if (intent.usesLotteryContext) {
+            AiChatContextBuilder.build(
+                snapshot = snapshot,
+                report = report,
+                question = question,
+                judgementMode = judgementMode,
+                learningContext = learningContext,
+                wantsPrediction = wantsPrediction,
+                intent = intent,
+            )
+        } else {
+            null
+        }
+        val decision = decisionFor(config, intent)
         val responsesApi = endpoint.path.trimEnd('/').endsWith("/responses")
         val messages = conversationMessages(
             context = context,
@@ -842,6 +894,7 @@ private class RemoteAiChatClient {
             wantsPrediction = wantsPrediction,
             persona = persona,
             judgementMode = judgementMode,
+            intent = intent,
         )
         val publisher = VisibleStreamPublisher(onStreamText)
 
@@ -853,15 +906,17 @@ private class RemoteAiChatClient {
                 decision = activeDecision,
                 stream = true,
                 wantsPrediction = wantsPrediction,
+                intent = intent,
             )
             return try {
                 execute(
                     endpoint = endpoint,
                     config = config,
                     request = streamingRequest,
-                    timeoutMs = timeoutFor(activeDecision),
+                    timeoutMs = timeoutFor(activeDecision, intent),
                     onProgress = onProgress,
                     publisher = publisher,
+                    intent = intent,
                 )
             } catch (_: AiChatStreamingRejectedException) {
                 publisher.reset()
@@ -876,15 +931,23 @@ private class RemoteAiChatClient {
                         decision = activeDecision,
                         stream = false,
                         wantsPrediction = wantsPrediction,
+                        intent = intent,
                     ),
-                    timeoutMs = timeoutFor(activeDecision),
+                    timeoutMs = timeoutFor(activeDecision, intent),
                     onProgress = onProgress,
                     publisher = publisher,
+                    intent = intent,
                 )
             }
         }
 
-        onProgress("正在连接 ${config.displayName} · ${persona.displayName}…")
+        onProgress(
+            if (intent == AiChatIntent.FREE_CHAT) {
+                "正在连接 ${config.displayName}…"
+            } else {
+                "正在连接 ${config.displayName} · ${persona.displayName}…"
+            },
+        )
         var response = try {
             runRequest(decision)
         } catch (cause: AiChatProtocolRejectedException) {
@@ -951,10 +1014,13 @@ private class RemoteAiChatClient {
                         decision = finalizationDecision,
                         stream = false,
                         wantsPrediction = wantsPrediction,
+                        intent = intent,
                     ),
-                    timeoutMs = 45_000,
+                    timeoutMs = if (intent == AiChatIntent.FREE_CHAT) 20_000 else 45_000,
                     onProgress = onProgress,
                     publisher = publisher,
+                    intent = intent,
+                    intent = intent,
                 )
             } catch (cause: AiChatProtocolRejectedException) {
                 execute(
@@ -967,10 +1033,13 @@ private class RemoteAiChatClient {
                         decision = finalizationDecision.copy(sendControl = false),
                         stream = false,
                         wantsPrediction = wantsPrediction,
+                        intent = intent,
                     ),
-                    timeoutMs = 45_000,
+                    timeoutMs = if (intent == AiChatIntent.FREE_CHAT) 20_000 else 45_000,
                     onProgress = onProgress,
                     publisher = publisher,
+                    intent = intent,
+                    intent = intent,
                 )
             }
             rawContent = extractContent(response)
@@ -988,11 +1057,16 @@ private class RemoteAiChatClient {
         val usage = extractUsage(response)
         val reasoningVerified = extractReasoning(response).isNotBlank() ||
             (usage.reasoningTokens ?: 0) > 0
-        onProgress(if (response.optBoolean("_tianji_stream_interrupted")) {
-            "网络中断后已恢复现有回答，正在整理候选卡片…"
-        } else {
-            "回答完成，正在整理候选卡片…"
-        })
+        onProgress(
+            when {
+                response.optBoolean("_tianji_stream_interrupted") && wantsPrediction ->
+                    "网络中断后已恢复现有回答，正在整理候选卡片…"
+                response.optBoolean("_tianji_stream_interrupted") ->
+                    "网络中断后已恢复现有回答…"
+                wantsPrediction -> "回答完成，正在整理候选卡片…"
+                else -> "回答完成…"
+            },
+        )
         return AiChatReply(
             content = content,
             prediction = prediction,
@@ -1004,28 +1078,31 @@ private class RemoteAiChatClient {
     }
 
     private fun conversationMessages(
-        context: JSONObject,
+        context: JSONObject?,
         previousMessages: List<AiChatMessage>,
         memorySummary: String,
         question: String,
         wantsPrediction: Boolean,
         persona: AiChatPersona,
         judgementMode: AiJudgementMode,
+        intent: AiChatIntent,
     ): JSONArray = JSONArray().apply {
         put(
             JSONObject()
                 .put("role", "system")
-                .put("content", systemPrompt(wantsPrediction, persona, judgementMode)),
+                .put("content", systemPrompt(intent, persona, judgementMode)),
         )
-        put(
-            JSONObject()
-                .put("role", "user")
-                .put(
-                    "content",
-                    "以下是当前开奖接口原始历史与必要元数据。独立模式不会包含本机候选、名次、概率矩阵或本机预计算统计；参考/反向模式才会明确附带native_model_reference：\n${context}",
-                ),
-        )
-        if (memorySummary.isNotBlank()) {
+        if (context != null) {
+            put(
+                JSONObject()
+                    .put("role", "user")
+                    .put(
+                        "content",
+                        "以下是当前开奖接口原始历史与必要元数据。独立模式不会包含本机候选、名次、概率矩阵或本机预计算统计；参考/反向模式才会明确附带native_model_reference：\n${context}",
+                    ),
+            )
+        }
+        if (intent.usesLotteryContext && memorySummary.isNotBlank()) {
             put(
                 JSONObject()
                     .put("role", "system")
@@ -1035,7 +1112,10 @@ private class RemoteAiChatClient {
                     ),
             )
         }
-        previousMessages.filter { it.content.isNotBlank() }.forEach { message ->
+        previousMessages
+            .filter { it.content.isNotBlank() }
+            .filter { intent.usesLotteryContext || it.role != AiChatRole.SYSTEM }
+            .forEach { message ->
             val role = when (message.role) {
                 AiChatRole.SYSTEM -> "system"
                 AiChatRole.USER -> "user"
@@ -1047,36 +1127,73 @@ private class RemoteAiChatClient {
     }
 
     private fun systemPrompt(
-        wantsPrediction: Boolean,
+        intent: AiChatIntent,
         persona: AiChatPersona,
         judgementMode: AiJudgementMode,
-    ): String = buildString {
-        val judgementInstruction = when (judgementMode) {
-            AiJudgementMode.INDEPENDENT ->
-                "当前为严格独立模式：客户端只提供原始开奖历史，不提供本机选择的名次、候选、概率矩阵、因子权重或本机预计算统计。必须自行提取特征并比较十个名次；不得猜测本机答案，也不得为了显得不同而故意反选。"
-            AiJudgementMode.NATIVE_REFERENCE ->
-                "当前为参考本机模式：native_model_reference只是一份可质疑参考，必须独立计算并在不同时坚持自己的结论。"
-            AiJudgementMode.CONTRARIAN ->
-                "当前为反向审计模式：优先寻找native_model_reference中的薄弱号码、样本偏差和替代方案，不得简单赞同。"
+    ): String {
+        if (intent == AiChatIntent.FREE_CHAT) {
+            return "你是天机 App 内置的通用 AI 助手。优先理解用户当前真正想表达的内容，像正常聊天助手一样自然回答。" +
+                "普通问候用一两句话快速回应，也可以回答日常、软件使用和通用知识问题。" +
+                "除非用户明确提出开奖、走势、历史分析或预测请求，否则禁止主动谈彩票、期号、候选号码、命中率或复盘，" +
+                "更不能把“你好”等普通对话理解成预测命令。使用简体中文，直接回答，不输出隐藏思维链。"
         }
-        append(
-            "你是天机内置的持续学习开奖记录分析助手，当前分析人设为【${persona.displayName}】。" +
-                "人设要求：${persona.instruction}" + judgementInstruction +
-                "adaptive_learning由客户端根据此前真实前向开奖结果逐期更新，包含学习期数、命中率、连续未中、六类因子权重和最近策略变化。" +
-                "上一期未中或连续未中时，必须重新检查因子是否失效，并明确说明本期改变了什么；禁止机械复制旧候选。" +
-                "使用简体中文直接、自然地回答，支持跨期开奖持续追问和复盘。" +
-                "独立模式只能引用客户端提供的原始开奖历史；参考/反向模式可额外使用明确标注的核验统计与本机参考。不得虚构期号、次数或数据来源。" +
-                "所有转移、遗漏和趋势结论必须同时说明样本强弱；1次与2次之类的小差异不得包装成强规律。" +
-                "用户说出现几率大时，应解释为历史样本中的相对频次或模型相对评分，不得称为真实中奖概率。" +
-                "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小或没有强候选。" +
-                "回答先给结论，再给关键依据、策略变化和不确定性，不要堆砌无关术语。",
-        )
-        if (wantsPrediction) {
+        return buildString {
+            val judgementInstruction = when (judgementMode) {
+                AiJudgementMode.INDEPENDENT ->
+                    "当前为严格独立模式：客户端只提供原始开奖历史，不提供本机选择的名次、候选、概率矩阵、因子权重或本机预计算统计。必须自行提取特征并比较十个名次；不得猜测本机答案，也不得为了显得不同而故意反选。"
+                AiJudgementMode.NATIVE_REFERENCE ->
+                    "当前为参考本机模式：native_model_reference只是一份可质疑参考，必须独立计算并在不同时坚持自己的结论。"
+                AiJudgementMode.CONTRARIAN ->
+                    "当前为反向审计模式：优先寻找native_model_reference中的薄弱号码、样本偏差和替代方案，不得简单赞同。"
+            }
             append(
-                "用户本次要求候选或预测。正文先给简洁依据与本期策略变化，随后追加且只追加一个" +
-                    "<tianji_forecast>{\"position\":1至10整数,\"scores\":[按号码1至10排列的10项非负评分]," +
-                    "\"strategy_weights\":[与六类因子顺序一致的6项非负权重],\"strategy_note\":\"不超过60字的本期策略变化\"}</tianji_forecast>。" +
-                    "scores必须来自本次独立比较，避免无依据并列。",
+                "你是天机内置的开奖记录分析助手，当前分析人设为【${persona.displayName}】。" +
+                    "人设要求：${persona.instruction}" + judgementInstruction +
+                    "adaptive_learning由客户端根据此前真实前向开奖结果逐期更新，包含学习期数、命中率、连续未中、六类因子权重和最近策略变化。" +
+                    "上一期未中或连续未中时，必须重新检查因子是否失效，并明确说明本期改变了什么；禁止机械复制旧候选。" +
+                    "使用简体中文直接、自然地回答，只处理用户当前提出的问题。" +
+                    "独立模式只能引用客户端提供的原始开奖历史；参考/反向模式可额外使用明确标注的核验统计与本机参考。不得虚构期号、次数或数据来源。" +
+                    "所有转移、遗漏和趋势结论必须同时说明样本强弱；1次与2次之类的小差异不得包装成强规律。" +
+                    "用户说出现几率大时，应解释为历史样本中的相对频次或模型相对评分，不得称为真实中奖概率。" +
+                    "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小或没有强候选。" +
+                    "回答先给结论，再给关键依据、策略变化和不确定性，不要堆砌无关术语。",
+            )
+            if (intent == AiChatIntent.LOTTERY_PREDICTION) {
+                append(
+                    "用户本次明确要求候选或预测。正文先给简洁依据与本期策略变化，随后追加且只追加一个" +
+                        "<tianji_forecast>{\"position\":1至10整数,\"scores\":[按号码1至10排列的10项非负评分]," +
+                        "\"strategy_weights\":[与六类因子顺序一致的6项非负权重],\"strategy_note\":\"不超过60字的本期策略变化\"}</tianji_forecast>。" +
+                        "scores必须来自本次独立比较，避免无依据并列。",
+                )
+            } else {
+                append("用户本次只要求解释或分析，不是候选预测请求。禁止主动输出候选号码、六码、七码或tianji_forecast。")
+            }
+        }
+    }
+
+    private fun decisionFor(config: AiConfig, intent: AiChatIntent): AiReasoningDecision {
+        val resolved = AiReasoningEngine.resolve(config)
+        if (intent != AiChatIntent.FREE_CHAT) return resolved
+        return when (resolved.protocol) {
+            AiReasoningProtocol.DEEPSEEK,
+            AiReasoningProtocol.OPENROUTER,
+            AiReasoningProtocol.ENABLE_THINKING,
+            -> resolved.copy(
+                preference = AiReasoningMode.LOW,
+                sendControl = true,
+                enableThinking = false,
+                effort = null,
+                displayLabel = "快速对话 · 已关闭长思考",
+            )
+            AiReasoningProtocol.OPENAI,
+            AiReasoningProtocol.AUTO,
+            AiReasoningProtocol.NONE,
+            -> resolved.copy(
+                preference = AiReasoningMode.LOW,
+                sendControl = false,
+                enableThinking = false,
+                effort = null,
+                displayLabel = "快速对话",
             )
         }
     }
@@ -1088,16 +1205,18 @@ private class RemoteAiChatClient {
         decision: AiReasoningDecision,
         stream: Boolean,
         wantsPrediction: Boolean,
+        intent: AiChatIntent,
     ): JSONObject = JSONObject().apply {
         put("model", config.model.trim())
         put("stream", stream)
-        if (config.provider != AiProvider.COMPATIBLE) {
-            val outputBudget = when {
-                decision.expectsReasoning && wantsPrediction -> 8_192
-                decision.expectsReasoning -> 6_144
-                wantsPrediction -> 4_096
-                else -> 2_048
-            }
+        val outputBudget = when {
+            intent == AiChatIntent.FREE_CHAT -> 768
+            decision.expectsReasoning && wantsPrediction -> 8_192
+            decision.expectsReasoning -> 6_144
+            wantsPrediction -> 4_096
+            else -> 2_048
+        }
+        if (intent == AiChatIntent.FREE_CHAT || config.provider != AiProvider.COMPATIBLE) {
             put(if (responsesApi) "max_output_tokens" else "max_tokens", outputBudget)
         }
         if (responsesApi) {
@@ -1107,7 +1226,7 @@ private class RemoteAiChatClient {
             put("messages", messages)
         }
         if (!decision.expectsReasoning && decision.protocol != AiReasoningProtocol.OPENAI) {
-            put("temperature", 0.2)
+            put("temperature", if (intent == AiChatIntent.FREE_CHAT) 0.65 else 0.2)
         }
         applyReasoning(decision, responsesApi)
     }
@@ -1152,9 +1271,10 @@ private class RemoteAiChatClient {
         timeoutMs: Int,
         onProgress: (String) -> Unit,
         publisher: VisibleStreamPublisher,
+        intent: AiChatIntent,
     ): JSONObject {
         var lastFailure: Throwable? = null
-        repeat(2) { attempt ->
+        repeat(if (intent == AiChatIntent.FREE_CHAT) 1 else 2) { attempt ->
             var deliveredVisibleText = false
             val connection = endpoint.openConnection() as HttpURLConnection
             activeConnection = connection
@@ -1171,10 +1291,13 @@ private class RemoteAiChatClient {
                     output.write(request.toString().toByteArray(Charsets.UTF_8))
                 }
                 onProgress(
-                    if (request.optBoolean("stream", false)) {
-                        "模型正在分析，回答开始后会实时显示…"
-                    } else {
-                        "模型正在分析，完成后将分段显示…"
+                    when {
+                        intent == AiChatIntent.FREE_CHAT && request.optBoolean("stream", false) ->
+                            "正在回复，内容会实时显示…"
+                        intent == AiChatIntent.FREE_CHAT -> "正在回复…"
+                        request.optBoolean("stream", false) ->
+                            "模型正在分析，回答开始后会实时显示…"
+                        else -> "模型正在分析，完成后将分段显示…"
                     },
                 )
                 val code = connection.responseCode
@@ -1204,7 +1327,7 @@ private class RemoteAiChatClient {
                 ) {
                     throw AiChatStreamingRejectedException()
                 }
-                if (attempt == 0 && (code == 429 || code in 500..599)) {
+                if (intent != AiChatIntent.FREE_CHAT && attempt == 0 && (code == 429 || code in 500..599)) {
                     onProgress(if (code == 429) "供应商限流，正在重连一次…" else "供应商暂时异常，正在重连一次…")
                     Thread.sleep(if (code == 429) 1_500L else 500L)
                     return@repeat
@@ -1212,7 +1335,7 @@ private class RemoteAiChatClient {
                 error("AI 接口 HTTP $code：${body.take(180)}")
             } catch (cause: SocketTimeoutException) {
                 lastFailure = cause
-                if (attempt == 0 && !deliveredVisibleText) {
+                if (intent != AiChatIntent.FREE_CHAT && attempt == 0 && !deliveredVisibleText) {
                     onProgress("模型响应超时，正在进行一次网络重连…")
                     return@repeat
                 }
@@ -1413,7 +1536,8 @@ private class RemoteAiChatClient {
         publisher.flush()
     }
 
-    private fun timeoutFor(decision: AiReasoningDecision): Int = when {
+    private fun timeoutFor(decision: AiReasoningDecision, intent: AiChatIntent): Int = when {
+        intent == AiChatIntent.FREE_CHAT -> 30_000
         decision.preference == AiReasoningMode.HIGH -> 120_000
         decision.expectsReasoning -> 90_000
         else -> 60_000
