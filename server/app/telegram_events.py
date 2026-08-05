@@ -15,9 +15,9 @@ from .models import LOTTERIES
 _INIT_LOCK = threading.Lock()
 _INITIALIZED = False
 _BASELINE_KEY = "telegram_events_baseline_ms"
-_PREDICTION_POLICY_KEY = "telegram_prediction_policy_two_misses_v1"
+_PREDICTION_POLICY_KEY = "telegram_prediction_policy_three_misses_v2"
 _WIN_POLICY_KEY = "telegram_win_policy_tracking_only_v1"
-_TRACK_AFTER_MISSES = 2
+_TRACK_AFTER_MISSES = 3
 
 
 def _now_ms() -> int:
@@ -81,6 +81,8 @@ def initialize() -> None:
                 (_PREDICTION_POLICY_KEY,),
             ).fetchone()
             if prediction_policy is None:
+                # 从旧版“两期不中”升级时，清掉尚未成功发送的预测队列。
+                # 本轮会按“三期不中”新规则重新生成符合条件的事件。
                 db.execute(
                     """
                     DELETE FROM telegram_events
@@ -98,7 +100,7 @@ def initialize() -> None:
                         state_key,state_value,updated_at
                     ) VALUES(?,?,?)
                     """,
-                    (_PREDICTION_POLICY_KEY, "two_misses_until_hit", now),
+                    (_PREDICTION_POLICY_KEY, "three_misses_until_hit", now),
                 )
 
             win_policy = db.execute(
@@ -486,7 +488,7 @@ def deliver_pending_events() -> dict[str, int]:
                     event_key,
                     target_key,
                     attempted_at=now,
-                    message="预测未达到连续两期未中条件，或目标期已经开奖",
+                    message="预测未达到连续三期未中条件，或目标期已经开奖",
                 )
                 skipped += 1
                 continue
