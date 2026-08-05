@@ -7,7 +7,7 @@ def replace_once(path: str, old: str, new: str) -> None:
     file = Path(path)
     text = file.read_text(encoding="utf-8")
     if old not in text:
-        raise SystemExit(f"missing expected block in {path}: {old[:120]!r}")
+        raise SystemExit(f"missing expected block in {path}: {old[:140]!r}")
     file.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
@@ -166,65 +166,20 @@ replace_once(
 
 replace_once(
     "server/tests/test_telegram_alerts.py",
-    '    def test_message_escapes_html_and_contains_periods(self) -> None:\n'
-    '        alert_id = push_alerts.materialize_warning_alerts(self.watch())[0]\n'
+    '    def test_three_miss_message_is_a_strong_alert(self) -> None:\n',
+    '    def test_two_miss_message_is_a_prealert(self) -> None:\n'
+    '        alert_id = push_alerts.materialize_warning_alerts(self.watch(streak=2))[0]\n'
     '        with database.connection() as db:\n'
     '            alert = db.execute(\n'
     '                "SELECT * FROM push_alerts WHERE id=?",\n'
     '                (alert_id,),\n'
     '            ).fetchone()\n'
     '        message = telegram_alerts.format_alert_message(alert)\n'
-    '        self.assertIn("deepseek&lt;pro&gt;", message)\n'
-    '        self.assertIn("103、102、101", message)\n'
-    '        self.assertIn("连续未中：</b>3 期", message)\n',
-    '    def alert_message(self, streak: int, latest: str) -> str:\n'
-    '        alert_id = push_alerts.materialize_warning_alerts(\n'
-    '            self.watch(streak=streak, latest=latest)\n'
-    '        )[0]\n'
-    '        with database.connection() as db:\n'
-    '            alert = db.execute(\n'
-    '                "SELECT * FROM push_alerts WHERE id=?",\n'
-    '                (alert_id,),\n'
-    '            ).fetchone()\n'
-    '        return telegram_alerts.format_alert_message(alert)\n'
+    '        self.assertIn("⚠️", message)\n'
+    '        self.assertIn("连续两期不中 · 提前预警", message)\n'
+    '        self.assertIn("每期云端 AI 预测仍会正常推送", message)\n'
     '\n'
-    '    def test_two_three_and_four_miss_alert_levels(self) -> None:\n'
-    '        two = self.alert_message(2, "102")\n'
-    '        three = self.alert_message(3, "103")\n'
-    '        four = self.alert_message(4, "104")\n'
-    '        self.assertIn("连续两期不中 · 提前预警", two)\n'
-    '        self.assertIn("连续三期不中 · 加强提醒", three)\n'
-    '        self.assertIn("连续 4 期不中 · 升级提醒", four)\n'
-    '        self.assertIn("deepseek&lt;pro&gt;", three)\n'
-    '        self.assertIn("103、102、101", three)\n'
-    '        self.assertIn("连续未中：</b><b>3 期", three)\n',
-)
-
-replace_once(
-    "server/tests/test_telegram_alerts.py",
-    '    def watch(source: str = "ai") -> dict:\n',
-    '    def watch(\n'
-    '        source: str = "ai",\n'
-    '        *,\n'
-    '        streak: int = 3,\n'
-    '        latest: str = "103",\n'
-    '    ) -> dict:\n',
-)
-
-replace_once(
-    "server/tests/test_telegram_alerts.py",
-    '                            "current_miss_streak": 3,\n'
-    '                            "recent_three": [\n'
-    '                                {"target_period": "103"},\n'
-    '                                {"target_period": "102"},\n'
-    '                                {"target_period": "101"},\n'
-    '                            ],\n',
-    '                            "current_miss_streak": streak,\n'
-    '                            "recent_three": [\n'
-    '                                {"target_period": latest},\n'
-    '                                {"target_period": str(int(latest) - 1)},\n'
-    '                                {"target_period": str(int(latest) - 2)},\n'
-    '                            ],\n',
+    '    def test_three_miss_message_is_a_strong_alert(self) -> None:\n',
 )
 
 print("two-miss prealert patch applied")
