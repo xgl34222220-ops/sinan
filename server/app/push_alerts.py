@@ -17,6 +17,7 @@ from .admin_insights import prediction_miss_watch
 from .config import settings
 from .db import database
 from .models import LOTTERIES
+from . import telegram_alerts
 
 
 CHANNEL_ID = "tianji_prediction_alerts"
@@ -505,7 +506,11 @@ def process_prediction_alerts(lottery_key: str | None = None) -> dict[str, Any]:
     return {
         "created_alert_ids": inserted,
         "delivery": delivery,
-        "push_configured": settings.fcm_enabled,
+        "push_configured": settings.fcm_enabled or settings.telegram_enabled,
+        "channels": {
+            "fcm": settings.fcm_enabled,
+            "telegram": settings.telegram_enabled,
+        },
     }
 
 
@@ -593,67 +598,162 @@ def _send_fcm(token: str, alert: Any) -> tuple[bool, int | None, str]:
         return False, None, str(exc)[:800]
 
 
+def _delivery_allowed(
+    deliveries: dict[tuple[int, str], dict[str, Any]],
+    *,
+    alert_id: int,
+    target_key: str,
+    retry_before: int,
+) -> bool:
+    previous = deliveries.get((alert_id, target_key))
+    if previous and previous["status"] == "sent":
+        return False
+    if previous and int(previous["attempted_at"]) > retry_before:
+        return False
+    return True
+
+
+def _store_delivery(
+    *,
+    alert_id: int,
+    target_key: str,
+    ok: bool,
+    code: int | None,
+    message: str,
+    attempted_at: int,
+) -> None:
+    with database.connection() as db:
+        db.execute(
+            """
+            INSERT INTO push_deliveries(
+                alert_id,installation_id,status,response_code,message,attempted_at
+            ) VALUES(?,?,?,?,?,?)
+            ON CONFLICT(alert_id,installation_id) DO UPDATE SET
+                status=excluded.status,
+                response_code=excluded.response_code,
+                message=excluded.message,
+                attempted_at=excluded.attempted_at
+            """,
+            (
+                alert_id,
+                target_key,
+                "sent" if ok else "failed",
+                code,
+                message,
+                attempted_at,
+            ),
+        )
+
+
 def deliver_pending_alerts() -> dict[str, int]:
     initialize()
-    if not settings.fcm_enabled:
-        return {"sent": 0, "failed": 0, "skipped": 0}
+    if not settings.fcm_enabled and not settings.telegram_enabled:
+        return {
+            "sent": 0,
+            "failed": 0,
+            "skipped": 0,
+            "fcm_sent": 0,
+            "fcm_failed": 0,
+            "telegram_sent": 0,
+            "telegram_failed": 0,
+        }
+
     now = _now_ms()
     retry_before = now - 300_000
     with database.connection() as db:
         alerts = db.execute(
             "SELECT * FROM push_alerts ORDER BY id DESC LIMIT 100"
         ).fetchall()
-        devices = db.execute(
-            "SELECT * FROM push_devices WHERE fcm_token<>'' ORDER BY updated_at DESC"
-        ).fetchall()
+        devices = (
+            db.execute(
+                "SELECT * FROM push_devices WHERE fcm_token<>'' ORDER BY updated_at DESC"
+            ).fetchall()
+            if settings.fcm_enabled
+            else []
+        )
         deliveries = {
             (int(row["alert_id"]), str(row["installation_id"])): dict(row)
             for row in db.execute("SELECT * FROM push_deliveries").fetchall()
         }
 
-    sent = failed = skipped = 0
-    for alert in alerts:
-        for device in devices:
-            if not _device_accepts(device, alert):
-                skipped += 1
-                continue
-            key = (int(alert["id"]), str(device["installation_id"]))
-            previous = deliveries.get(key)
-            if previous and previous["status"] == "sent":
-                continue
-            if previous and int(previous["attempted_at"]) > retry_before:
-                continue
-            ok, code, message = _send_fcm(str(device["fcm_token"]), alert)
-            with database.connection() as db:
-                db.execute(
-                    """
-                    INSERT INTO push_deliveries(
-                        alert_id,installation_id,status,response_code,message,attempted_at
-                    ) VALUES(?,?,?,?,?,?)
-                    ON CONFLICT(alert_id,installation_id) DO UPDATE SET
-                        status=excluded.status,
-                        response_code=excluded.response_code,
-                        message=excluded.message,
-                        attempted_at=excluded.attempted_at
-                    """,
-                    (
-                        int(alert["id"]),
-                        str(device["installation_id"]),
-                        "sent" if ok else "failed",
-                        code,
-                        message,
-                        now,
-                    ),
+    fcm_sent = fcm_failed = telegram_sent = telegram_failed = skipped = 0
+
+    if settings.fcm_enabled:
+        for alert in alerts:
+            alert_id = int(alert["id"])
+            for device in devices:
+                if not _device_accepts(device, alert):
+                    skipped += 1
+                    continue
+                target_key = str(device["installation_id"])
+                if not _delivery_allowed(
+                    deliveries,
+                    alert_id=alert_id,
+                    target_key=target_key,
+                    retry_before=retry_before,
+                ):
+                    continue
+                ok, code, message = _send_fcm(str(device["fcm_token"]), alert)
+                _store_delivery(
+                    alert_id=alert_id,
+                    target_key=target_key,
+                    ok=ok,
+                    code=code,
+                    message=message,
+                    attempted_at=now,
                 )
                 if not ok and code in {400, 404} and (
-                    "UNREGISTERED" in message or "registration-token-not-registered" in message
+                    "UNREGISTERED" in message
+                    or "registration-token-not-registered" in message
                 ):
-                    db.execute(
-                        "UPDATE push_devices SET fcm_token='',updated_at=? WHERE installation_id=?",
-                        (now, str(device["installation_id"])),
-                    )
-            if ok:
-                sent += 1
-            else:
-                failed += 1
-    return {"sent": sent, "failed": failed, "skipped": skipped}
+                    with database.connection() as db:
+                        db.execute(
+                            "UPDATE push_devices SET fcm_token='',updated_at=? WHERE installation_id=?",
+                            (now, target_key),
+                        )
+                if ok:
+                    fcm_sent += 1
+                else:
+                    fcm_failed += 1
+
+    if settings.telegram_enabled:
+        for alert in alerts:
+            alert_id = int(alert["id"])
+            for chat_id in settings.telegram_chat_ids:
+                target_key = telegram_alerts.delivery_key(chat_id)
+                if not _delivery_allowed(
+                    deliveries,
+                    alert_id=alert_id,
+                    target_key=target_key,
+                    retry_before=retry_before,
+                ):
+                    continue
+                ok, code, message = telegram_alerts.send_alert(
+                    bot_token=settings.telegram_bot_token,
+                    chat_id=chat_id,
+                    alert=alert,
+                )
+                _store_delivery(
+                    alert_id=alert_id,
+                    target_key=target_key,
+                    ok=ok,
+                    code=code,
+                    message=message,
+                    attempted_at=now,
+                )
+                if ok:
+                    telegram_sent += 1
+                else:
+                    telegram_failed += 1
+
+    sent = fcm_sent + telegram_sent
+    failed = fcm_failed + telegram_failed
+    return {
+        "sent": sent,
+        "failed": failed,
+        "skipped": skipped,
+        "fcm_sent": fcm_sent,
+        "fcm_failed": fcm_failed,
+        "telegram_sent": telegram_sent,
+        "telegram_failed": telegram_failed,
+    }

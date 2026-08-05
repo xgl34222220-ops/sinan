@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+from app.db import database
+from app import push_alerts, telegram_alerts
+
+
+class TelegramAlertTests(unittest.TestCase):
+    def setUp(self) -> None:
+        push_alerts.initialize()
+        with database.connection() as db:
+            db.execute("DELETE FROM push_deliveries")
+            db.execute("DELETE FROM push_alert_reads")
+            db.execute("DELETE FROM push_alerts")
+            db.execute("DELETE FROM push_devices")
+
+    @staticmethod
+    def watch() -> dict:
+        return {
+            "threshold": 3,
+            "lotteries": [
+                {
+                    "key": "xyft",
+                    "name": "幸运飞艇",
+                    "predictions": [
+                        {
+                            "source": "ai",
+                            "source_name": "天机云端 AI",
+                            "model": "deepseek<pro>",
+                            "warning": True,
+                            "current_miss_streak": 3,
+                            "recent_three": [
+                                {"target_period": "103"},
+                                {"target_period": "102"},
+                                {"target_period": "101"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+    def test_chat_ids_are_trimmed_and_deduplicated(self) -> None:
+        self.assertEqual(
+            ("123", "-456", "@channel"),
+            telegram_alerts.parse_chat_ids("123, -456\n123; @channel"),
+        )
+
+    def test_message_escapes_html_and_contains_periods(self) -> None:
+        alert_id = push_alerts.materialize_warning_alerts(self.watch())[0]
+        with database.connection() as db:
+            alert = db.execute(
+                "SELECT * FROM push_alerts WHERE id=?",
+                (alert_id,),
+            ).fetchone()
+        message = telegram_alerts.format_alert_message(alert)
+        self.assertIn("deepseek&lt;pro&gt;", message)
+        self.assertIn("103、102、101", message)
+        self.assertIn("连续未中：</b>3 期", message)
+
+    def test_delivery_works_without_fcm_and_is_idempotent(self) -> None:
+        push_alerts.materialize_warning_alerts(self.watch())
+        fake_settings = SimpleNamespace(
+            fcm_enabled=False,
+            telegram_enabled=True,
+            telegram_bot_token="123:test-token",
+            telegram_chat_ids=("987654321",),
+        )
+        with patch.object(push_alerts, "settings", fake_settings), patch.object(
+            telegram_alerts,
+            "send_alert",
+            return_value=(True, 200, '{"ok":true}'),
+        ) as sender:
+            first = push_alerts.deliver_pending_alerts()
+            second = push_alerts.deliver_pending_alerts()
+
+        self.assertEqual(1, first["telegram_sent"])
+        self.assertEqual(0, first["fcm_sent"])
+        self.assertEqual(0, second["telegram_sent"])
+        self.assertEqual(1, sender.call_count)
+
+
+if __name__ == "__main__":
+    unittest.main()
