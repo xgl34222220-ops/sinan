@@ -64,7 +64,7 @@ class AdminInsightsTests(unittest.TestCase):
         self.assertTrue(first["has_more"])
         ai_only = records_page(source="ai", status="hit")
         self.assertEqual(1, ai_only["total"])
-        self.assertEqual("云端 AI", ai_only["items"][0]["source_name"])
+        self.assertEqual("天机云端 AI", ai_only["items"][0]["source_name"])
 
     def test_full_history_insights_keep_sources_separate(self) -> None:
         value = records_insights()
