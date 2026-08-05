@@ -169,7 +169,7 @@ fun MainBottomBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
+            .heightIn(min = 64.dp, max = 72.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 7.dp,
                 shape = RoundedCornerShape(21.dp),
@@ -227,7 +227,7 @@ private fun StandardNavItem(
     val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .fillMaxHeight()
+            .height(56.dp)
             .scale(scale)
             .clip(RoundedCornerShape(15.dp))
             .background(background)
@@ -270,7 +270,7 @@ private fun ChatNavItem(
     val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .fillMaxHeight()
+            .height(56.dp)
             .clip(RoundedCornerShape(16.dp))
             .clickable(
                 interactionSource = interaction,
