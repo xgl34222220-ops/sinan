@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'RELEASE_NOTES_v5.9.9.md'
+      - 'RELEASE_NOTES_v*.md'
       - 'app/build.gradle.kts'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: tianji-v5.9.9-release
+  group: tianji-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,14 +33,15 @@ jobs:
           VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
           VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
           APP_ID="$(sed -n 's/.*applicationId = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
-          test "$VERSION" = '5.9.9'
-          test "$VERSION_CODE" = '51'
+          test -n "$VERSION"
+          test -n "$VERSION_CODE"
           test "$APP_ID" = 'com.tianji.probabilitylab.nativev5'
+          test -f "RELEASE_NOTES_v${VERSION}.md"
           printf 'VERSION=%s\nVERSION_CODE=%s\nAPP_ID=%s\nRELEASE_TAG=v%s\n' \
             "$VERSION" "$VERSION_CODE" "$APP_ID" "$VERSION" >> "$GITHUB_ENV"
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -102,10 +103,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          PREVIOUS_TAG='v5.9.8'
-          if ! gh release view "$PREVIOUS_TAG" >/dev/null 2>&1; then
-            PREVIOUS_TAG='v5.9.7'
-          fi
+          PREVIOUS_TAG="$(
+            gh release list --limit 30 --json tagName --jq '.[].tagName' \
+              | grep -Fxv "$RELEASE_TAG" \
+              | head -n1 || true
+          )"
+          test -n "$PREVIOUS_TAG"
           mkdir -p previous-release
           gh release download "$PREVIOUS_TAG" --pattern '*.apk' --dir previous-release
           PREVIOUS_APK="$(find previous-release -type f -name '*.apk' | head -n1)"
