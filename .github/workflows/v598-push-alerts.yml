@@ -5,6 +5,7 @@ on:
     branches: ['feature/v5.9.8-push-alert-center']
     paths:
       - 'tools/apply_v598_push_alerts.py'
+      - 'tools/fix_v598_notification_permission.py'
       - '.github/workflows/v598-push-alerts.yml'
   workflow_dispatch:
 
@@ -27,7 +28,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply push alert integration
-        run: python tools/apply_v598_push_alerts.py
+        run: |
+          python tools/apply_v598_push_alerts.py
+          python tools/fix_v598_notification_permission.py
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
