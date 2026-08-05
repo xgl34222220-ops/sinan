@@ -3,7 +3,18 @@ services:
     build:
       context: ./server
     restart: unless-stopped
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+    command:
+      - uvicorn
+      - app.bootstrap:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - "*"
     env_file:
       - .env
     volumes:
@@ -23,6 +34,22 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - tianji
+
+  backup:
+    build:
+      context: ./server
+    restart: unless-stopped
+    command: ["python", "-m", "app.backup"]
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
     depends_on:
       api:
         condition: service_healthy
