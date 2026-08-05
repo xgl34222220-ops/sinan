@@ -20,7 +20,7 @@ enum class AiChatPersona(
         id = "comprehensive",
         displayName = "大数据规律",
         description = "多窗口频率、遗漏、转移、贝叶斯收缩与随机性诊断",
-        instruction = "你是彩票大数据规律分析师。只依据客户端提供的真实开奖历史，自行从20/40/60/120期频率、当前与历史遗漏、条件后继转移、号码密度、跨名次差异、贝叶斯样本收缩和熵/随机性中提取证据。预测时至少使用三类相互独立的信号，并报告样本量、信号强弱和冲突。遗漏久不代表必出，连续出现不代表必降温，小样本转移不得包装成规律。先比较十个名次，再给出证据相对充分的名次、六码和不确定性；没有稳定优势时必须直说。",
+        instruction = "你是彩票大数据规律分析师。只依据客户端提供的真实开奖历史，自行从20/40/60/120期频率、当前与历史遗漏、条件后继转移、号码密度、跨名次差异、贝叶斯样本收缩和熵/随机性中提取证据。预测时至少使用三类相互独立的信号，并报告样本量、信号强弱和冲突。遗漏久不代表必出，连续出现不代表必降温，小样本转移不得包装成规律。先比较十个名次，再严格按用户明确指定的数量给出候选；用户说两个就只能给两个，说三个就只能给三个，不得额外追加六码、七码或备用号码。只有用户没有指定数量时才默认给出六码。没有稳定优势时必须直说。",
         quickPrompts = listOf(
             "用大数据规律分析十个名次，选出证据相对最清晰的一名并给出六码",
             "分析第一名20、60、120期频率、遗漏和后继转移，过滤小样本噪声",
@@ -31,7 +31,7 @@ enum class AiChatPersona(
         id = "trend",
         displayName = "走势分析",
         description = "多尺度趋势、波动、稳定性与状态切换建模",
-        instruction = "你是彩票多尺度走势分析师。重点比较20/40/60/120期窗口的方向、斜率、动量、波动率、稳定性和可能的状态切换，并横向比较十个名次。只有多个窗口方向一致、差异超过噪声且样本充分时才称为趋势；短窗突变必须与长窗基线和随机波动对照。明确区分升温、降温、震荡、稳定和结构切换，给出边界号码与反转风险，不得把走势图形当成必然延续。",
+        instruction = "你是彩票多尺度走势分析师。重点比较20/40/60/120期窗口的方向、斜率、动量、波动率、稳定性和可能的状态切换，并横向比较十个名次。只有多个窗口方向一致、差异超过噪声且样本充分时才称为趋势；短窗突变必须与长窗基线和随机波动对照。明确区分升温、降温、震荡、稳定和结构切换，给出边界号码与反转风险，不得把走势图形当成必然延续。用户明确要求几个候选时，最终答案必须恰好给出几个，不能擅自扩成六码、七码或补充备用号码；未指定数量时才默认六码。",
         quickPrompts = listOf(
             "比较十个名次的多尺度走势，找出状态最清晰的一名并给出六码",
             "分析第一名20、40、60、120期的升温、降温和波动情况",
@@ -42,7 +42,7 @@ enum class AiChatPersona(
         id = "risk_audit",
         displayName = "综合预测",
         description = "融合独立信号、前向验证、概率校准与过拟合审计",
-        instruction = "你是彩票综合预测与模型审计专家。先独立完成规律建模和走势分析，再对频率、遗漏、转移、状态、稳定性和可用的真实前向结算进行证据融合。不同信号高度相关时不得重复计权；连续未中时复盘失效因素并改变策略。输出名次、六码、七码边界、主要支持、主要冲突和置信程度，同时检查短窗过拟合、样本偏差、概率过度集中和第6/第7名边界过小。证据弱时应降低确定性或明确本期没有强候选，不得承诺准确率、盈利或必中。",
+        instruction = "你是彩票综合预测与模型审计专家。先独立完成规律建模和走势分析，再对频率、遗漏、转移、状态、稳定性和可用的真实前向结算进行证据融合。不同信号高度相关时不得重复计权；连续未中时复盘失效因素并改变策略。输出名次、主要支持、主要冲突和置信程度，并严格按用户指定数量输出候选；用户没有指定数量时才默认六码。只有用户明确要求边界或七码时才补充相应边界，不能在用户只要两个号码时再给六码、七码或备用号码。同时检查短窗过拟合、样本偏差和概率过度集中。证据弱时应降低确定性或明确本期没有强候选，不得承诺准确率、盈利或必中。",
         quickPrompts = listOf(
             "综合规律与走势生成本期预测，给出名次、六码、边界和风险",
             "复盘最近真实前向结果，指出失效因素并调整下一期策略",
@@ -182,6 +182,9 @@ object AiChatProtocol {
     private const val SAFE_CONTEXT_TOKENS = 18_000
     private const val ROLLOVER_MESSAGES = 72
     private const val MEMORY_LIMIT = 5_500
+    private const val DEFAULT_CANDIDATE_COUNT = 6
+    private val candidateCountContext = ThreadLocal.withInitial { DEFAULT_CANDIDATE_COUNT }
+    private val parsedPredictionContext = ThreadLocal<AiChatPrediction?>()
     private val predictionTerms = listOf(
         "预测", "预判", "候选", "六码", "七码", "号码", "出号", "推荐", "名次",
         "position", "scores", "forecast", "pick",
@@ -193,7 +196,45 @@ object AiChatProtocol {
 
     fun wantsPrediction(text: String): Boolean {
         val normalized = text.trim().lowercase()
-        return predictionTerms.any(normalized::contains)
+        val wants = predictionTerms.any(normalized::contains)
+        if (wants) {
+            candidateCountContext.set(requestedCandidateCount(normalized) ?: DEFAULT_CANDIDATE_COUNT)
+        } else {
+            candidateCountContext.set(DEFAULT_CANDIDATE_COUNT)
+            parsedPredictionContext.remove()
+        }
+        return wants
+    }
+
+    fun requestedCandidateCount(text: String): Int? {
+        val normalized = text.trim().lowercase()
+        val numberToken = "(10|[1-9]|[一二两三四五六七八九十])"
+        val patterns = listOf(
+            Regex(
+                "(?:只要|就要|给我|告诉我|提供|推荐|挑出|选出|选|列出|报出|取)?\\s*" +
+                    numberToken + "\\s*(?:个)?\\s*(?:号码|候选|码)",
+            ),
+            Regex(
+                "(?:号码|候选)\\s*(?:数量|个数)?\\s*(?:为|是|要|取)?\\s*" +
+                    numberToken + "\\s*(?:个|码)?",
+            ),
+        )
+        val token = patterns.firstNotNullOfOrNull { pattern ->
+            pattern.find(normalized)?.groupValues?.getOrNull(1)
+        } ?: return null
+        return when (token) {
+            "一" -> 1
+            "二", "两" -> 2
+            "三" -> 3
+            "四" -> 4
+            "五" -> 5
+            "六" -> 6
+            "七" -> 7
+            "八" -> 8
+            "九" -> 9
+            "十" -> 10
+            else -> token.toIntOrNull()
+        }?.coerceIn(1, 10)
     }
 
     fun estimateTokens(text: String): Int {
@@ -250,12 +291,13 @@ object AiChatProtocol {
                 "$role：${message.content.replace(Regex("\\s+"), " ").take(260)}"
             }
         val candidateDigest = candidates.takeLast(8).joinToString("\n") { record ->
+            val candidateCount = record.prediction.top6.size.coerceAtLeast(1)
             buildString {
                 append("- 目标期${record.targetPeriod} 第${record.prediction.position + 1}名 ")
-                append("六码${record.prediction.top6.joinToString("/")}")
+                append("${candidateCount}码${record.prediction.top6.joinToString("/")}")
                 record.actualNumber?.let { actual ->
                     append("，实际$actual，")
-                    append(if (actual in record.prediction.top6) "六码命中" else "六码未中")
+                    append(if (actual in record.prediction.top6) "${candidateCount}码命中" else "${candidateCount}码未中")
                 }
             }
         }
@@ -293,12 +335,15 @@ object AiChatProtocol {
         val ranking = probabilities.indices
             .sortedWith(compareByDescending<Int> { probabilities[it] }.thenBy { it })
             .map { it + 1 }
-        return AiChatPrediction(
+        val candidateCount = (candidateCountContext.get() ?: DEFAULT_CANDIDATE_COUNT).coerceIn(1, 10)
+        val prediction = AiChatPrediction(
             position = position - 1,
-            top6 = ranking.take(6),
-            top7 = ranking.take(7),
+            top6 = ranking.take(candidateCount),
+            top7 = ranking.take(maxOf(7, candidateCount)),
             probabilities = probabilities,
         )
+        parsedPredictionContext.set(prediction)
+        return prediction
     }
 
     fun visibleText(text: String, hasPrediction: Boolean): String {
@@ -313,6 +358,18 @@ object AiChatProtocol {
             .replace(Regex("(?s)```json\\s*```"), "")
             .replace(Regex("\\n{3,}"), "\n\n")
             .trim()
+        val prediction = parsedPredictionContext.get()
+        if (hasPrediction && prediction != null && prediction.top6.isNotEmpty()) {
+            val summary = buildString {
+                append("按你的要求，本期第${prediction.position + 1}名优先")
+                append("${prediction.top6.size}码：")
+                append(prediction.top6.joinToString("、"))
+                append("。")
+            }
+            if (!value.startsWith(summary)) {
+                value = if (value.isBlank()) summary else "$summary\n\n$value"
+            }
+        }
         return value.ifBlank {
             if (hasPrediction) "已根据你的要求生成结构化候选结果。" else "模型已完成本次分析。"
         }
