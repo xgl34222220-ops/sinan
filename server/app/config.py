@@ -18,6 +18,8 @@ class Settings:
     ai_timeout_seconds: int
     fcm_project_id: str
     fcm_service_account_b64: str
+    telegram_bot_token: str
+    telegram_chat_ids: tuple[str, ...]
     push_threshold: int
 
     @property
@@ -29,8 +31,25 @@ class Settings:
         return bool(self.fcm_project_id and self.fcm_service_account_b64)
 
     @property
+    def telegram_enabled(self) -> bool:
+        return bool(self.telegram_bot_token and self.telegram_chat_ids)
+
+    @property
     def data_dir(self) -> str:
         return os.path.dirname(self.database_path) or "."
+
+
+def _list_env(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name, "").replace(";", ",").replace("\n", ",")
+    values: list[str] = []
+    seen: set[str] = set()
+    for item in raw.split(","):
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        values.append(value)
+    return tuple(values)
 
 
 def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -56,6 +75,8 @@ def load_settings() -> Settings:
         ai_timeout_seconds=_int_env("TIANJI_AI_TIMEOUT_SECONDS", 120, 20, 300),
         fcm_project_id=os.getenv("TIANJI_FCM_PROJECT_ID", "").strip(),
         fcm_service_account_b64=os.getenv("TIANJI_FCM_SERVICE_ACCOUNT_B64", "").strip(),
+        telegram_bot_token=os.getenv("TIANJI_TELEGRAM_BOT_TOKEN", "").strip(),
+        telegram_chat_ids=_list_env("TIANJI_TELEGRAM_CHAT_IDS"),
         push_threshold=_int_env("TIANJI_PUSH_THRESHOLD", 3, 3, 10),
     )
 
