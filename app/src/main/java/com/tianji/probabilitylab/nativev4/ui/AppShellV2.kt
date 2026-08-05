@@ -80,40 +80,41 @@ fun CompactAppHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp)
+            .height(54.dp)
             .background(colors.header)
             .border(0.5.dp, colors.line)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (canGoBack && onBack != null) {
-            IconButton(onClick = onBack, modifier = Modifier.size(42.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = "返回",
                     tint = colors.textSoft,
+                    modifier = Modifier.size(21.dp),
                 )
             }
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(3.dp))
         } else {
             Image(
                 painter = painterResource(R.drawable.tianji_original_icon),
                 contentDescription = "天机",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .border(1.dp, colors.accent.copy(alpha = 0.24f), RoundedCornerShape(13.dp)),
+                    .size(35.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, colors.accent.copy(alpha = 0.22f), RoundedCornerShape(12.dp)),
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(9.dp))
         }
 
         Column(Modifier.weight(1f)) {
             Text(
                 destination.title,
                 color = colors.text,
-                fontSize = 18.sp,
-                lineHeight = 22.sp,
+                fontSize = 17.sp,
+                lineHeight = 20.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -122,7 +123,7 @@ fun CompactAppHeader(
                 destination.subtitle,
                 color = colors.textDim,
                 fontSize = 10.sp,
-                lineHeight = 14.sp,
+                lineHeight = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -130,16 +131,16 @@ fun CompactAppHeader(
 
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .size(36.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .background(colors.glass)
-                .border(1.dp, colors.lineStrong, RoundedCornerShape(14.dp))
+                .border(1.dp, colors.lineStrong, RoundedCornerShape(12.dp))
                 .clickable(enabled = !isRefreshing, onClick = onRefresh),
             contentAlignment = Alignment.Center,
         ) {
             if (isRefreshing) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(17.dp),
                     color = colors.accent,
                     strokeWidth = 2.dp,
                 )
@@ -148,7 +149,7 @@ fun CompactAppHeader(
                     Icons.Rounded.Refresh,
                     contentDescription = "刷新",
                     tint = colors.textSoft,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(19.dp),
                 )
             }
         }
@@ -166,17 +167,17 @@ fun MainBottomBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(66.dp)
+            .height(60.dp)
             .shadow(
-                elevation = if (colors.isOled) 0.dp else 9.dp,
-                shape = RoundedCornerShape(23.dp),
-                ambientColor = Color.Black.copy(alpha = 0.18f),
-                spotColor = Color.Black.copy(alpha = 0.18f),
+                elevation = if (colors.isOled) 0.dp else 7.dp,
+                shape = RoundedCornerShape(21.dp),
+                ambientColor = Color.Black.copy(alpha = 0.16f),
+                spotColor = Color.Black.copy(alpha = 0.16f),
             )
-            .clip(RoundedCornerShape(23.dp))
-            .background(colors.navSurface)
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(23.dp))
-            .padding(horizontal = 5.dp, vertical = 5.dp),
+            .clip(RoundedCornerShape(21.dp))
+            .background(colors.navSurface.copy(alpha = 0.98f))
+            .border(1.dp, colors.lineStrong, RoundedCornerShape(21.dp))
+            .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         listOf(
@@ -209,12 +210,12 @@ private fun StandardNavItem(
 ) {
     val colors = LocalTianjiColors.current
     val background by animateColorAsState(
-        if (active) colors.accentSoft else Color.Transparent,
+        if (active) colors.accent.copy(alpha = 0.10f) else Color.Transparent,
         label = "main-nav-bg",
     )
     val scale by animateFloatAsState(
-        if (active) 1f else 0.965f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 500f),
+        if (active) 1f else 0.98f,
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 520f),
         label = "main-nav-scale",
     )
     val interaction = remember { MutableInteractionSource() }
@@ -222,12 +223,12 @@ private fun StandardNavItem(
         modifier = modifier
             .fillMaxHeight()
             .scale(scale)
-            .clip(RoundedCornerShape(17.dp))
+            .clip(RoundedCornerShape(15.dp))
             .background(background)
             .border(
                 1.dp,
-                if (active) colors.accent.copy(alpha = 0.18f) else Color.Transparent,
-                RoundedCornerShape(17.dp),
+                if (active) colors.accent.copy(alpha = 0.12f) else Color.Transparent,
+                RoundedCornerShape(15.dp),
             )
             .clickable(
                 interactionSource = interaction,
@@ -241,13 +242,13 @@ private fun StandardNavItem(
             item.icon,
             contentDescription = item.label,
             tint = if (active) colors.accent else colors.textDim,
-            modifier = Modifier.size(if (active) 21.dp else 19.dp),
+            modifier = Modifier.size(if (active) 20.dp else 18.dp),
         )
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             item.label,
-            color = if (active) colors.text else colors.textDim,
-            fontSize = 10.sp,
+            color = if (active) colors.accent else colors.textDim,
+            fontSize = 9.sp,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
         )
     }
@@ -260,7 +261,7 @@ private fun ChatNavItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -271,12 +272,12 @@ private fun ChatNavItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
     ) {
         Box(
             modifier = Modifier
-                .size(37.dp)
+                .size(34.dp)
                 .shadow(
-                    elevation = if (colors.isOled) 0.dp else 7.dp,
+                    elevation = if (colors.isOled) 0.dp else 5.dp,
                     shape = CircleShape,
-                    ambientColor = colors.accent.copy(alpha = 0.25f),
-                    spotColor = colors.accent.copy(alpha = 0.25f),
+                    ambientColor = colors.accent.copy(alpha = 0.22f),
+                    spotColor = colors.accent.copy(alpha = 0.22f),
                 )
                 .clip(CircleShape)
                 .background(
@@ -290,13 +291,13 @@ private fun ChatNavItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 Icons.Rounded.AutoAwesome,
                 contentDescription = "打开 AI 对话",
                 tint = Color.White,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
             )
         }
         Text(
             "AI",
             color = colors.accent,
-            fontSize = 9.sp,
+            fontSize = 8.sp,
             fontWeight = FontWeight.Bold,
         )
     }
@@ -312,10 +313,10 @@ fun CompactLotterySwitcher(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(47.dp)
-            .clip(RoundedCornerShape(17.dp))
+            .height(44.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(colors.glass)
-            .border(1.dp, colors.line, RoundedCornerShape(17.dp))
+            .border(1.dp, colors.line, RoundedCornerShape(16.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -326,29 +327,29 @@ fun CompactLotterySwitcher(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(if (active) tint.copy(alpha = 0.13f) else Color.Transparent)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (active) tint.copy(alpha = 0.12f) else Color.Transparent)
                     .border(
                         1.dp,
-                        if (active) tint.copy(alpha = 0.25f) else Color.Transparent,
-                        RoundedCornerShape(13.dp),
+                        if (active) tint.copy(alpha = 0.22f) else Color.Transparent,
+                        RoundedCornerShape(12.dp),
                     )
                     .clickable { onSelect(lottery) }
-                    .padding(horizontal = 10.dp),
+                    .padding(horizontal = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
                 Box(
                     Modifier
-                        .size(7.dp)
+                        .size(6.dp)
                         .clip(CircleShape)
                         .background(if (active) tint else colors.textDim),
                 )
-                Spacer(Modifier.width(7.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(
                     lottery.displayName,
                     color = if (active) colors.text else colors.textSoft,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
                 )
