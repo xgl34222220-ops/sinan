@@ -1,6 +1,6 @@
 # 天机 v5.9.9
 
-本版本完成 App 端视觉统一，并将预测预警从“具备 FCM 代码但可能空配置”升级为可诊断、可验证、正式发布时强制启用的即时推送方案。预测算法、开奖源、冻结结果和目标期结算规则保持不变。
+本版本完成 App 端视觉统一，并完善预测预警中心的状态诊断与后台兜底。预测算法、开奖源、冻结结果和目标期结算规则保持不变。
 
 ## App 全面视觉优化
 
@@ -15,37 +15,26 @@
 
 - 修复预警中心标题与系统状态栏重叠的问题。
 - 新增 App 配置、云端账号、设备令牌三项独立状态显示。
-- 可准确区分以下情况：
-  - APK 未注入 Firebase 客户端配置
-  - 云端未配置 Firebase 服务账号
-  - 客户端已配置但尚未取得设备令牌
-  - FCM 即时推送已完整连接
-- FCM 未就绪时继续保留约 15 分钟后台同步兜底。
+- 可准确区分 APK 未配置、云端未配置、令牌未取得和即时推送已连接等状态。
+- 本正式版暂不启用 FCM 即时推送，继续使用 Android 后台任务约每 15 分钟同步预警并弹出本地通知。
+- 历史预警、未读状态、彩种开关、来源开关和升级预警设置继续正常使用。
 
-## FCM 正式发布保障
+## FCM 可选支持
 
-- 正式构建支持直接从受保护的 `google-services.json` GitHub Secret 自动解析 Firebase 参数。
-- 发布工作流会校验 Android 包名必须为 `com.tianji.probabilitylab.nativev5`。
-- Firebase Project ID、App ID、API Key 或 Sender ID 任一为空时，正式发布会立即失败，不再发布缺少即时推送配置的 APK。
-- Release 附件新增 `FIREBASE_CONFIG.txt`，用于确认正式 APK 已注入 FCM 客户端配置，不包含私钥。
-- 保留原有四项 Firebase Secret 的兼容读取方式。
+- 代码保留完整 FCM 客户端、设备令牌、云端服务账号和 HTTP v1 发送能力。
+- 后续配置 Firebase 后可直接通过现有工具启用，无需重做预警功能。
+- 新增 `tools/configure-fcm-release.sh`、`deploy/configure-fcm.sh` 和 `docs/FCM_SETUP.md`。
+- Firebase、签名及本地密钥文件已加入忽略规则，避免误提交敏感配置。
+- 正式发布工作流允许在未配置 Firebase 时构建，并在附件中明确标记当前使用后台同步兜底。
 
-## 安全配置工具
-
-- 新增 `tools/configure-fcm-release.sh`：从 `google-services.json` 校验包名并安全写入 GitHub Actions Secrets。
-- 新增 `deploy/configure-fcm.sh`：在服务器写入 Firebase 服务账号、重建容器并实际验证 OAuth Token。
-- 新增完整文档 `docs/FCM_SETUP.md`。
-- Firebase 服务账号私钥始终仅保存在服务器环境变量中，不写入 Git 仓库。
-- 新增本地 Firebase、签名文件忽略规则，防止误提交。
-
-## 验证要求
-
-正式版发布前必须同时满足：
+## 正式发布验证
 
 - Android Debug / Release 单元测试通过。
 - Android Lint 通过。
 - Debug / Release APK 构建通过。
 - 服务端全部单元测试通过。
 - 部署脚本 Shell 语法检查通过。
-- Firebase 客户端四项配置非空。
 - 正式 APK 与 v5.9.8 使用相同升级签名证书。
+- 正式 APK 校验应用 ID、版本号、v2/v3 签名和 SHA-256。
+
+> 随机开奖不可可靠预测。本项目用于统计实验、记录和真实前向验证，不承诺准确率、收益或必中。
