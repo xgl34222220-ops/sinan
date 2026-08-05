@@ -48,12 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n deploy/*.sh tools/*.sh
-          python3 - <<'PY'
-          import pathlib
-          import yaml
-
-          yaml.safe_load(pathlib.Path('.github/workflows/release.yml').read_text(encoding='utf-8'))
-          PY
+          ruby -e "require 'yaml'; YAML.load_file('.github/workflows/release.yml')"
 
       - name: Unit tests, lint and builds
         run: >-
