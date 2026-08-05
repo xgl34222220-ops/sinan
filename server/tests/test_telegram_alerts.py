@@ -18,9 +18,10 @@ class TelegramAlertTests(unittest.TestCase):
             db.execute("DELETE FROM push_devices")
 
     @staticmethod
-    def watch(source: str = "ai") -> dict:
+    def watch(source: str = "ai", streak: int = 3) -> dict:
         source_name = "天机云端 AI" if source == "ai" else "天机云端本地"
         model = "deepseek<pro>" if source == "ai" else "local-ensemble"
+        latest = 100 + streak
         return {
             "threshold": 3,
             "lotteries": [
@@ -33,11 +34,11 @@ class TelegramAlertTests(unittest.TestCase):
                             "source_name": source_name,
                             "model": model,
                             "warning": True,
-                            "current_miss_streak": 3,
+                            "current_miss_streak": streak,
                             "recent_three": [
-                                {"target_period": "103"},
-                                {"target_period": "102"},
-                                {"target_period": "101"},
+                                {"target_period": str(latest)},
+                                {"target_period": str(latest - 1)},
+                                {"target_period": str(latest - 2)},
                             ],
                         }
                     ],
@@ -51,7 +52,7 @@ class TelegramAlertTests(unittest.TestCase):
             telegram_alerts.parse_chat_ids("123, -456\n123; @channel"),
         )
 
-    def test_message_escapes_html_and_contains_periods(self) -> None:
+    def test_three_miss_message_is_a_strong_alert(self) -> None:
         alert_id = push_alerts.materialize_warning_alerts(self.watch())[0]
         with database.connection() as db:
             alert = db.execute(
@@ -59,9 +60,23 @@ class TelegramAlertTests(unittest.TestCase):
                 (alert_id,),
             ).fetchone()
         message = telegram_alerts.format_alert_message(alert)
+        self.assertIn("🚨🚨", message)
+        self.assertIn("连续三期不中 · 加强提醒", message)
         self.assertIn("deepseek&lt;pro&gt;", message)
         self.assertIn("103、102、101", message)
-        self.assertIn("连续未中：</b>3 期", message)
+        self.assertIn("连续未中：</b><b>3 期</b>", message)
+        self.assertIn("重点关注下一期预测", message)
+
+    def test_later_miss_message_is_an_escalation_alert(self) -> None:
+        alert_id = push_alerts.materialize_warning_alerts(self.watch(streak=4))[0]
+        with database.connection() as db:
+            alert = db.execute(
+                "SELECT * FROM push_alerts WHERE id=?",
+                (alert_id,),
+            ).fetchone()
+        message = telegram_alerts.format_alert_message(alert)
+        self.assertIn("连续 4 期不中 · 升级提醒", message)
+        self.assertIn("升级提醒状态", message)
 
     def test_delivery_works_without_fcm_and_is_idempotent(self) -> None:
         push_alerts.materialize_warning_alerts(self.watch())
@@ -86,7 +101,7 @@ class TelegramAlertTests(unittest.TestCase):
 
     def test_native_prediction_message_is_suppressed_without_http_request(self) -> None:
         message = (
-            "🔮 <b>追踪中的新一期预测</b>\n\n"
+            "🔮 <b>新一期云端预测</b>\n\n"
             "<b>来源：</b>天机云端本地\n"
             "<b>模型：</b><code>local-ensemble</code>"
         )
