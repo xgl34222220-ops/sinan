@@ -197,7 +197,8 @@
       const severity=badge?.classList.contains('bad')?'bad':badge?.classList.contains('warn')?'warn':'good';
       row.dataset.severity=severity;
     });
-    rows.sort((a,b)=>(weight[a.dataset.severity]??3)-(weight[b.dataset.severity]??3)).forEach(row=>list.appendChild(row));
+    const sorted=[...rows].sort((a,b)=>(weight[a.dataset.severity]??3)-(weight[b.dataset.severity]??3));
+    if(sorted.some((row,index)=>row!==rows[index]))sorted.forEach(row=>list.appendChild(row));
   };
   const restorePanel=()=>{
     const name=sessionStorage.getItem('tianji-console-panel');
