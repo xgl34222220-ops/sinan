@@ -123,6 +123,19 @@ class TelegramEventTests(unittest.TestCase):
             ]
         self.assertEqual(["102", "103"], periods)
 
+    def test_ordinary_win_pushes_without_tracking_stop_text(self) -> None:
+        self.save_forecast(target="100")
+        self.settle("100", 3)
+        self.assertEqual(1, telegram_events.materialize_events("xyft"))
+        with database.connection() as db:
+            row = db.execute(
+                "SELECT event_type,message_html FROM telegram_events"
+            ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual("win", str(row["event_type"]))
+        self.assertIn("Top 6 命中", str(row["message_html"]))
+        self.assertNotIn("追踪预测推送现已停止", str(row["message_html"]))
+
     def test_miss_does_not_create_win_event(self) -> None:
         self.activate_tracking()
         self.save_forecast(target="102")
