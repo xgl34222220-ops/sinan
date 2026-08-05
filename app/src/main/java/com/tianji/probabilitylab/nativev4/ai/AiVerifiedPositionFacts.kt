@@ -28,7 +28,7 @@ data class AiVerifiedPositionFacts(
     val omission: List<Int>,
 ) {
     fun toJson(): JSONObject = JSONObject()
-        .put("source", "client_verified_from_current_lottery_snapshot")
+        .put("source", "upstream_lottery_api_current_response")
         .put("lottery_key", lotteryKey)
         .put("lottery_name", lotteryName)
         .put("position", position + 1)
@@ -50,7 +50,7 @@ data class AiVerifiedPositionFacts(
         .put("omission_by_number_1_to_10", JSONArray(omission))
 }
 
-/** Resolves the rank for one turn without turning the conversation into a rigid command parser. */
+/** Resolves the rank for the current turn while preserving normal conversational follow-ups. */
 object AiPositionScope {
     private val positionPattern = Regex("""第\s*([一二三四五六七八九十0-9]{1,2})\s*名""")
     private val allPositionTerms = listOf(
@@ -79,16 +79,18 @@ object AiPositionScope {
     fun requestsAllPositions(text: String): Boolean = allPositionTerms.any(text::contains)
 
     fun resolve(question: String, previousMessages: List<AiChatMessage>): Int? {
+        // The latest user sentence always wins. "分析第一名" immediately replaces "分析第四名".
         extract(question)?.let { return it }
         if (requestsAllPositions(question)) return null
+        // Natural follow-ups such as "为什么" continue the most recently discussed rank.
         return previousMessages.asReversed().firstNotNullOfOrNull { message ->
             message.positionScope ?: extract(message.content)
         }
     }
 
     /**
-     * Keep the same free conversation visible, but do not send another rank's analysis back to the
-     * model for the current turn. Legacy messages are scoped conservatively from their visible text.
+     * The UI keeps the whole conversation. Only the context sent to the model excludes another
+     * rank's old analysis when the current sentence explicitly or implicitly selects one rank.
      */
     fun filterPrevious(
         messages: List<AiChatMessage>,
@@ -110,7 +112,7 @@ object AiVerifiedPositionEngine {
     ): AiVerifiedPositionFacts {
         require(position in 0..9) { "分析名次必须在第一名到第十名之间" }
         val history = canonical(snapshot.history)
-        require(history.isNotEmpty()) { "没有可用于核验的${snapshot.lottery.displayName}开奖历史" }
+        require(history.isNotEmpty()) { "${snapshot.lottery.displayName}开奖 API 没有返回可用历史" }
 
         fun counts(window: Int): List<Int> {
             val result = IntArray(10)
@@ -152,45 +154,65 @@ object AiVerifiedPositionEngine {
         .takeLast(120)
 }
 
-/** Keeps every displayed numeric fact under client control; the model supplies interpretation only. */
+/**
+ * Keeps exact API facts authoritative without turning every answer into a fixed report template.
+ * The model still answers naturally; only conflicting numeric claims are removed.
+ */
 object AiVerifiedAnswerComposer {
     private val numericFactTriggers = listOf(
         "近10", "近20", "近60", "近120", "最近十", "最近20", "最近60", "最近120",
         "出现次数", "频率统计", "高频区", "低频区", "冷号", "热号", "遗漏", "后继",
         "承接概率", "短期趋势", "号码序列", "次）", "次)", "%", "％",
     )
+    private val recentTerms = listOf("近十", "近10", "最近十", "最近10", "十期号码", "10期号码")
+    private val countTerms = listOf("次数", "频率", "高频", "低频", "冷号", "热号")
+    private val omissionTerms = listOf("遗漏", "多久没出", "多少期没出")
 
     fun compose(
         modelText: String,
         facts: AiVerifiedPositionFacts?,
         intent: AiChatIntent,
+        question: String,
     ): String {
         if (facts == null) return modelText.trim()
+        exactLookup(question, facts)?.let { return it }
+
         val interpretation = sanitize(modelText, intent)
+        val sourceLine = "数据源：${facts.lotteryName}上游开奖 API，最新 ${facts.latestPeriod} 期；当前分析第${facts.position + 1}名。"
         return buildString {
-            append(verifiedBlock(facts))
-            append("\n\n### AI 解读\n")
-            append(
-                interpretation.ifBlank {
-                    "模型没有返回可保留的定性解读；以上数据已由 App 根据当前彩种快照逐期核验。"
-                },
-            )
+            if (interpretation.isNotBlank()) {
+                append(interpretation)
+                append("\n\n")
+            }
+            append(sourceLine)
+            append("\n最近10期（新→旧）：")
+            append(facts.recent10NewestFirst.joinToString("、") { it.number.toString() })
         }.trim()
     }
 
-    fun verifiedBlock(facts: AiVerifiedPositionFacts): String = buildString {
-        append("### App 已核验数据 · ${facts.lotteryName} · 第${facts.position + 1}名\n")
-        append("数据截至 ${facts.latestPeriod} 期，当前目标期 ${facts.targetPeriod}，有效样本 ${facts.sampleSize} 期。\n")
-        append("最近10期（新→旧）：")
-        append(facts.recent10NewestFirst.joinToString("、") { "${it.period}:${it.number}" })
-        append("\n近20/60/120期次数（号码1→10）：")
-        append((1..10).joinToString("；") { number ->
-            val index = number - 1
-            "${number}号 ${facts.count20[index]}/${facts.count60[index]}/${facts.count120[index]}"
-        })
-        append("\n当前遗漏（号码1→10）：")
-        append((1..10).joinToString("、") { number -> "${number}号${facts.omission[number - 1]}期" })
-        append("\n以上期号、序列、次数和遗漏均由 App 从当前${facts.lotteryName}快照计算，AI 无权改写。")
+    private fun exactLookup(question: String, facts: AiVerifiedPositionFacts): String? {
+        val normalized = question.replace(" ", "")
+        return when {
+            recentTerms.any(normalized::contains) -> buildString {
+                append("${facts.lotteryName}第${facts.position + 1}名最近10期（新→旧）：")
+                append(facts.recent10NewestFirst.joinToString("、") { "${it.period}期=${it.number}" })
+                append("。\n数据直接来自当前上游开奖 API 响应，最新一期为 ${facts.latestPeriod}。")
+            }
+            countTerms.any(normalized::contains) -> buildString {
+                append("${facts.lotteryName}第${facts.position + 1}名出现次数（号码1→10，近20/60/120期）：\n")
+                append((1..10).joinToString("；") { number ->
+                    val index = number - 1
+                    "${number}号 ${facts.count20[index]}/${facts.count60[index]}/${facts.count120[index]}"
+                })
+                append("。\n数据直接来自当前上游开奖 API 响应，统计截至 ${facts.latestPeriod} 期。")
+            }
+            omissionTerms.any(normalized::contains) -> buildString {
+                append("${facts.lotteryName}第${facts.position + 1}名当前遗漏（号码1→10）：")
+                append((1..10).joinToString("、") { number -> "${number}号${facts.omission[number - 1]}期" })
+                append("。\n数据直接来自当前上游开奖 API 响应，统计截至 ${facts.latestPeriod} 期。")
+            }
+            else -> null
+        }
     }
 
     private fun sanitize(text: String, intent: AiChatIntent): String = text
