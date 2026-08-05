@@ -1,32 +1,81 @@
 from __future__ import annotations
 
+import importlib
+import os
+import tempfile
 import unittest
 
-from app.db import database
-from app.push_alerts import (
-    DevicePreferences,
-    device_status,
-    initialize,
-    list_alerts,
-    mark_alert_read,
-    materialize_warning_alerts,
-    register_device,
-    update_preferences,
-)
 
-
-class PushAlertsTests(unittest.TestCase):
+class PushAlertTests(unittest.TestCase):
     def setUp(self) -> None:
-        initialize()
-        with database.connection() as db:
-            db.execute("DELETE FROM push_deliveries")
-            db.execute("DELETE FROM push_alert_reads")
-            db.execute("DELETE FROM push_alerts")
-            db.execute("DELETE FROM push_devices")
+        self.temp = tempfile.TemporaryDirectory()
+        os.environ["TIANJI_DATABASE"] = os.path.join(self.temp.name, "tianji.db")
+        os.environ.pop("TIANJI_FCM_PROJECT_ID", None)
+        os.environ.pop("TIANJI_FCM_SERVICE_ACCOUNT_B64", None)
+        from app import config, db, push_alerts
 
-    @staticmethod
-    def watch(streak: int = 3, latest: str = "103") -> dict:
-        return {
+        importlib.reload(config)
+        importlib.reload(db)
+        importlib.reload(push_alerts)
+        self.config = config
+        self.db = db
+        self.push = push_alerts
+        self.push.initialize()
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def test_device_registration_hashes_secret_and_keeps_preferences(self) -> None:
+        secret = "s" * 32
+        status = self.push.register_device(
+            installation_id="installation-123",
+            secret=secret,
+            fcm_token="token-1",
+            app_version="5.9.9",
+            device_name="Test Device",
+            preferences={
+                "enabled": True,
+                "xyft_enabled": False,
+                "azxy10_enabled": True,
+                "ai_enabled": True,
+                "native_enabled": False,
+                "escalation_enabled": True,
+            },
+        )
+        self.assertTrue(status["registered"])
+        self.assertTrue(status["fcm_token_present"])
+        self.assertFalse(status["push_configured"])
+        self.assertFalse(status["preferences"]["xyft_enabled"])
+        self.assertFalse(status["preferences"]["native_enabled"])
+        with self.db.database.connection() as connection:
+            row = connection.execute(
+                "SELECT secret_hash FROM push_devices WHERE installation_id=?",
+                ("installation-123",),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertNotEqual(str(row["secret_hash"]), secret)
+        self.assertEqual(len(str(row["secret_hash"])), 64)
+
+    def test_device_registration_rejects_wrong_existing_secret(self) -> None:
+        self.push.register_device(
+            installation_id="installation-456",
+            secret="a" * 32,
+        )
+        with self.assertRaises(PermissionError):
+            self.push.register_device(
+                installation_id="installation-456",
+                secret="b" * 32,
+            )
+
+    def test_alert_is_deduplicated_and_preferences_are_respected(self) -> None:
+        secret = "c" * 32
+        installation_id = "installation-789"
+        self.push.register_device(
+            installation_id=installation_id,
+            secret=secret,
+            preferences={"xyft_enabled": False},
+        )
+        watch = {
             "threshold": 3,
             "lotteries": [
                 {
@@ -34,76 +83,68 @@ class PushAlertsTests(unittest.TestCase):
                     "name": "幸运飞艇",
                     "predictions": [
                         {
+                            "warning": True,
                             "source": "ai",
                             "source_name": "天机云端 AI",
-                            "model": "deepseek-v4",
-                            "warning": True,
-                            "current_miss_streak": streak,
+                            "model": "deepseek-test",
+                            "current_miss_streak": 3,
                             "recent_three": [
-                                {"target_period": latest},
-                                {"target_period": str(int(latest) - 1)},
-                                {"target_period": str(int(latest) - 2)},
+                                {"target_period": "20260805003"},
+                                {"target_period": "20260805002"},
+                                {"target_period": "20260805001"},
                             ],
                         }
                     ],
                 }
             ],
         }
+        first = self.push.materialize_warning_alerts(watch)
+        second = self.push.materialize_warning_alerts(watch)
+        self.assertEqual(len(first), 1)
+        self.assertEqual(second, [])
+        alerts = self.push.list_alerts(installation_id, secret)["items"]
+        self.assertEqual(len(alerts), 1)
+        with self.db.database.connection() as connection:
+            device = connection.execute(
+                "SELECT * FROM push_devices WHERE installation_id=?",
+                (installation_id,),
+            ).fetchone()
+            alert = connection.execute("SELECT * FROM push_alerts").fetchone()
+        self.assertFalse(self.push._device_accepts(device, alert))
 
-    def register(self) -> tuple[str, str]:
-        installation_id = "test-installation-123456"
-        secret = "a" * 64
-        register_device(
-            installation_id=installation_id,
-            secret=secret,
-            app_version="5.9.8-test",
-            preferences=DevicePreferences().as_dict(),
-        )
-        return installation_id, secret
-
-    def test_device_secret_and_preferences(self) -> None:
-        installation_id, secret = self.register()
-        status = device_status(installation_id, secret)
-        self.assertTrue(status["registered"])
-        self.assertTrue(status["preferences"]["xyft_enabled"])
-
-        updated = update_preferences(
-            installation_id,
-            secret,
-            {
-                "enabled": True,
-                "xyft_enabled": False,
-                "azxy10_enabled": True,
-                "ai_enabled": True,
-                "native_enabled": False,
-                "escalation_enabled": False,
-            },
-        )
-        self.assertFalse(updated["preferences"]["xyft_enabled"])
-        self.assertFalse(updated["preferences"]["native_enabled"])
-
-        with self.assertRaises(PermissionError):
-            device_status(installation_id, "b" * 64)
-
-    def test_warning_is_idempotent_and_escalation_is_separate(self) -> None:
-        first = materialize_warning_alerts(self.watch())
-        duplicate = materialize_warning_alerts(self.watch())
-        escalation = materialize_warning_alerts(self.watch(streak=4, latest="104"))
-        self.assertEqual(1, len(first))
-        self.assertEqual([], duplicate)
-        self.assertEqual(1, len(escalation))
-        with database.connection() as db:
-            count = int(db.execute("SELECT COUNT(*) FROM push_alerts").fetchone()[0])
-        self.assertEqual(2, count)
-
-    def test_alert_read_state_is_per_device(self) -> None:
-        installation_id, secret = self.register()
-        alert_id = materialize_warning_alerts(self.watch())[0]
-        unread = list_alerts(installation_id, secret)["items"]
-        self.assertFalse(unread[0]["is_read"])
-        mark_alert_read(installation_id, secret, alert_id)
-        read = list_alerts(installation_id, secret)["items"]
-        self.assertTrue(read[0]["is_read"])
+    def test_mark_read_and_mark_all_read(self) -> None:
+        secret = "d" * 32
+        installation_id = "installation-read"
+        self.push.register_device(installation_id=installation_id, secret=secret)
+        watch = {
+            "threshold": 3,
+            "lotteries": [
+                {
+                    "key": "azxy10",
+                    "name": "澳洲幸运10",
+                    "predictions": [
+                        {
+                            "warning": True,
+                            "source": "native",
+                            "source_name": "天机云端本地",
+                            "model": "native-v1",
+                            "current_miss_streak": 4,
+                            "recent_three": [
+                                {"target_period": "1004"},
+                                {"target_period": "1003"},
+                                {"target_period": "1002"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        [alert_id] = self.push.materialize_warning_alerts(watch)
+        self.push.mark_alert_read(installation_id, secret, alert_id)
+        items = self.push.list_alerts(installation_id, secret)["items"]
+        self.assertTrue(items[0]["is_read"])
+        result = self.push.mark_all_read(installation_id, secret)
+        self.assertEqual(result["count"], 1)
 
 
 if __name__ == "__main__":
