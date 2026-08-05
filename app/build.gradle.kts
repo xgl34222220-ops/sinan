@@ -25,8 +25,8 @@ android {
         applicationId = "com.tianji.probabilitylab.nativev5"
         minSdk = 26
         targetSdk = 36
-        versionCode = 43
-        versionName = "5.9.1"
+        versionCode = 44
+        versionName = "5.9.2"
 
         buildConfigField("String", "TIANJI_CLOUD_BASE_URL", "\"${cloudBaseUrl.get()}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
