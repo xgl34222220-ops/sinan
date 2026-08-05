@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
@@ -92,6 +93,8 @@ fun SettingsHubScreen(
     onSelectAiReasoningMode: (String, AiReasoningMode) -> Unit,
     onAnalyzeAi: (String) -> Unit,
     onAiConcurrencyChanged: (Int) -> Unit,
+    pushUnreadCount: Int,
+    onOpenPushAlerts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPageV2.ROOT) }
@@ -100,6 +103,8 @@ fun SettingsHubScreen(
             state = state,
             aiConfigs = aiConfigs,
             appearanceMode = appearanceMode,
+            pushUnreadCount = pushUnreadCount,
+            onOpenPushAlerts = onOpenPushAlerts,
             onOpen = { page = it },
             modifier = modifier,
         )
@@ -138,6 +143,8 @@ private fun SettingsRootV2(
     state: AppUiState,
     aiConfigs: List<AiConfig>,
     appearanceMode: AppearanceMode,
+    pushUnreadCount: Int,
+    onOpenPushAlerts: () -> Unit,
     onOpen: (SettingsPageV2) -> Unit,
     modifier: Modifier,
 ) {
@@ -162,6 +169,15 @@ private fun SettingsRootV2(
                 "接口状态、历史窗口、档案完整性和后台同步",
                 { onOpen(SettingsPageV2.DATA) },
                 "${state.snapshot?.history?.size ?: 0} 期",
+            )
+        }
+        item {
+            SettingsEntry(
+                Icons.Rounded.NotificationsActive,
+                "预警与推送",
+                "三期不中即时提醒、接收范围和历史预警",
+                onOpenPushAlerts,
+                if (pushUnreadCount > 0) "$pushUnreadCount 条未读" else "已开启",
             )
         }
         item {

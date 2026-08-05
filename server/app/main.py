@@ -9,7 +9,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Qu
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from . import ai
+from . import ai, push_alerts
 from .admin_auth import (
     SESSION_COOKIE,
     SESSION_TTL_SECONDS,
@@ -79,6 +79,25 @@ class AiAutoPayload(BaseModel):
 class PasswordPayload(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=8, max_length=256)
+
+
+class PushPreferencesPayload(BaseModel):
+    enabled: bool = True
+    xyft_enabled: bool = True
+    azxy10_enabled: bool = True
+    ai_enabled: bool = True
+    native_enabled: bool = True
+    escalation_enabled: bool = True
+
+
+class PushDevicePayload(BaseModel):
+    installation_id: str = Field(min_length=8, max_length=128)
+    secret: str = Field(min_length=24, max_length=256)
+    fcm_token: str = Field(default="", max_length=4096)
+    platform: str = Field(default="android", max_length=40)
+    app_version: str = Field(default="", max_length=80)
+    device_name: str = Field(default="", max_length=160)
+    preferences: PushPreferencesPayload = Field(default_factory=PushPreferencesPayload)
 
 
 def require_admin_token(authorization: Annotated[str | None, Header()] = None) -> None:
@@ -237,6 +256,98 @@ def forecasts(
     if lottery_key not in LOTTERIES:
         raise HTTPException(status_code=404, detail="未知彩种")
     return database.list_forecasts(lottery_key, limit)
+
+
+@app.post("/v1/push/devices")
+def register_push_device(payload: PushDevicePayload) -> dict[str, Any]:
+    try:
+        return push_alerts.register_device(
+            installation_id=payload.installation_id,
+            secret=payload.secret,
+            fcm_token=payload.fcm_token,
+            platform=payload.platform,
+            app_version=payload.app_version,
+            device_name=payload.device_name,
+            preferences=payload.preferences.model_dump(),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/v1/push/status")
+def push_status(
+    installation_id: str = Query(min_length=8, max_length=128),
+    device_secret: Annotated[str | None, Header(alias="X-Tianji-Device-Secret")] = None,
+) -> dict[str, Any]:
+    try:
+        return push_alerts.device_status(installation_id, device_secret or "")
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@app.put("/v1/push/devices/{installation_id}/preferences")
+def update_push_preferences(
+    installation_id: str,
+    payload: PushPreferencesPayload,
+    device_secret: Annotated[str | None, Header(alias="X-Tianji-Device-Secret")] = None,
+) -> dict[str, Any]:
+    try:
+        return push_alerts.update_preferences(
+            installation_id,
+            device_secret or "",
+            payload.model_dump(),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@app.get("/v1/push/alerts")
+def push_alert_history(
+    installation_id: str = Query(min_length=8, max_length=128),
+    limit: int = Query(default=100, ge=1, le=200),
+    after_id: int = Query(default=0, ge=0),
+    device_secret: Annotated[str | None, Header(alias="X-Tianji-Device-Secret")] = None,
+) -> dict[str, Any]:
+    try:
+        return push_alerts.list_alerts(
+            installation_id,
+            device_secret or "",
+            limit=limit,
+            after_id=after_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@app.post("/v1/push/alerts/{alert_id}/read")
+def read_push_alert(
+    alert_id: int,
+    installation_id: str = Query(min_length=8, max_length=128),
+    device_secret: Annotated[str | None, Header(alias="X-Tianji-Device-Secret")] = None,
+) -> dict[str, Any]:
+    try:
+        return push_alerts.mark_alert_read(
+            installation_id,
+            device_secret or "",
+            alert_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/v1/push/alerts/read-all")
+def read_all_push_alerts(
+    installation_id: str = Query(min_length=8, max_length=128),
+    device_secret: Annotated[str | None, Header(alias="X-Tianji-Device-Secret")] = None,
+) -> dict[str, Any]:
+    try:
+        return push_alerts.mark_all_read(installation_id, device_secret or "")
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 @app.post("/v1/admin/run", dependencies=[Depends(require_admin_token)])

@@ -16,6 +16,10 @@ val releaseSigningAvailable = listOf(
 ).all { !it.isNullOrBlank() }
 val cloudBaseUrl = providers.gradleProperty("TIANJI_CLOUD_BASE_URL")
     .orElse("https://tianji-xgl.duckdns.org")
+val firebaseProjectId = providers.gradleProperty("TIANJI_FIREBASE_PROJECT_ID").orElse("")
+val firebaseAppId = providers.gradleProperty("TIANJI_FIREBASE_APP_ID").orElse("")
+val firebaseApiKey = providers.gradleProperty("TIANJI_FIREBASE_API_KEY").orElse("")
+val firebaseSenderId = providers.gradleProperty("TIANJI_FIREBASE_SENDER_ID").orElse("")
 
 android {
     namespace = "com.tianji.probabilitylab.nativev4"
@@ -25,10 +29,14 @@ android {
         applicationId = "com.tianji.probabilitylab.nativev5"
         minSdk = 26
         targetSdk = 36
-        versionCode = 49
-        versionName = "5.9.7"
+        versionCode = 50
+        versionName = "5.9.8"
 
         buildConfigField("String", "TIANJI_CLOUD_BASE_URL", "\"${cloudBaseUrl.get()}\"")
+        buildConfigField("String", "TIANJI_FIREBASE_PROJECT_ID", "\"${firebaseProjectId.get()}\"")
+        buildConfigField("String", "TIANJI_FIREBASE_APP_ID", "\"${firebaseAppId.get()}\"")
+        buildConfigField("String", "TIANJI_FIREBASE_API_KEY", "\"${firebaseApiKey.get()}\"")
+        buildConfigField("String", "TIANJI_FIREBASE_SENDER_ID", "\"${firebaseSenderId.get()}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -93,6 +101,11 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
+
+    val firebaseBom = platform("com.google.firebase:firebase-bom:34.16.0")
+    implementation(firebaseBom)
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.activity:activity-compose:1.10.1")

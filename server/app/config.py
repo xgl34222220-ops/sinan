@@ -16,10 +16,17 @@ class Settings:
     ai_model: str
     ai_api_key: str
     ai_timeout_seconds: int
+    fcm_project_id: str
+    fcm_service_account_b64: str
+    push_threshold: int
 
     @property
     def ai_enabled(self) -> bool:
         return bool(self.ai_endpoint and self.ai_model and self.ai_api_key)
+
+    @property
+    def fcm_enabled(self) -> bool:
+        return bool(self.fcm_project_id and self.fcm_service_account_b64)
 
     @property
     def data_dir(self) -> str:
@@ -47,6 +54,9 @@ def load_settings() -> Settings:
         ai_model=os.getenv("TIANJI_AI_MODEL", "").strip(),
         ai_api_key=os.getenv("TIANJI_AI_API_KEY", "").strip(),
         ai_timeout_seconds=_int_env("TIANJI_AI_TIMEOUT_SECONDS", 120, 20, 300),
+        fcm_project_id=os.getenv("TIANJI_FCM_PROJECT_ID", "").strip(),
+        fcm_service_account_b64=os.getenv("TIANJI_FCM_SERVICE_ACCOUNT_B64", "").strip(),
+        push_threshold=_int_env("TIANJI_PUSH_THRESHOLD", 3, 3, 10),
     )
 
 

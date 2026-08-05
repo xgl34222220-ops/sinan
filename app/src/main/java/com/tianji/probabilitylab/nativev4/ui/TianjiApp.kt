@@ -38,6 +38,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
+import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
+import com.tianji.probabilitylab.nativev4.push.PushAlertNavigation
 import com.tianji.probabilitylab.nativev4.service.AiForegroundService
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceMode
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceStore
@@ -57,6 +59,10 @@ fun TianjiApp() {
     val appearanceStore = remember { AppearanceStore(context.applicationContext) }
     val paletteMode by appearanceStore.palette.collectAsState(initial = PaletteMode.MONET)
     val appearanceMode by appearanceStore.appearance.collectAsState(initial = AppearanceMode.SYSTEM)
+    val pushAlerts by PushAlertCoordinator.alerts.collectAsState()
+    val pushPreferences by PushAlertCoordinator.preferences.collectAsState()
+    val pushStatus by PushAlertCoordinator.status.collectAsState()
+    val pendingAlertId by PushAlertNavigation.pendingAlertId.collectAsState()
     val scope = rememberCoroutineScope()
     val state = controller.state
 
@@ -98,9 +104,26 @@ fun TianjiApp() {
 
     var destination by rememberSaveable { mutableStateOf(MainDestination.HOME) }
     var showChat by rememberSaveable { mutableStateOf(false) }
+    var showAlertCenter by rememberSaveable { mutableStateOf(false) }
+    var focusedAlertId by rememberSaveable { mutableStateOf<Long?>(null) }
 
-    BackHandler(enabled = showChat || destination != MainDestination.HOME) {
-        if (showChat) showChat = false else destination = MainDestination.HOME
+    LaunchedEffect(pendingAlertId) {
+        pendingAlertId?.let { alertId ->
+            focusedAlertId = alertId.takeIf { it > 0L }
+            showAlertCenter = true
+            PushAlertNavigation.consume()
+        }
+    }
+
+    BackHandler(enabled = showAlertCenter || showChat || destination != MainDestination.HOME) {
+        when {
+            showAlertCenter -> {
+                showAlertCenter = false
+                focusedAlertId = null
+            }
+            showChat -> showChat = false
+            else -> destination = MainDestination.HOME
+        }
     }
 
     TianjiTheme(
@@ -132,6 +155,11 @@ fun TianjiApp() {
                             destination = destination,
                             isRefreshing = state.isRefreshing,
                             onRefresh = refreshSafely,
+                            unreadAlerts = pushAlerts.count { !it.isRead },
+                            onAlerts = {
+                                focusedAlertId = null
+                                showAlertCenter = true
+                            },
                         )
                         Box(Modifier.weight(1f)) {
                             AnimatedContent(
@@ -192,6 +220,11 @@ fun TianjiApp() {
                                         onSelectAiReasoningMode = controller::selectAiReasoningMode,
                                         onAiConcurrencyChanged = controller::setAiConcurrency,
                                         onAnalyzeAi = { id -> controller.analyzeWithAi(id) },
+                                        pushUnreadCount = pushAlerts.count { !it.isRead },
+                                        onOpenPushAlerts = {
+                                            focusedAlertId = null
+                                            showAlertCenter = true
+                                        },
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 }
@@ -219,6 +252,24 @@ fun TianjiApp() {
                         report = state.report,
                         onRefresh = refreshSafely,
                         onDismiss = { showChat = false },
+                    )
+                }
+
+                if (showAlertCenter) {
+                    PushAlertCenterScreen(
+                        alerts = pushAlerts,
+                        preferences = pushPreferences,
+                        status = pushStatus,
+                        focusAlertId = focusedAlertId,
+                        onPreferencesChange = PushAlertCoordinator::updatePreferences,
+                        onRead = PushAlertCoordinator::markRead,
+                        onReadAll = PushAlertCoordinator::markAllRead,
+                        onRefresh = PushAlertCoordinator::refresh,
+                        onClose = {
+                            showAlertCenter = false
+                            focusedAlertId = null
+                        },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
