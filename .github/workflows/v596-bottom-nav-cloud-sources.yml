@@ -5,6 +5,7 @@ on:
     branches:
       - hotfix/v5.9.6-bottom-nav-cloud-sources
     paths:
+      - tools/apply_v596_correct_hotfix.py
       - .github/workflows/v596-bottom-nav-cloud-sources.yml
 
 permissions:
@@ -15,115 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - name: Checkout correct hotfix branch
+      - name: Checkout hotfix branch
         uses: actions/checkout@v4
         with:
           ref: hotfix/v5.9.6-bottom-nav-cloud-sources
           fetch-depth: 0
 
-      - name: Fetch migration helper
-        run: |
-          git fetch origin hotfix/v5.9.6-chat-and-cloud-sources
-          mkdir -p tools
-          git show origin/hotfix/v5.9.6-chat-and-cloud-sources:tools/apply_v596_chat_cloud_sources.py > tools/apply_v596_chat_cloud_sources.py
-          git show origin/hotfix/v5.9.6-chat-and-cloud-sources:tools/run_v596_chat_cloud_sources.py > tools/run_v596_chat_cloud_sources.py
+      - name: Fetch helper branch
+        run: git fetch origin hotfix/v5.9.6-chat-and-cloud-sources
 
-      - name: Apply cloud source grouping
-        run: |
-          python3 tools/run_v596_chat_cloud_sources.py
-          git checkout origin/main -- \
-            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/TianjiApp.kt \
-            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AiChatDialog.kt
-
-      - name: Fix five-item bottom navigation layout
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AppShellV2.kt')
-          text = path.read_text(encoding='utf-8')
-
-          replacements = [
-              (
-                  '.heightIn(min = 64.dp, max = 72.dp)',
-                  '.heightIn(min = 72.dp)',
-              ),
-              (
-                  '.padding(horizontal = 4.dp, vertical = 4.dp)',
-                  '.padding(horizontal = 4.dp, vertical = 5.dp)',
-              ),
-              (
-                  '''        modifier = modifier
-            .height(56.dp)
-            .scale(scale)''',
-                  '''        modifier = modifier
-            .heightIn(min = 58.dp)
-            .scale(scale)''',
-              ),
-              (
-                  '''            fontSize = 10.sp,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-        )''',
-                  '''            fontSize = 10.sp,
-            lineHeight = 14.sp,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-        )''',
-              ),
-              (
-                  '''        modifier = modifier
-            .height(56.dp)
-            .clip(RoundedCornerShape(16.dp))''',
-                  '''        modifier = modifier
-            .heightIn(min = 60.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .padding(vertical = 2.dp)''',
-              ),
-              ('modifier = Modifier.size(42.dp),', 'modifier = Modifier.size(38.dp),'),
-              ('modifier = Modifier.size(42.dp),\n                    color = colors.accent,', 'modifier = Modifier.size(38.dp),\n                    color = colors.accent,'),
-              ('.size(35.dp)\n                    .shadow(', '.size(33.dp)\n                    .shadow('),
-              ('modifier = Modifier.size(18.dp),\n                )\n            }\n        }\n        Text(', 'modifier = Modifier.size(17.dp),\n                )\n            }\n        }\n        Spacer(Modifier.height(1.dp))\n        Text('),
-              (
-                  '''            color = colors.accent,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-        )''',
-                  '''            color = colors.accent,
-            fontSize = 10.sp,
-            lineHeight = 14.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-        )''',
-              ),
-          ]
-
-          for old, new in replacements:
-              count = text.count(old)
-              if count != 1:
-                  raise RuntimeError(f'Expected one match for {old!r}, found {count}')
-              text = text.replace(old, new, 1)
-
-          path.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Assert intended scope
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          shell = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AppShellV2.kt').read_text()
-          app = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/TianjiApp.kt').read_text()
-          chat = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AiChatDialog.kt').read_text()
-          archive = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/RefinedArchive.kt').read_text()
-
-          assert '.heightIn(min = 72.dp)' in shell
-          assert '.heightIn(min = 60.dp)' in shell
-          assert 'Spacer(Modifier.height(1.dp))' in shell
-          assert 'if (!showChat) {' not in app
-          assert 'WindowInsets.safeDrawing' not in chat
-          for label in ('手机独立 AI', '天机云端 AI', '天机云端本地', '手机本地模型'):
-              assert label in archive
-          PY
+      - name: Apply focused UI fix
+        run: python3 tools/apply_v596_correct_hotfix.py
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -145,21 +48,14 @@ jobs:
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
       - name: Run complete Android validation
-        run: >-
-          gradle --no-daemon --stacktrace
-          :app:testDebugUnitTest
-          :app:testReleaseUnitTest
-          :app:lintDebug
-          :app:assembleDebug
-          :app:assembleRelease
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
 
       - name: Commit validated fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- \
-            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AppShellV2.kt \
-            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/RefinedArchive.kt \
-            app/src/main/java/com/tianji/probabilitylab/nativev4/data/CloudForecastApi.kt
+          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AppShellV2.kt
+          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ui/RefinedArchive.kt
+          git add app/src/main/java/com/tianji/probabilitylab/nativev4/data/CloudForecastApi.kt
           git commit -m "fix: prevent AI bottom nav clipping and split cloud sources"
           git push origin HEAD:hotfix/v5.9.6-bottom-nav-cloud-sources
