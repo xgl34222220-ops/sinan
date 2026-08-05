@@ -56,7 +56,7 @@ class PushAlertsTests(unittest.TestCase):
         register_device(
             installation_id=installation_id,
             secret=secret,
-            app_version="5.9.8-test",
+            app_version="5.9.9-test",
             preferences=DevicePreferences().as_dict(),
         )
         return installation_id, secret

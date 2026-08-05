@@ -112,12 +112,14 @@ object PushAlertCoordinator {
             store.initialSyncComplete = true
             true
         }.getOrElse { failure ->
+            val previous = store.status.value
             store.updateStatus(
                 PushConnectionStatus(
                     registered = false,
                     firebaseConfigured = FirebasePushBootstrap.isConfigured,
+                    serverConfigured = previous.serverConfigured,
                     fcmTokenPresent = store.fcmToken.isNotBlank(),
-                    fallbackMinutes = 15,
+                    fallbackMinutes = previous.fallbackMinutes,
                     detail = failure.message ?: "预警服务暂时不可用",
                 ),
             )

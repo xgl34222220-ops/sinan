@@ -43,6 +43,13 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
+      - name: Validate shell and release workflow syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/*.sh tools/*.sh
+          ruby -e "require 'yaml'; YAML.load_file('.github/workflows/release.yml')"
+
       - name: Unit tests, lint and builds
         run: >-
           gradle --no-daemon --stacktrace

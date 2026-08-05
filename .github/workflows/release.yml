@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'RELEASE_NOTES_v5.9.8.md'
+      - 'RELEASE_NOTES_v5.9.9.md'
       - 'app/build.gradle.kts'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: tianji-v5.9.8-release
+  group: tianji-v5.9.9-release
   cancel-in-progress: true
 
 jobs:
@@ -33,8 +33,8 @@ jobs:
           VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
           VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
           APP_ID="$(sed -n 's/.*applicationId = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
-          test "$VERSION" = '5.9.8'
-          test "$VERSION_CODE" = '50'
+          test "$VERSION" = '5.9.9'
+          test "$VERSION_CODE" = '51'
           test "$APP_ID" = 'com.tianji.probabilitylab.nativev5'
           printf 'VERSION=%s\nVERSION_CODE=%s\nAPP_ID=%s\nRELEASE_TAG=v%s\n' \
             "$VERSION" "$VERSION_CODE" "$APP_ID" "$VERSION" >> "$GITHUB_ENV"
@@ -102,9 +102,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          PREVIOUS_TAG='v5.9.7'
+          PREVIOUS_TAG='v5.9.8'
           if ! gh release view "$PREVIOUS_TAG" >/dev/null 2>&1; then
-            PREVIOUS_TAG='v5.9.6'
+            PREVIOUS_TAG='v5.9.7'
           fi
           mkdir -p previous-release
           gh release download "$PREVIOUS_TAG" --pattern '*.apk' --dir previous-release
@@ -120,13 +120,69 @@ jobs:
           printf 'Previous release: %s\nSHA256 certificate digest: %s\n' \
             "$PREVIOUS_TAG" "$CERT_SHA256" > .signing/CERT_SHA256.txt
 
-      - name: Test and build signed release APK
+      - name: Resolve optional Firebase client configuration
         shell: bash
         env:
-          TIANJI_FIREBASE_PROJECT_ID: ${{ secrets.TIANJI_FIREBASE_PROJECT_ID }}
-          TIANJI_FIREBASE_APP_ID: ${{ secrets.TIANJI_FIREBASE_APP_ID }}
-          TIANJI_FIREBASE_API_KEY: ${{ secrets.TIANJI_FIREBASE_API_KEY }}
-          TIANJI_FIREBASE_SENDER_ID: ${{ secrets.TIANJI_FIREBASE_SENDER_ID }}
+          FIREBASE_JSON_B64: ${{ secrets.TIANJI_FIREBASE_GOOGLE_SERVICES_JSON_B64 }}
+          LEGACY_PROJECT_ID: ${{ secrets.TIANJI_FIREBASE_PROJECT_ID }}
+          LEGACY_APP_ID: ${{ secrets.TIANJI_FIREBASE_APP_ID }}
+          LEGACY_API_KEY: ${{ secrets.TIANJI_FIREBASE_API_KEY }}
+          LEGACY_SENDER_ID: ${{ secrets.TIANJI_FIREBASE_SENDER_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p .firebase
+          if [[ -n "${FIREBASE_JSON_B64:-}" ]]; then
+            printf '%s' "$FIREBASE_JSON_B64" | base64 --decode > .firebase/google-services.json
+            test -s .firebase/google-services.json
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          config = json.loads(Path('.firebase/google-services.json').read_text(encoding='utf-8'))
+          project = config.get('project_info') or {}
+          package_name = os.environ['APP_ID']
+          client = next(
+              (
+                  item for item in config.get('client') or []
+                  if (((item.get('client_info') or {}).get('android_client_info') or {}).get('package_name') == package_name)
+              ),
+              None,
+          )
+          if client is None:
+              raise SystemExit(f'Firebase 配置中找不到 Android 包名 {package_name}')
+          keys = client.get('api_key') or []
+          values = {
+              'TIANJI_FIREBASE_PROJECT_ID': str(project.get('project_id') or '').strip(),
+              'TIANJI_FIREBASE_APP_ID': str((client.get('client_info') or {}).get('mobilesdk_app_id') or '').strip(),
+              'TIANJI_FIREBASE_API_KEY': str((keys[0] if keys else {}).get('current_key') or '').strip(),
+              'TIANJI_FIREBASE_SENDER_ID': str(project.get('project_number') or '').strip(),
+          }
+          missing = [name for name, value in values.items() if not value]
+          if missing:
+              raise SystemExit('Firebase 配置缺少字段：' + ', '.join(missing))
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              for name, value in values.items():
+                  output.write(f'{name}={value}\n')
+              output.write('TIANJI_FCM_ENABLED=true\n')
+          PY
+          elif [[ -n "${LEGACY_PROJECT_ID:-}" && -n "${LEGACY_APP_ID:-}" && -n "${LEGACY_API_KEY:-}" && -n "${LEGACY_SENDER_ID:-}" ]]; then
+            printf 'TIANJI_FIREBASE_PROJECT_ID=%s\n' "$LEGACY_PROJECT_ID" >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_APP_ID=%s\n' "$LEGACY_APP_ID" >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_API_KEY=%s\n' "$LEGACY_API_KEY" >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_SENDER_ID=%s\n' "$LEGACY_SENDER_ID" >> "$GITHUB_ENV"
+            printf 'TIANJI_FCM_ENABLED=true\n' >> "$GITHUB_ENV"
+          else
+            printf 'TIANJI_FIREBASE_PROJECT_ID=\n' >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_APP_ID=\n' >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_API_KEY=\n' >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_SENDER_ID=\n' >> "$GITHUB_ENV"
+            printf 'TIANJI_FCM_ENABLED=false\n' >> "$GITHUB_ENV"
+            echo 'Firebase 未配置：正式版将保留约 15 分钟后台同步与本地通知兜底。'
+          fi
+
+      - name: Test and build signed release APK
+        shell: bash
         run: |
           set -euo pipefail
           gradle --no-daemon --stacktrace \
@@ -142,6 +198,13 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           test -s "$APK"
           unzip -t "$APK" >/dev/null
+          if [[ "${TIANJI_FCM_ENABLED:-false}" == 'true' ]]; then
+            printf 'Firebase Project ID: %s\nAndroid package: %s\nFCM client configuration: embedded\n' \
+              "$TIANJI_FIREBASE_PROJECT_ID" "$APP_ID" > dist/FIREBASE_CONFIG.txt
+          else
+            printf 'Android package: %s\nFCM client configuration: not configured\nFallback: Android background sync and local notification, approximately every 15 minutes\n' \
+              "$APP_ID" > dist/FIREBASE_CONFIG.txt
+          fi
 
       - name: Verify signed release APK
         shell: bash

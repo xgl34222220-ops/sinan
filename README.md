@@ -4,10 +4,11 @@
 
 ## 当前版本
 
-- 版本：5.8.0 UI 与云端控制台焕新版
+- 版本：5.9.9 App UI 与 FCM 正式推送版
 - Android：原生 Kotlin + Jetpack Compose
 - 服务端：FastAPI + SQLite WAL + Docker Compose + Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
+- 正式应用 ID：`com.tianji.probabilitylab.nativev5`
 
 ## 云端与本地双保险
 
@@ -69,6 +70,37 @@ POST /v1/admin/run
 Authorization: Bearer <TIANJI_API_TOKEN>
 ```
 
+## FCM 即时推送
+
+预警中心未配置 FCM 时仍会通过 Android WorkManager 约每 15 分钟同步一次。真正的即时推送需要同时配置 APK 客户端参数和云端 Firebase 服务账号。
+
+完整步骤：
+
+```text
+docs/FCM_SETUP.md
+```
+
+辅助命令：
+
+```bash
+# 在电脑或 Termux 中，从 google-services.json 写入 GitHub Actions Secrets
+./tools/configure-fcm-release.sh /路径/google-services.json
+
+# 在天机服务器中配置 Firebase 服务账号并验证 OAuth
+sudo /opt/tianji/deploy/configure-fcm.sh /安全路径/firebase-service-account.json
+```
+
+正式发布工作流会拒绝发布 Firebase 客户端参数为空的 APK。Firebase 服务账号 JSON、`.env`、签名文件和数据库不得提交到仓库。
+
+## v5.9.9 主要变化
+
+- 重做双彩种切换器以及“概览 / 概率 / 模型”“策略 / 验证”分段控件，所有选项始终显示完整底色和边框。
+- 统一顶部标题栏、通知与刷新按钮、设置入口、底部导航和 AI 主按钮的视觉层级。
+- 修复预警中心标题与系统状态栏重叠。
+- 预警中心分别显示 App 配置、云端账号和设备令牌状态。
+- 正式 Release 支持从受保护的 `google-services.json` Secret 自动解析客户端参数，并强制校验非空。
+- 新增客户端 Secret 配置脚本、服务端服务账号配置脚本和完整 FCM 文档。
+
 ## v5.8.0 主要变化
 
 - App 全面统一 MIUIx 玻璃层级，重做顶栏、彩种切换器、卡片、指标块、开奖球和悬浮底栏。
@@ -104,6 +136,6 @@ Authorization: Bearer <TIANJI_API_TOKEN>
 
 ## 自动验证
 
-Android 分支持续执行单元测试、Lint、Debug APK 和 R8 Release APK 构建；服务端分支执行 Python 编译、单元测试、Docker Compose 校验和镜像构建。
+Android 分支持续执行单元测试、Lint、Debug APK 和 R8 Release APK 构建；服务端分支执行 Python 编译、单元测试、Docker Compose 校验和镜像构建。正式发布还会校验升级签名、应用 ID、版本信息和 Firebase 客户端配置。
 
 > 随机开奖不可可靠预测。本项目用于统计实验、记录和真实前向验证，不承诺准确率、收益或必中。
