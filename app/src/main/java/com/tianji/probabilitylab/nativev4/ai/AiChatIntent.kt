@@ -49,19 +49,26 @@ internal object AiChatIntentRouter {
             return AiChatIntent.LOTTERY_ANALYSIS
         }
 
-        val explicitPrediction = predictionActions.any(normalized::contains) &&
-            predictionObjects.any(normalized::contains)
         val asksNextPeriod = nextPeriodTerms.any(normalized::contains) &&
             (
                 predictionObjects.any(normalized::contains) ||
                     AiPositionScope.extract(normalized) != null
                 )
-        if (explicitPrediction || asksNextPeriod) {
-            return AiChatIntent.LOTTERY_PREDICTION
+        if (asksNextPeriod) return AiChatIntent.LOTTERY_PREDICTION
+
+        // An explanation such as “为什么给了两个号码” must remain an explanation, while
+        // “分析第一名，给两个号码” is a new prediction request.
+        if (reviewSignals.any(normalized::contains)) {
+            return AiChatIntent.LOTTERY_ANALYSIS
         }
 
-        return if (reviewSignals.any(normalized::contains)) {
-            AiChatIntent.LOTTERY_ANALYSIS
+        val explicitPrediction = (
+            predictionActions.any(normalized::contains) &&
+                predictionObjects.any(normalized::contains)
+            ) || AiChatProtocol.requestedCandidateCount(normalized) != null
+
+        return if (explicitPrediction) {
+            AiChatIntent.LOTTERY_PREDICTION
         } else {
             AiChatIntent.LOTTERY_ANALYSIS
         }
