@@ -879,7 +879,6 @@ private class RemoteAiChatClient {
                 judgementMode = judgementMode,
                 learningContext = learningContext,
                 wantsPrediction = wantsPrediction,
-                intent = intent,
             )
         } else {
             null
@@ -1020,7 +1019,6 @@ private class RemoteAiChatClient {
                     onProgress = onProgress,
                     publisher = publisher,
                     intent = intent,
-                    intent = intent,
                 )
             } catch (cause: AiChatProtocolRejectedException) {
                 execute(
@@ -1038,7 +1036,6 @@ private class RemoteAiChatClient {
                     timeoutMs = if (intent == AiChatIntent.FREE_CHAT) 20_000 else 45_000,
                     onProgress = onProgress,
                     publisher = publisher,
-                    intent = intent,
                     intent = intent,
                 )
             }
