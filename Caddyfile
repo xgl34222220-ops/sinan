@@ -1,17 +1,26 @@
 {$TIANJI_DOMAIN:tianji-xgl.duckdns.org} {
     encode zstd gzip
 
-    @health path /health
-    header @health Cache-Control "no-store"
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        -Server
+    }
+
+    @health path /health /health/live /health/ready
+    header @health Cache-Control "no-store, max-age=0"
 
     reverse_proxy api:8000 {
-        health_uri /health
+        health_uri /health/live
         health_interval 30s
         health_timeout 5s
     }
 
     log {
         output stdout
-        format console
+        format json
     }
 }

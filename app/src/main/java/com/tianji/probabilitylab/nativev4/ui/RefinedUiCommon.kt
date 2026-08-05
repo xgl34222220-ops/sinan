@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,28 +45,32 @@ internal fun PositionSelectorV2(selected: Int, onSelected: (Int) -> Unit) {
     val colors = LocalTianjiColors.current
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         repeat(10) { index ->
             val active = index == selected
-            Text(
-                text = if (index == 0) "冠" else if (index == 1) "亚" else (index + 1).toString(),
-                color = if (active) Color.White else colors.textSoft,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
+            Box(
                 modifier = Modifier
-                    .width(34.dp)
-                    .clip(RoundedCornerShape(11.dp))
+                    .width(42.dp)
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(13.dp))
                     .background(if (active) colors.accent else colors.surfaceStrong)
                     .border(
                         1.dp,
                         if (active) Color.Transparent else colors.line,
-                        RoundedCornerShape(11.dp),
+                        RoundedCornerShape(13.dp),
                     )
-                    .clickable { onSelected(index) }
-                    .padding(vertical = 8.dp),
-            )
+                    .clickable { onSelected(index) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (index == 0) "冠" else if (index == 1) "亚" else (index + 1).toString(),
+                    color = if (active) Color.White else colors.textSoft,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
@@ -91,16 +96,17 @@ internal fun CompactMetricV2(label: String, value: String, modifier: Modifier = 
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(colors.surfaceStrong)
+            .background(colors.surfaceStrong.copy(alpha = 0.82f))
             .border(1.dp, colors.line, RoundedCornerShape(14.dp))
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .padding(horizontal = 11.dp, vertical = 11.dp),
     ) {
-        Text(label, color = colors.textDim, fontSize = 10.sp, maxLines = 1)
+        Text(label, color = colors.textDim, fontSize = 11.sp, maxLines = 1)
         Spacer(Modifier.height(4.dp))
         Text(
             value,
             color = colors.text,
-            fontSize = 14.sp,
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -115,28 +121,28 @@ internal fun RefinedModelRowV2(rank: Int, model: ModelPerformance) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(colors.surfaceStrong)
+            .background(colors.surfaceStrong.copy(alpha = 0.78f))
             .border(1.dp, colors.line, RoundedCornerShape(14.dp))
-            .padding(10.dp),
+            .padding(11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(colors.accentSoft),
+            Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(colors.accentSoft),
             contentAlignment = Alignment.Center,
         ) {
-            Text(rank.toString(), color = colors.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(rank.toString(), color = colors.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.width(9.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 model.name,
                 color = colors.textSoft,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.height(6.dp))
             LinearProgressIndicator(
                 progress = { model.weight.toFloat().coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
@@ -149,10 +155,10 @@ internal fun RefinedModelRowV2(rank: Int, model: ModelPerformance) {
             Text(
                 "${(model.weight * 100).format1V2()}%",
                 color = if (model.weight > 0.005) colors.accent else colors.textDim,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text("命中 ${(model.hitRate * 100).format1V2()}%", color = colors.textDim, fontSize = 9.sp)
+            Text("命中 ${(model.hitRate * 100).format1V2()}%", color = colors.textDim, fontSize = 10.sp)
         }
     }
 }
@@ -162,17 +168,17 @@ internal fun EvidenceRowV2(text: String, passed: Boolean) {
     val colors = LocalTianjiColors.current
     val tint = if (passed) colors.green else colors.amber
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
             if (passed) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
             contentDescription = null,
             tint = tint,
-            modifier = Modifier.size(17.dp),
+            modifier = Modifier.size(18.dp),
         )
         Spacer(Modifier.width(8.dp))
-        Text(text, color = colors.textSoft, fontSize = 11.sp, lineHeight = 16.sp)
+        Text(text, color = colors.textSoft, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
 
@@ -181,13 +187,13 @@ internal fun StatusChipV2(text: String, tint: Color) {
     Text(
         text,
         color = tint,
-        fontSize = 9.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
             .clip(CircleShape)
             .background(tint.copy(alpha = 0.10f))
             .border(1.dp, tint.copy(alpha = 0.18f), CircleShape)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 9.dp, vertical = 6.dp),
     )
 }
 

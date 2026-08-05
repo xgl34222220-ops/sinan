@@ -9,17 +9,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,12 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
 import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
@@ -94,14 +84,6 @@ fun TianjiApp() {
         state.snapshot?.let(chatController::settleCandidates)
     }
 
-    val density = LocalDensity.current
-    val readableDensity = remember(density.density, density.fontScale) {
-        Density(
-            density = density.density,
-            fontScale = maxOf(density.fontScale, 1.08f),
-        )
-    }
-
     var destination by rememberSaveable { mutableStateOf(MainDestination.HOME) }
     var showChat by rememberSaveable { mutableStateOf(false) }
     var showAlertCenter by rememberSaveable { mutableStateOf(false) }
@@ -132,179 +114,126 @@ fun TianjiApp() {
         appearance = appearanceMode,
     ) {
         val colors = LocalTianjiColors.current
-        CompositionLocalProvider(LocalDensity provides readableDensity) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(colors.page),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.systemBars)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(colors.page, colors.pageSoft, colors.page),
-                            ),
-                        ),
-                ) {
-                    TianjiBackdropV2()
-
-                    Column(Modifier.fillMaxSize()) {
-                        CompactAppHeader(
-                            destination = destination,
-                            isRefreshing = state.isRefreshing,
-                            onRefresh = refreshSafely,
-                            unreadAlerts = pushAlerts.count { !it.isRead },
-                            onAlerts = {
-                                focusedAlertId = null
-                                showAlertCenter = true
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.page),
+        ) {
+            TianjiRootScaffold {
+                Column(Modifier.fillMaxSize()) {
+                    CompactAppHeader(
+                        destination = destination,
+                        isRefreshing = state.isRefreshing,
+                        onRefresh = refreshSafely,
+                        unreadAlerts = pushAlerts.count { !it.isRead },
+                        onAlerts = {
+                            focusedAlertId = null
+                            showAlertCenter = true
+                        },
+                    )
+                    Box(Modifier.weight(1f)) {
+                        AnimatedContent(
+                            targetState = destination,
+                            modifier = Modifier.fillMaxSize(),
+                            transitionSpec = {
+                                pageTransformV2(initialState.ordinal, targetState.ordinal)
                             },
-                        )
-                        Box(Modifier.weight(1f)) {
-                            AnimatedContent(
-                                targetState = destination,
-                                modifier = Modifier.fillMaxSize(),
-                                transitionSpec = {
-                                    pageTransformV2(initialState.ordinal, targetState.ordinal)
-                                },
-                                label = "refined-pages",
-                            ) { page ->
-                                when (page) {
-                                    MainDestination.HOME -> RefinedForecastScreen(
-                                        state = state,
-                                        aiConfigs = controller.aiConfigs,
-                                        onSelectLottery = controller::selectLottery,
-                                        onRefresh = refreshSafely,
-                                        onAnalyzeAllAi = { controller.analyzeWithAi() },
-                                        onCancelAi = controller::cancelAi,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                    MainDestination.STRATEGY -> StrategyAndEvidenceScreen(
-                                        state = state,
-                                        onSelectLottery = controller::selectLottery,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                    MainDestination.CHAT -> RefinedForecastScreen(
-                                        state = state,
-                                        aiConfigs = controller.aiConfigs,
-                                        onSelectLottery = controller::selectLottery,
-                                        onRefresh = refreshSafely,
-                                        onAnalyzeAllAi = { controller.analyzeWithAi() },
-                                        onCancelAi = controller::cancelAi,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                    MainDestination.ARCHIVE -> RefinedArchiveScreen(
-                                        state = state,
-                                        onSelectLottery = controller::selectLottery,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                    MainDestination.SETTINGS -> SettingsHubScreen(
-                                        state = state,
-                                        paletteMode = paletteMode,
-                                        appearanceMode = appearanceMode,
-                                        aiConfigs = controller.aiConfigs,
-                                        aiAvailableModels = controller.aiAvailableModels,
-                                        onPaletteChanged = { mode ->
-                                            scope.launch { appearanceStore.setPalette(mode) }
-                                        },
-                                        onAppearanceChanged = { mode ->
-                                            scope.launch { appearanceStore.setAppearance(mode) }
-                                        },
-                                        onSaveAiConfig = controller::saveAiConfig,
-                                        onDeleteAiConfig = controller::deleteAiConfig,
-                                        onTestAiConnection = controller::testAiConnection,
-                                        onLoadAiModels = controller::loadAiModels,
-                                        onSelectAiModel = controller::selectAiModel,
-                                        onSelectAiMode = controller::selectAiAnalysisMode,
-                                        onSelectAiReasoningMode = controller::selectAiReasoningMode,
-                                        onAiConcurrencyChanged = controller::setAiConcurrency,
-                                        onAnalyzeAi = { id -> controller.analyzeWithAi(id) },
-                                        pushUnreadCount = pushAlerts.count { !it.isRead },
-                                        onOpenPushAlerts = {
-                                            focusedAlertId = null
-                                            showAlertCenter = true
-                                        },
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
+                            label = "refined-pages",
+                        ) { page ->
+                            when (page) {
+                                MainDestination.HOME -> RefinedForecastScreen(
+                                    state = state,
+                                    aiConfigs = controller.aiConfigs,
+                                    onSelectLottery = controller::selectLottery,
+                                    onRefresh = refreshSafely,
+                                    onAnalyzeAllAi = { controller.analyzeWithAi() },
+                                    onCancelAi = controller::cancelAi,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                MainDestination.STRATEGY -> StrategyAndEvidenceScreen(
+                                    state = state,
+                                    onSelectLottery = controller::selectLottery,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                MainDestination.ARCHIVE -> RefinedArchiveScreen(
+                                    state = state,
+                                    onSelectLottery = controller::selectLottery,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                MainDestination.SETTINGS -> SettingsHubScreen(
+                                    state = state,
+                                    paletteMode = paletteMode,
+                                    appearanceMode = appearanceMode,
+                                    aiConfigs = controller.aiConfigs,
+                                    aiAvailableModels = controller.aiAvailableModels,
+                                    onPaletteChanged = { mode ->
+                                        scope.launch { appearanceStore.setPalette(mode) }
+                                    },
+                                    onAppearanceChanged = { mode ->
+                                        scope.launch { appearanceStore.setAppearance(mode) }
+                                    },
+                                    onSaveAiConfig = controller::saveAiConfig,
+                                    onDeleteAiConfig = controller::deleteAiConfig,
+                                    onTestAiConnection = controller::testAiConnection,
+                                    onLoadAiModels = controller::loadAiModels,
+                                    onSelectAiModel = controller::selectAiModel,
+                                    onSelectAiMode = controller::selectAiAnalysisMode,
+                                    onSelectAiReasoningMode = controller::selectAiReasoningMode,
+                                    onAiConcurrencyChanged = controller::setAiConcurrency,
+                                    onAnalyzeAi = { id -> controller.analyzeWithAi(id) },
+                                    pushUnreadCount = pushAlerts.count { !it.isRead },
+                                    onOpenPushAlerts = {
+                                        focusedAlertId = null
+                                        showAlertCenter = true
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             }
-
-                            MainBottomBar(
-                                selected = destination,
-                                onSelected = { destination = it },
-                                onChat = { showChat = true },
-                                isAiRunning = state.isAiAnalyzing || chatRunning,
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(start = 12.dp, end = 12.dp, bottom = 9.dp),
-                            )
                         }
+
+                        MainBottomBar(
+                            selected = destination,
+                            onSelected = { destination = it },
+                            onChat = { showChat = true },
+                            isAiRunning = state.isAiAnalyzing || chatRunning,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(start = 12.dp, end = 12.dp, bottom = 9.dp),
+                        )
                     }
                 }
+            }
 
-                if (showChat) {
-                    AiChatDialog(
-                        controller = chatController,
-                        configs = controller.aiConfigs,
-                        modelCatalogs = controller.aiAvailableModels,
-                        snapshot = state.snapshot,
-                        report = state.report,
-                        onRefresh = refreshSafely,
-                        onDismiss = { showChat = false },
-                    )
-                }
+            if (showChat) {
+                AiChatDialog(
+                    controller = chatController,
+                    configs = controller.aiConfigs,
+                    modelCatalogs = controller.aiAvailableModels,
+                    snapshot = state.snapshot,
+                    report = state.report,
+                    onRefresh = refreshSafely,
+                    onDismiss = { showChat = false },
+                )
+            }
 
-                if (showAlertCenter) {
-                    PushAlertCenterScreen(
-                        alerts = pushAlerts,
-                        preferences = pushPreferences,
-                        status = pushStatus,
-                        focusAlertId = focusedAlertId,
-                        onPreferencesChange = PushAlertCoordinator::updatePreferences,
-                        onRead = PushAlertCoordinator::markRead,
-                        onReadAll = PushAlertCoordinator::markAllRead,
-                        onRefresh = PushAlertCoordinator::refresh,
-                        onClose = {
-                            showAlertCenter = false
-                            focusedAlertId = null
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+            if (showAlertCenter) {
+                PushAlertCenterScreen(
+                    alerts = pushAlerts,
+                    preferences = pushPreferences,
+                    status = pushStatus,
+                    focusAlertId = focusedAlertId,
+                    onPreferencesChange = PushAlertCoordinator::updatePreferences,
+                    onRead = PushAlertCoordinator::markRead,
+                    onReadAll = PushAlertCoordinator::markAllRead,
+                    onRefresh = PushAlertCoordinator::refresh,
+                    onClose = {
+                        showAlertCenter = false
+                        focusedAlertId = null
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun TianjiBackdropV2() {
-    val colors = LocalTianjiColors.current
-    Canvas(Modifier.fillMaxSize()) {
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(
-                    colors.accent.copy(
-                        alpha = if (colors.isOled) 0.045f else if (colors.isDark) 0.085f else 0.055f,
-                    ),
-                    Color.Transparent,
-                ),
-            ),
-            radius = size.width * 0.84f,
-            center = Offset(size.width * 1.04f, size.height * 0.20f),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(
-                    colors.amber.copy(
-                        alpha = if (colors.isOled) 0.025f else if (colors.isDark) 0.050f else 0.035f,
-                    ),
-                    Color.Transparent,
-                ),
-            ),
-            radius = size.width * 0.72f,
-            center = Offset(size.width * -0.08f, size.height * 0.04f),
-        )
     }
 }
 
