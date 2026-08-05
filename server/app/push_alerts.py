@@ -21,6 +21,8 @@ from . import telegram_alerts
 
 
 CHANNEL_ID = "tianji_prediction_alerts"
+PREALERT_THRESHOLD = 2
+STRONG_ALERT_THRESHOLD = 3
 _INIT_LOCK = threading.Lock()
 _INITIALIZED = False
 _CREDENTIAL_LOCK = threading.Lock()
@@ -426,7 +428,8 @@ def materialize_warning_alerts(
 ) -> list[int]:
     initialize()
     inserted_ids: list[int] = []
-    threshold = int(watch.get("threshold") or settings.push_threshold)
+    prealert_threshold = PREALERT_THRESHOLD
+    strong_threshold = max(STRONG_ALERT_THRESHOLD, int(settings.push_threshold))
     now = _now_ms()
     for lottery in watch.get("lotteries") or []:
         lottery_key = str(lottery.get("key") or "")
@@ -446,15 +449,29 @@ def materialize_warning_alerts(
                 or prediction.get("latest_target_period")
                 or ""
             )
-            if not lottery_key or not source or not model or streak < threshold or not latest_period:
+            if (
+                not lottery_key
+                or not source
+                or not model
+                or streak < prealert_threshold
+                or not latest_period
+            ):
                 continue
             event_key = _event_key(lottery_key, source, model, streak, latest_period)
             recent_periods = [
                 str(item.get("target_period") or "")
-                for item in recent[:threshold]
+                for item in recent[:strong_threshold]
                 if str(item.get("target_period") or "")
             ]
-            title = "三期不中预警" if streak == threshold else f"连续 {streak} 期不中升级预警"
+            if streak == prealert_threshold:
+                title = "两期不中预警"
+                alert_level = "prealert"
+            elif streak == strong_threshold:
+                title = "三期不中加强提醒"
+                alert_level = "strong"
+            else:
+                title = f"连续 {streak} 期不中升级预警"
+                alert_level = "escalation"
             body = f"{lottery_name} · {source_name} · {model} 已连续 {streak} 期 Top 6 未命中"
             data = {
                 "type": "prediction_miss_alert",
@@ -464,7 +481,9 @@ def materialize_warning_alerts(
                 "source_name": source_name,
                 "model": model,
                 "streak": str(streak),
-                "threshold": str(threshold),
+                "threshold": str(strong_threshold),
+                "prealert_threshold": str(prealert_threshold),
+                "alert_level": alert_level,
                 "latest_target_period": latest_period,
                 "recent_periods": ",".join(recent_periods),
             }
@@ -485,7 +504,7 @@ def materialize_warning_alerts(
                         source_name,
                         model,
                         streak,
-                        threshold,
+                        strong_threshold,
                         latest_period,
                         json.dumps(recent_periods, ensure_ascii=False),
                         title,
@@ -500,7 +519,7 @@ def materialize_warning_alerts(
 
 
 def process_prediction_alerts(lottery_key: str | None = None) -> dict[str, Any]:
-    watch = prediction_miss_watch(threshold=settings.push_threshold)
+    watch = prediction_miss_watch(threshold=PREALERT_THRESHOLD)
     inserted = materialize_warning_alerts(watch, lottery_filter=lottery_key)
     delivery = deliver_pending_alerts()
     return {

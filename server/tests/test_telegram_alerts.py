@@ -52,6 +52,18 @@ class TelegramAlertTests(unittest.TestCase):
             telegram_alerts.parse_chat_ids("123, -456\n123; @channel"),
         )
 
+    def test_two_miss_message_is_a_prealert(self) -> None:
+        alert_id = push_alerts.materialize_warning_alerts(self.watch(streak=2))[0]
+        with database.connection() as db:
+            alert = db.execute(
+                "SELECT * FROM push_alerts WHERE id=?",
+                (alert_id,),
+            ).fetchone()
+        message = telegram_alerts.format_alert_message(alert)
+        self.assertIn("⚠️", message)
+        self.assertIn("连续两期不中 · 提前预警", message)
+        self.assertIn("每期云端 AI 预测仍会正常推送", message)
+
     def test_three_miss_message_is_a_strong_alert(self) -> None:
         alert_id = push_alerts.materialize_warning_alerts(self.watch())[0]
         with database.connection() as db:
