@@ -120,7 +120,7 @@ jobs:
           printf 'Previous release: %s\nSHA256 certificate digest: %s\n' \
             "$PREVIOUS_TAG" "$CERT_SHA256" > .signing/CERT_SHA256.txt
 
-      - name: Resolve protected Firebase client configuration
+      - name: Resolve optional Firebase client configuration
         shell: bash
         env:
           FIREBASE_JSON_B64: ${{ secrets.TIANJI_FIREBASE_GOOGLE_SERVICES_JSON_B64 }}
@@ -164,31 +164,32 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
               for name, value in values.items():
                   output.write(f'{name}={value}\n')
+              output.write('TIANJI_FCM_ENABLED=true\n')
           PY
-          else
-            test -n "${LEGACY_PROJECT_ID:-}"
-            test -n "${LEGACY_APP_ID:-}"
-            test -n "${LEGACY_API_KEY:-}"
-            test -n "${LEGACY_SENDER_ID:-}"
+          elif [[ -n "${LEGACY_PROJECT_ID:-}" && -n "${LEGACY_APP_ID:-}" && -n "${LEGACY_API_KEY:-}" && -n "${LEGACY_SENDER_ID:-}" ]]; then
             printf 'TIANJI_FIREBASE_PROJECT_ID=%s\n' "$LEGACY_PROJECT_ID" >> "$GITHUB_ENV"
             printf 'TIANJI_FIREBASE_APP_ID=%s\n' "$LEGACY_APP_ID" >> "$GITHUB_ENV"
             printf 'TIANJI_FIREBASE_API_KEY=%s\n' "$LEGACY_API_KEY" >> "$GITHUB_ENV"
             printf 'TIANJI_FIREBASE_SENDER_ID=%s\n' "$LEGACY_SENDER_ID" >> "$GITHUB_ENV"
+            printf 'TIANJI_FCM_ENABLED=true\n' >> "$GITHUB_ENV"
+          else
+            printf 'TIANJI_FIREBASE_PROJECT_ID=\n' >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_APP_ID=\n' >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_API_KEY=\n' >> "$GITHUB_ENV"
+            printf 'TIANJI_FIREBASE_SENDER_ID=\n' >> "$GITHUB_ENV"
+            printf 'TIANJI_FCM_ENABLED=false\n' >> "$GITHUB_ENV"
+            echo 'Firebase 未配置：正式版将保留约 15 分钟后台同步与本地通知兜底。'
           fi
 
-      - name: Test and build signed FCM-enabled release APK
+      - name: Test and build signed release APK
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$TIANJI_FIREBASE_PROJECT_ID"
-          test -n "$TIANJI_FIREBASE_APP_ID"
-          test -n "$TIANJI_FIREBASE_API_KEY"
-          test -n "$TIANJI_FIREBASE_SENDER_ID"
           gradle --no-daemon --stacktrace \
-            "-PTIANJI_FIREBASE_PROJECT_ID=$TIANJI_FIREBASE_PROJECT_ID" \
-            "-PTIANJI_FIREBASE_APP_ID=$TIANJI_FIREBASE_APP_ID" \
-            "-PTIANJI_FIREBASE_API_KEY=$TIANJI_FIREBASE_API_KEY" \
-            "-PTIANJI_FIREBASE_SENDER_ID=$TIANJI_FIREBASE_SENDER_ID" \
+            "-PTIANJI_FIREBASE_PROJECT_ID=${TIANJI_FIREBASE_PROJECT_ID:-}" \
+            "-PTIANJI_FIREBASE_APP_ID=${TIANJI_FIREBASE_APP_ID:-}" \
+            "-PTIANJI_FIREBASE_API_KEY=${TIANJI_FIREBASE_API_KEY:-}" \
+            "-PTIANJI_FIREBASE_SENDER_ID=${TIANJI_FIREBASE_SENDER_ID:-}" \
             :app:testReleaseUnitTest \
             :app:lintRelease \
             :app:assembleRelease
@@ -197,8 +198,13 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           test -s "$APK"
           unzip -t "$APK" >/dev/null
-          printf 'Firebase Project ID: %s\nAndroid package: %s\nFCM client configuration: embedded\n' \
-            "$TIANJI_FIREBASE_PROJECT_ID" "$APP_ID" > dist/FIREBASE_CONFIG.txt
+          if [[ "${TIANJI_FCM_ENABLED:-false}" == 'true' ]]; then
+            printf 'Firebase Project ID: %s\nAndroid package: %s\nFCM client configuration: embedded\n' \
+              "$TIANJI_FIREBASE_PROJECT_ID" "$APP_ID" > dist/FIREBASE_CONFIG.txt
+          else
+            printf 'Android package: %s\nFCM client configuration: not configured\nFallback: Android background sync and local notification, approximately every 15 minutes\n' \
+              "$APP_ID" > dist/FIREBASE_CONFIG.txt
+          fi
 
       - name: Verify signed release APK
         shell: bash
