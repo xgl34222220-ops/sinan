@@ -49,6 +49,10 @@ internal object AiConversationContinuity {
         val explicitRank = AiPositionScope.extract(question) != null
         val explicitReview = explicitReviewTerms.any(normalized::contains)
         val naturalFollowUp = naturalFollowUpTerms.any(normalized::contains)
+        val sameTargetConversation = messages.any { message ->
+            val scope = message.positionScope ?: AiPositionScope.extract(message.content)
+            scope == activePosition && message.targetPeriod == currentTargetPeriod
+        }
         val latestSettled = candidates.asReversed().firstOrNull { record ->
             record.prediction.position == activePosition && record.actualNumber != null
         }
@@ -57,7 +61,8 @@ internal object AiConversationContinuity {
         val mode = when {
             explicitReview -> AiContinuityMode.EXPLICIT_REVIEW
             adjacentSettled != null && naturalFollowUp -> AiContinuityMode.ADJACENT_SETTLED
-            !explicitRank && naturalFollowUp -> AiContinuityMode.NATURAL_FOLLOW_UP
+            naturalFollowUp && (!explicitRank || sameTargetConversation) ->
+                AiContinuityMode.NATURAL_FOLLOW_UP
             else -> AiContinuityMode.FRESH
         }
         val relevantRecord = when (mode) {
