@@ -1,0 +1,102 @@
+name: Apply Tianji v5.9.8 Push Alerts
+
+on:
+  push:
+    branches: ['feature/v5.9.8-push-alert-center']
+    paths:
+      - 'tools/apply_v598_push_alerts.py'
+      - '.github/workflows/v598-push-alerts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tianji-v598-push-alerts
+  cancel-in-progress: true
+
+jobs:
+  validate-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/v5.9.8-push-alert-center
+          fetch-depth: 0
+
+      - name: Apply push alert integration
+        run: python tools/apply_v598_push_alerts.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Validate Android app
+        run: >-
+          gradle --no-daemon --stacktrace
+          :app:testDebugUnitTest
+          :app:testReleaseUnitTest
+          :app:lintDebug
+          :app:assembleDebug
+          :app:assembleRelease
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: server/requirements.txt
+
+      - name: Validate cloud backend
+        env:
+          PYTHONPATH: server
+          TIANJI_DATABASE: ${{ runner.temp }}/tianji-v598.db
+        run: |
+          python -m pip install -r server/requirements.txt
+          python -m compileall -q server/app
+          python -m unittest discover -s server/tests -v
+
+      - name: Commit validated integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- \
+            .env.example \
+            app/build.gradle.kts \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/MainActivity.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/TianjiApplication.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AppShellV2.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/SettingsHubV2.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/TianjiApp.kt \
+            server/app/config.py \
+            server/app/main.py \
+            server/app/service.py \
+            server/requirements.txt
+          if git diff --cached --quiet; then
+            echo 'No integration changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: add push alert center and FCM delivery'
+          git push origin HEAD:feature/v5.9.8-push-alert-center
