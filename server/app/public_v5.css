@@ -1,0 +1,181 @@
+/* Tianji Public Cloud V5 | readable, compact and visually aligned with Console V6. */
+html.tianji-public-v5{
+  --p5-bg:#f4f6fb;
+  --p5-bg-soft:#edf1f8;
+  --p5-surface:#fff;
+  --p5-surface-soft:#f5f7fb;
+  --p5-text:#171a24;
+  --p5-text-soft:#41495a;
+  --p5-muted:#737d90;
+  --p5-line:rgba(28,34,52,.095);
+  --p5-line-strong:rgba(28,34,52,.15);
+  --p5-primary:#6757f4;
+  --p5-primary2:#8d63f7;
+  --p5-primary-soft:#ece9ff;
+  --p5-good:#16865f;
+  --p5-warn:#9d6400;
+  --p5-bad:#c43a52;
+  --p5-shadow:0 7px 25px rgba(43,49,73,.075);
+  --p5-shadow-float:0 15px 45px rgba(42,48,72,.13);
+  background:var(--p5-bg);
+}
+html.tianji-public-v5[data-theme="dark"]{
+  --p5-bg:#0c0f16;
+  --p5-bg-soft:#131722;
+  --p5-surface:#171b25;
+  --p5-surface-soft:#1e2330;
+  --p5-text:#f5f7fb;
+  --p5-text-soft:#d4d9e3;
+  --p5-muted:#959eaf;
+  --p5-line:rgba(255,255,255,.085);
+  --p5-line-strong:rgba(255,255,255,.15);
+  --p5-primary:#9789ff;
+  --p5-primary2:#b28bff;
+  --p5-primary-soft:#302b58;
+  --p5-good:#5bd8aa;
+  --p5-warn:#efb65b;
+  --p5-bad:#ff8497;
+  --p5-shadow:0 8px 27px rgba(0,0,0,.23);
+  --p5-shadow-float:0 16px 48px rgba(0,0,0,.38);
+}
+html.tianji-public-v5 body{
+  color:var(--p5-text);
+  font-size:14px;
+  line-height:1.58;
+  background:
+    radial-gradient(circle at 8% -8%,color-mix(in srgb,var(--p5-primary) 10%,transparent),transparent 29rem),
+    radial-gradient(circle at 102% 16%,color-mix(in srgb,var(--p5-primary2) 7%,transparent),transparent 30rem),
+    linear-gradient(180deg,var(--p5-bg-soft),var(--p5-bg) 27rem);
+  background-attachment:fixed;
+}
+html.tianji-public-v5 .shell{width:min(940px,calc(100% - 28px));padding:10px 0 42px}
+html.tianji-public-v5 .topbar{
+  position:sticky;top:8px;z-index:50;min-height:62px;margin:0 0 14px;padding:8px 9px;
+  border:1px solid var(--p5-line);border-radius:20px;
+  background:color-mix(in srgb,var(--p5-surface) 92%,transparent);
+  box-shadow:var(--p5-shadow);backdrop-filter:blur(17px) saturate(120%);
+  -webkit-backdrop-filter:blur(17px) saturate(120%);
+}
+html.tianji-public-v5 .brand{gap:10px;min-width:0}
+html.tianji-public-v5 .mark{width:42px;height:42px;flex-basis:42px;border-radius:14px;background:linear-gradient(145deg,var(--p5-primary),var(--p5-primary2));box-shadow:0 8px 20px color-mix(in srgb,var(--p5-primary) 24%,transparent)}
+html.tianji-public-v5 .brand h1{font-size:18px;line-height:1.16;font-weight:850;letter-spacing:-.025em}
+html.tianji-public-v5 .brand p{font-size:11px;color:var(--p5-muted)}
+html.tianji-public-v5 .toolbar{gap:7px}
+html.tianji-public-v5 .icon-btn,
+html.tianji-public-v5 .status{min-height:42px;border:1px solid var(--p5-line);border-radius:14px;color:var(--p5-text-soft);background:var(--p5-surface-soft);box-shadow:none;backdrop-filter:none}
+html.tianji-public-v5 .icon-btn{width:42px;height:42px}
+html.tianji-public-v5 .status{padding:0 12px;font-size:11px;font-weight:720}
+html.tianji-public-v5 .dot{background:var(--p5-good);box-shadow:0 0 0 5px color-mix(in srgb,var(--p5-good) 13%,transparent)}
+
+html.tianji-public-v5 .hero,
+html.tianji-public-v5 .metric,
+html.tianji-public-v5 .lottery-card,
+html.tianji-public-v5 .disclaimer{
+  border:1px solid var(--p5-line);background:var(--p5-surface);box-shadow:var(--p5-shadow);
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+}
+html.tianji-public-v5 .hero{
+  position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:end;
+  padding:22px 23px;border-radius:25px;background:linear-gradient(145deg,color-mix(in srgb,var(--p5-surface) 94%,var(--p5-primary-soft)),var(--p5-surface));
+}
+html.tianji-public-v5 .hero:after{content:"";position:absolute;width:230px;height:230px;right:-80px;top:-120px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--p5-primary) 17%,transparent),transparent 68%);pointer-events:none}
+html.tianji-public-v5 .hero-copy,
+html.tianji-public-v5 .hero-actions{position:relative;z-index:1}
+html.tianji-public-v5 .eyebrow{color:var(--p5-primary);font-size:10px;font-weight:820;letter-spacing:.12em}
+html.tianji-public-v5 .hero h2{max-width:640px;margin:7px 0 8px;color:var(--p5-text);font-size:clamp(25px,4vw,39px);line-height:1.1;letter-spacing:-.045em}
+html.tianji-public-v5 .hero p{margin:0;color:var(--p5-muted);font-size:12px;line-height:1.68}
+html.tianji-public-v5 .hero-actions,
+html.tianji-public-v5 .actions{display:flex;gap:7px;flex-wrap:wrap}
+html.tianji-public-v5 .btn{min-height:42px;padding:0 14px;border-radius:13px;font-size:12px;font-weight:780}
+html.tianji-public-v5 .btn.primary{color:#fff;background:linear-gradient(135deg,var(--p5-primary),var(--p5-primary2));box-shadow:0 8px 20px color-mix(in srgb,var(--p5-primary) 22%,transparent)}
+html.tianji-public-v5 .btn.secondary{color:var(--p5-text-soft);background:var(--p5-surface-soft);border:1px solid var(--p5-line)}
+
+html.tianji-public-v5 .section{margin-top:16px}
+html.tianji-public-v5 .section-head{margin:0 3px 9px;align-items:center}
+html.tianji-public-v5 .section-head h2{margin:0;color:var(--p5-text);font-size:18px;font-weight:840;letter-spacing:-.025em}
+html.tianji-public-v5 .section-head p{margin:3px 0 0;color:var(--p5-muted);font-size:11px}
+html.tianji-public-v5 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+html.tianji-public-v5 .metric{min-height:98px;padding:13px 14px;border-radius:18px;box-shadow:none}
+html.tianji-public-v5 .metric-label{color:var(--p5-muted);font-size:11px;font-weight:680}
+html.tianji-public-v5 .metric-value{margin-top:6px;color:var(--p5-text);font-size:20px;line-height:1.1;font-weight:870;letter-spacing:-.03em;overflow-wrap:anywhere}
+html.tianji-public-v5 .metric-foot{margin-top:5px;color:var(--p5-muted);font-size:10px;line-height:1.45}
+html.tianji-public-v5 .good{color:var(--p5-good)}
+html.tianji-public-v5 .warn{color:var(--p5-warn)}
+html.tianji-public-v5 .bad{color:var(--p5-bad)}
+
+html.tianji-public-v5 .lottery-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+html.tianji-public-v5 .lottery-card{overflow:hidden;border-radius:23px}
+html.tianji-public-v5 .lottery-main{padding:15px}
+html.tianji-public-v5 .lottery-title{display:flex;align-items:flex-start;justify-content:space-between;gap:9px}
+html.tianji-public-v5 .lottery-title h3{margin:0;color:var(--p5-text);font-size:19px;line-height:1.2;font-weight:850;letter-spacing:-.03em}
+html.tianji-public-v5 .lottery-title .sub{margin-top:4px;color:var(--p5-muted);font-size:10px;line-height:1.5}
+html.tianji-public-v5 .target{flex:0 0 auto;max-width:44%;padding:7px 9px;border:1px solid var(--p5-line);border-radius:12px;color:var(--p5-muted);background:var(--p5-surface-soft);font-size:9px;text-align:right;overflow-wrap:anywhere}
+html.tianji-public-v5 .target strong{display:block;margin-top:2px;color:var(--p5-text);font-size:12px}
+html.tianji-public-v5 .numbers{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:5px;margin:12px 0}
+html.tianji-public-v5 .number,
+html.tianji-public-v5 .ball{--ball-a:color-mix(in srgb,var(--p5-primary) 82%,#fff);--ball-b:var(--p5-primary);display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,var(--ball-a),var(--ball-b));border:1px solid color-mix(in srgb,var(--ball-a) 62%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.26),0 4px 10px color-mix(in srgb,var(--ball-b) 14%,transparent);font-weight:860}
+html.tianji-public-v5 .number{width:100%;min-width:0;aspect-ratio:1;border-radius:50%;font-size:11px}
+html.tianji-public-v5 .ball{min-width:28px;height:28px;padding:0;border-radius:50%;font-size:10px}
+html.tianji-public-v5 [data-number="1"]{--ball-a:#ffd95c;--ball-b:#d99a00;color:#2d250d}
+html.tianji-public-v5 [data-number="2"]{--ball-a:#66b8ff;--ball-b:#2673d5}
+html.tianji-public-v5 [data-number="3"]{--ball-a:#99a5b9;--ball-b:#4b556b}
+html.tianji-public-v5 [data-number="4"]{--ball-a:#ff9b59;--ball-b:#db541e}
+html.tianji-public-v5 [data-number="5"]{--ball-a:#53dbe4;--ball-b:#198f9d}
+html.tianji-public-v5 [data-number="6"]{--ball-a:#a57cff;--ball-b:#6541ce}
+html.tianji-public-v5 [data-number="7"]{--ball-a:#fff;--ball-b:#c9cfda;color:#303542}
+html.tianji-public-v5 [data-number="8"]{--ball-a:#ff7783;--ball-b:#cc2e43}
+html.tianji-public-v5 [data-number="9"]{--ball-a:#7be27e;--ball-b:#2ba542}
+html.tianji-public-v5 [data-number="10"]{--ball-a:#52dfbd;--ball-b:#158f78}
+html.tianji-public-v5 .ai-strip{min-height:54px;padding:10px 11px;border:1px solid var(--p5-line);border-radius:14px;background:var(--p5-surface-soft)}
+html.tianji-public-v5 .ai-title{color:var(--p5-text-soft);font-size:12px;font-weight:790}
+html.tianji-public-v5 .ai-strip .sub{margin-top:2px;color:var(--p5-muted);font-size:10px}
+html.tianji-public-v5 .badge{min-height:27px;padding:0 9px;border-radius:999px;font-size:10px;font-weight:790}
+html.tianji-public-v5 .forecasts{border-top:1px solid var(--p5-line);background:var(--p5-surface-soft)}
+html.tianji-public-v5 .forecast{padding:12px 15px;border-top:1px solid var(--p5-line)}
+html.tianji-public-v5 .forecast:first-child{border-top:0}
+html.tianji-public-v5 .forecast-head{font-size:11px;font-weight:760}
+html.tianji-public-v5 .balls{gap:6px;margin-top:8px}
+html.tianji-public-v5 .forecast .sub{margin-top:7px!important;color:var(--p5-muted);font-size:10px!important}
+html.tianji-public-v5 .empty{padding:20px;color:var(--p5-muted);font-size:11px;text-align:center}
+html.tianji-public-v5 .disclaimer{margin-top:14px;padding:13px 16px;border-radius:16px;color:var(--p5-muted);font-size:10px;line-height:1.65;text-align:center;box-shadow:none;background:var(--p5-surface-soft)}
+html.tianji-public-v5 .public-v5-pulse{animation:publicV5Spin .65s ease}
+@keyframes publicV5Spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+@media(max-width:740px){
+  html.tianji-public-v5 body{font-size:13px;background-attachment:scroll}
+  html.tianji-public-v5 .shell{width:100%;padding:56px 10px 26px}
+  html.tianji-public-v5 .topbar{position:fixed;top:8px;right:10px;left:10px;z-index:60;min-height:42px;margin:0;padding:0 2px;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  html.tianji-public-v5 .topbar .brand{display:none}
+  html.tianji-public-v5 .toolbar{width:100%;gap:6px}
+  html.tianji-public-v5 .status.hide-mobile{display:flex;margin-right:auto;min-height:40px;padding:0 11px;border-radius:13px;background:color-mix(in srgb,var(--p5-surface) 94%,transparent);box-shadow:var(--p5-shadow);backdrop-filter:blur(14px)}
+  html.tianji-public-v5 .icon-btn{width:40px;height:40px;min-height:40px;border-radius:13px;background:color-mix(in srgb,var(--p5-surface) 94%,transparent);box-shadow:var(--p5-shadow);backdrop-filter:blur(14px)}
+  html.tianji-public-v5 .hero{grid-template-columns:1fr;padding:17px;border-radius:21px;gap:12px}
+  html.tianji-public-v5 .hero h2{font-size:23px;line-height:1.16;margin:6px 0}
+  html.tianji-public-v5 .hero h2 br{display:none}
+  html.tianji-public-v5 .hero p{font-size:11px;line-height:1.62}
+  html.tianji-public-v5 .hero-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  html.tianji-public-v5 .hero-actions .btn{min-height:40px;padding:0 9px}
+  html.tianji-public-v5 .section{margin-top:14px}
+  html.tianji-public-v5 .section-head h2{font-size:17px}
+  html.tianji-public-v5 .section-head p{display:none}
+  html.tianji-public-v5 .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  html.tianji-public-v5 .metric{min-height:88px;padding:12px}
+  html.tianji-public-v5 .metric-value{font-size:18px}
+  html.tianji-public-v5 .lottery-grid{grid-template-columns:1fr;gap:10px}
+  html.tianji-public-v5 .lottery-card{border-radius:21px}
+  html.tianji-public-v5 .lottery-main{padding:13px}
+  html.tianji-public-v5 .lottery-title h3{font-size:18px}
+  html.tianji-public-v5 .numbers{gap:4px;margin:10px 0}
+  html.tianji-public-v5 .number{font-size:10px}
+  html.tianji-public-v5 .forecast{padding:12px 13px}
+  html.tianji-public-v5 .disclaimer{margin-top:12px}
+}
+
+@media(max-width:390px){
+  html.tianji-public-v5 .metrics{grid-template-columns:1fr 1fr}
+  html.tianji-public-v5 .hero-actions{grid-template-columns:1fr}
+  html.tianji-public-v5 .numbers{gap:3px}
+  html.tianji-public-v5 .number{font-size:9px}
+}
+
+@media(prefers-reduced-motion:reduce){html.tianji-public-v5 .public-v5-pulse{animation:none}}

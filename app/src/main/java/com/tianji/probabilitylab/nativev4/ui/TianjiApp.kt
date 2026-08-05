@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
 import com.tianji.probabilitylab.nativev4.service.AiForegroundService
+import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceMode
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceStore
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import com.tianji.probabilitylab.nativev4.ui.theme.PaletteMode
@@ -53,8 +54,9 @@ fun TianjiApp() {
     }
     val controller = runtime.appController
     val chatController = runtime.chatController
-    val appearance = remember { AppearanceStore(context.applicationContext) }
-    val paletteMode by appearance.palette.collectAsState(initial = PaletteMode.MONET)
+    val appearanceStore = remember { AppearanceStore(context.applicationContext) }
+    val paletteMode by appearanceStore.palette.collectAsState(initial = PaletteMode.MONET)
+    val appearanceMode by appearanceStore.appearance.collectAsState(initial = AppearanceMode.SYSTEM)
     val scope = rememberCoroutineScope()
     val state = controller.state
 
@@ -90,18 +92,22 @@ fun TianjiApp() {
     val readableDensity = remember(density.density, density.fontScale) {
         Density(
             density = density.density,
-            fontScale = maxOf(density.fontScale, 1.10f),
+            fontScale = maxOf(density.fontScale, 1.08f),
         )
     }
 
-    var destination by rememberSaveable { mutableStateOf(NavDestination.FORECAST) }
+    var destination by rememberSaveable { mutableStateOf(MainDestination.HOME) }
     var showChat by rememberSaveable { mutableStateOf(false) }
 
-    BackHandler(enabled = showChat || destination != NavDestination.FORECAST) {
-        if (showChat) showChat = false else destination = NavDestination.FORECAST
+    BackHandler(enabled = showChat || destination != MainDestination.HOME) {
+        if (showChat) showChat = false else destination = MainDestination.HOME
     }
 
-    TianjiTheme(mode = paletteMode, lottery = state.lottery) {
+    TianjiTheme(
+        mode = paletteMode,
+        lottery = state.lottery,
+        appearance = appearanceMode,
+    ) {
         val colors = LocalTianjiColors.current
         CompositionLocalProvider(LocalDensity provides readableDensity) {
             Box(
@@ -115,18 +121,15 @@ fun TianjiApp() {
                         .windowInsetsPadding(WindowInsets.systemBars)
                         .background(
                             Brush.verticalGradient(
-                                listOf(
-                                    colors.page,
-                                    colors.pageSoft,
-                                    colors.page,
-                                ),
+                                listOf(colors.page, colors.pageSoft, colors.page),
                             ),
                         ),
                 ) {
-                    TianjiBackdrop()
+                    TianjiBackdropV2()
 
                     Column(Modifier.fillMaxSize()) {
-                        AppHeader(
+                        CompactAppHeader(
+                            destination = destination,
                             isRefreshing = state.isRefreshing,
                             onRefresh = refreshSafely,
                         )
@@ -135,12 +138,12 @@ fun TianjiApp() {
                                 targetState = destination,
                                 modifier = Modifier.fillMaxSize(),
                                 transitionSpec = {
-                                    pageTransform(initialState.ordinal, targetState.ordinal)
+                                    pageTransformV2(initialState.ordinal, targetState.ordinal)
                                 },
-                                label = "native-pages",
+                                label = "refined-pages",
                             ) { page ->
                                 when (page) {
-                                    NavDestination.FORECAST -> ForecastScreen(
+                                    MainDestination.HOME -> RefinedForecastScreen(
                                         state = state,
                                         aiConfigs = controller.aiConfigs,
                                         onSelectLottery = controller::selectLottery,
@@ -149,34 +152,37 @@ fun TianjiApp() {
                                         onCancelAi = controller::cancelAi,
                                         modifier = Modifier.fillMaxSize(),
                                     )
-
-                                    NavDestination.ROLLING -> RollingScreen(
+                                    MainDestination.STRATEGY -> StrategyAndEvidenceScreen(
                                         state = state,
                                         onSelectLottery = controller::selectLottery,
                                         modifier = Modifier.fillMaxSize(),
                                     )
-
-                                    NavDestination.EVIDENCE -> EvidenceScreen(
+                                    MainDestination.CHAT -> RefinedForecastScreen(
+                                        state = state,
+                                        aiConfigs = controller.aiConfigs,
+                                        onSelectLottery = controller::selectLottery,
+                                        onRefresh = refreshSafely,
+                                        onAnalyzeAllAi = { controller.analyzeWithAi() },
+                                        onCancelAi = controller::cancelAi,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    MainDestination.ARCHIVE -> RefinedArchiveScreen(
                                         state = state,
                                         onSelectLottery = controller::selectLottery,
                                         modifier = Modifier.fillMaxSize(),
                                     )
-
-                                    NavDestination.ARCHIVE -> ArchiveScreen(
-                                        state = state,
-                                        onSelectLottery = controller::selectLottery,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-
-                                    NavDestination.DATA -> DataScreen(
+                                    MainDestination.SETTINGS -> SettingsHubScreen(
                                         state = state,
                                         paletteMode = paletteMode,
+                                        appearanceMode = appearanceMode,
                                         aiConfigs = controller.aiConfigs,
                                         aiAvailableModels = controller.aiAvailableModels,
                                         onPaletteChanged = { mode ->
-                                            scope.launch { appearance.setPalette(mode) }
+                                            scope.launch { appearanceStore.setPalette(mode) }
                                         },
-                                        onSelectLottery = controller::selectLottery,
+                                        onAppearanceChanged = { mode ->
+                                            scope.launch { appearanceStore.setAppearance(mode) }
+                                        },
                                         onSaveAiConfig = controller::saveAiConfig,
                                         onDeleteAiConfig = controller::deleteAiConfig,
                                         onTestAiConnection = controller::testAiConnection,
@@ -191,19 +197,13 @@ fun TianjiApp() {
                                 }
                             }
 
-                            BottomNavigation(
+                            MainBottomBar(
                                 selected = destination,
                                 onSelected = { destination = it },
+                                onChat = { showChat = true },
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(start = 13.dp, end = 13.dp, bottom = 11.dp),
-                            )
-
-                            AiChatFloatingButton(
-                                onClick = { showChat = true },
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(end = 18.dp, bottom = 91.dp),
+                                    .padding(start = 12.dp, end = 12.dp, bottom = 9.dp),
                             )
                         }
                     }
@@ -226,49 +226,43 @@ fun TianjiApp() {
 }
 
 @Composable
-private fun TianjiBackdrop() {
+private fun TianjiBackdropV2() {
     val colors = LocalTianjiColors.current
     Canvas(Modifier.fillMaxSize()) {
         drawCircle(
             brush = Brush.radialGradient(
                 listOf(
-                    colors.amber.copy(alpha = if (colors.isOled) 0.035f else 0.070f),
+                    colors.accent.copy(
+                        alpha = if (colors.isOled) 0.045f else if (colors.isDark) 0.085f else 0.055f,
+                    ),
                     Color.Transparent,
                 ),
             ),
-            radius = size.width * 0.82f,
-            center = Offset(size.width * -0.05f, size.height * 0.04f),
+            radius = size.width * 0.84f,
+            center = Offset(size.width * 1.04f, size.height * 0.20f),
         )
         drawCircle(
             brush = Brush.radialGradient(
                 listOf(
-                    colors.accent.copy(alpha = if (colors.isOled) 0.055f else 0.095f),
+                    colors.amber.copy(
+                        alpha = if (colors.isOled) 0.025f else if (colors.isDark) 0.050f else 0.035f,
+                    ),
                     Color.Transparent,
                 ),
             ),
-            radius = size.width * 0.78f,
-            center = Offset(size.width * 1.04f, size.height * 0.30f),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(
-                    colors.green.copy(alpha = if (colors.isOled) 0.018f else 0.035f),
-                    Color.Transparent,
-                ),
-            ),
-            radius = size.width * 0.70f,
-            center = Offset(size.width * 0.40f, size.height * 1.02f),
+            radius = size.width * 0.72f,
+            center = Offset(size.width * -0.08f, size.height * 0.04f),
         )
     }
 }
 
-private fun pageTransform(from: Int, to: Int): ContentTransform {
+private fun pageTransformV2(from: Int, to: Int): ContentTransform {
     val direction = if (to >= from) 1 else -1
     return (
-        slideInHorizontally(tween(260)) { it / 7 * direction } +
-            fadeIn(tween(220))
+        slideInHorizontally(tween(230)) { it / 9 * direction } +
+            fadeIn(tween(190))
         ) togetherWith (
-        slideOutHorizontally(tween(190)) { -it / 9 * direction } +
-            fadeOut(tween(150))
+        slideOutHorizontally(tween(170)) { -it / 11 * direction } +
+            fadeOut(tween(130))
         )
 }

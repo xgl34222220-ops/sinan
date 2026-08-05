@@ -1,10 +1,13 @@
 package com.tianji.probabilitylab.nativev4.ui.theme
 
 import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -22,7 +25,7 @@ enum class PaletteMode(val label: String, val preview: Color) {
     AMBER("曜金", Color(0xFFFF9B3F)),
     VIOLET("星紫", Color(0xFF8D7CFF)),
     JADE("青玉", Color(0xFF4EDBB3)),
-    OLED("纯黑", Color(0xFF0A0A0A)),
+    OLED("纯黑（旧版兼容）", Color(0xFF0A0A0A)),
 }
 
 @Immutable
@@ -41,14 +44,15 @@ data class TianjiColors(
     val text: Color = Color(0xFFF7F8FB),
     val textSoft: Color = Color(0xFFD1D4DD),
     val textDim: Color = Color(0xFF9299A9),
-    val green: Color = Color(0xFF62DDB8),
-    val red: Color = Color(0xFFFF7581),
-    val amber: Color = Color(0xFFFFBD5A),
+    val green: Color = Color(0xFF36B98B),
+    val red: Color = Color(0xFFE45667),
+    val amber: Color = Color(0xFFE79B22),
     val violet: Color = Color(0xFF8D7CFF),
     val accent: Color,
     val accentSoft: Color,
     val monetSupported: Boolean,
     val isOled: Boolean = false,
+    val isDark: Boolean = true,
 )
 
 val LocalTianjiColors = staticCompositionLocalOf {
@@ -76,86 +80,135 @@ private val TianjiTypography = Typography(
 fun TianjiTheme(
     mode: PaletteMode,
     lottery: LotteryType,
+    appearance: AppearanceMode = AppearanceMode.SYSTEM,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
+    val systemDark = isSystemInDarkTheme()
+    val legacyOled = mode == PaletteMode.OLED
+    val isOled = appearance == AppearanceMode.OLED || legacyOled
+    val isDark = when (appearance) {
+        AppearanceMode.SYSTEM -> systemDark
+        AppearanceMode.LIGHT -> false
+        AppearanceMode.DARK, AppearanceMode.OLED -> true
+    } || legacyOled
+
     val dynamic = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        dynamicDarkColorScheme(context)
+        if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
         null
     }
-    val isOled = mode == PaletteMode.OLED
+
     val accent = when (mode) {
         PaletteMode.GAME -> if (lottery == LotteryType.XYFT) {
-            Color(0xFFFFA447)
+            Color(0xFFFF9B3F)
         } else {
-            Color(0xFF9382FF)
+            Color(0xFF7C68F2)
         }
-        PaletteMode.MONET -> dynamic?.primary ?: PaletteMode.MONET.preview
-        PaletteMode.AMBER -> Color(0xFFFFA447)
-        PaletteMode.VIOLET -> Color(0xFF9382FF)
-        PaletteMode.JADE -> Color(0xFF4EDBB3)
-        PaletteMode.OLED -> dynamic?.primary ?: Color(0xFF9B8AFF)
+        PaletteMode.MONET -> dynamic?.primary ?: Color(0xFF7C68F2)
+        PaletteMode.AMBER -> Color(0xFFE99220)
+        PaletteMode.VIOLET -> Color(0xFF7C68F2)
+        PaletteMode.JADE -> Color(0xFF20A97D)
+        PaletteMode.OLED -> dynamic?.primary ?: Color(0xFF8F7CFF)
     }
 
-    val pageBase = if (isOled) Color.Black else Color(0xFF07080D)
-    val pageSoftBase = if (isOled) Color(0xFF050505) else Color(0xFF0D1017)
-    val surfaceBase = if (isOled) Color(0xFF090909) else Color(0xFF141720)
-    val surfaceStrongBase = if (isOled) Color(0xFF101010) else Color(0xFF1A1D27)
+    val base = if (isDark) {
+        ThemeBases(
+            page = if (isOled) Color.Black else Color(0xFF0B0D13),
+            pageSoft = if (isOled) Color(0xFF050505) else Color(0xFF111520),
+            surface = if (isOled) Color(0xFF090909) else Color(0xFF171B25),
+            surfaceStrong = if (isOled) Color(0xFF111111) else Color(0xFF1E2330),
+            text = Color(0xFFF7F8FB),
+            textSoft = Color(0xFFD7DBE5),
+            textDim = Color(0xFF969EAE),
+            line = Color.White.copy(alpha = if (isOled) 0.11f else 0.085f),
+            lineStrong = Color.White.copy(alpha = if (isOled) 0.18f else 0.14f),
+        )
+    } else {
+        ThemeBases(
+            page = Color(0xFFF4F6FB),
+            pageSoft = Color(0xFFEBEFF8),
+            surface = Color(0xFFFDFEFF),
+            surfaceStrong = Color(0xFFF4F6FB),
+            text = Color(0xFF171A23),
+            textSoft = Color(0xFF3B4251),
+            textDim = Color(0xFF737C8F),
+            line = Color(0xFF202739).copy(alpha = 0.09f),
+            lineStrong = Color(0xFF202739).copy(alpha = 0.15f),
+        )
+    }
 
+    val tintAmount = if (isDark) 0.038f else 0.022f
     val palette = TianjiColors(
-        page = if (isOled) pageBase else lerp(pageBase, accent, 0.018f),
-        pageSoft = if (isOled) pageSoftBase else lerp(pageSoftBase, accent, 0.030f),
-        surface = lerp(surfaceBase, accent, if (isOled) 0.018f else 0.040f).copy(alpha = 0.98f),
-        surfaceStrong = lerp(
-            surfaceStrongBase,
-            accent,
-            if (isOled) 0.025f else 0.052f,
-        ).copy(alpha = 0.99f),
-        surfaceSoft = accent.copy(alpha = if (isOled) 0.035f else 0.045f),
-        glass = lerp(surfaceBase, accent, if (isOled) 0.02f else 0.042f)
-            .copy(alpha = if (isOled) 0.96f else 0.92f),
-        glassStrong = accent.copy(alpha = if (isOled) 0.065f else 0.075f),
-        header = lerp(pageBase, accent, if (isOled) 0.015f else 0.022f)
-            .copy(alpha = if (isOled) 0.985f else 0.965f),
-        navSurface = lerp(surfaceStrongBase, accent, if (isOled) 0.025f else 0.052f)
-            .copy(alpha = if (isOled) 0.99f else 0.97f),
-        line = (dynamic?.outlineVariant ?: Color.White).copy(alpha = if (isOled) 0.10f else 0.085f),
-        lineStrong = (dynamic?.outline ?: Color.White).copy(alpha = if (isOled) 0.17f else 0.14f),
-        text = dynamic?.onBackground ?: Color(0xFFF7F8FB),
-        textSoft = dynamic?.onSurfaceVariant ?: Color(0xFFD1D4DD),
-        textDim = lerp(
-            dynamic?.onSurfaceVariant ?: Color(0xFF9299A9),
-            pageBase,
-            0.12f,
-        ),
+        page = if (isOled) base.page else lerp(base.page, accent, tintAmount * 0.55f),
+        pageSoft = if (isOled) base.pageSoft else lerp(base.pageSoft, accent, tintAmount),
+        surface = lerp(base.surface, accent, if (isOled) 0.016f else tintAmount)
+            .copy(alpha = if (isDark) 0.985f else 1f),
+        surfaceStrong = lerp(base.surfaceStrong, accent, if (isOled) 0.022f else tintAmount * 1.25f)
+            .copy(alpha = 1f),
+        surfaceSoft = accent.copy(alpha = if (isDark) 0.055f else 0.075f),
+        glass = lerp(base.surface, accent, if (isDark) 0.04f else 0.025f)
+            .copy(alpha = if (isDark) 0.93f else 0.97f),
+        glassStrong = accent.copy(alpha = if (isDark) 0.075f else 0.10f),
+        header = lerp(base.page, accent, if (isDark) 0.022f else 0.012f)
+            .copy(alpha = if (isDark) 0.97f else 0.99f),
+        navSurface = lerp(base.surface, accent, if (isDark) 0.05f else 0.025f)
+            .copy(alpha = if (isDark) 0.985f else 0.99f),
+        line = dynamic?.outlineVariant?.copy(alpha = if (isDark) 0.11f else 0.13f) ?: base.line,
+        lineStrong = dynamic?.outline?.copy(alpha = if (isDark) 0.19f else 0.22f) ?: base.lineStrong,
+        text = dynamic?.onBackground ?: base.text,
+        textSoft = dynamic?.onSurfaceVariant ?: base.textSoft,
+        textDim = lerp(dynamic?.onSurfaceVariant ?: base.textDim, base.page, if (isDark) 0.10f else 0.05f),
         accent = accent,
-        accentSoft = accent.copy(alpha = if (isOled) 0.15f else 0.18f),
-        violet = dynamic?.tertiary ?: Color(0xFF9382FF),
-        green = dynamic?.secondary ?: Color(0xFF62DDB8),
-        amber = Color(0xFFFFBD5A),
+        accentSoft = accent.copy(alpha = if (isDark) 0.17f else 0.12f),
+        violet = dynamic?.tertiary ?: Color(0xFF7C68F2),
+        green = dynamic?.secondary ?: if (isDark) Color(0xFF5BD8AB) else Color(0xFF16865F),
+        amber = if (isDark) Color(0xFFF1B354) else Color(0xFFA96800),
+        red = if (isDark) Color(0xFFFF7D8C) else Color(0xFFC43A52),
         monetSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
         isOled = isOled,
+        isDark = isDark,
     )
 
-    val scheme = darkColorScheme(
-        primary = accent,
-        onPrimary = Color.White,
-        primaryContainer = accent.copy(alpha = 0.24f),
-        onPrimaryContainer = palette.text,
-        secondary = palette.green,
-        onSecondary = Color(0xFF032019),
-        tertiary = palette.violet,
-        background = palette.page,
-        onBackground = palette.text,
-        surface = palette.surface,
-        onSurface = palette.text,
-        surfaceVariant = palette.surfaceStrong,
-        onSurfaceVariant = palette.textSoft,
-        outline = palette.lineStrong,
-        outlineVariant = palette.line,
-        error = palette.red,
-    )
+    val scheme = if (isDark) {
+        darkColorScheme(
+            primary = accent,
+            onPrimary = Color.White,
+            primaryContainer = accent.copy(alpha = 0.24f),
+            onPrimaryContainer = palette.text,
+            secondary = palette.green,
+            onSecondary = Color(0xFF032019),
+            tertiary = palette.violet,
+            background = palette.page,
+            onBackground = palette.text,
+            surface = palette.surface,
+            onSurface = palette.text,
+            surfaceVariant = palette.surfaceStrong,
+            onSurfaceVariant = palette.textSoft,
+            outline = palette.lineStrong,
+            outlineVariant = palette.line,
+            error = palette.red,
+        )
+    } else {
+        lightColorScheme(
+            primary = accent,
+            onPrimary = Color.White,
+            primaryContainer = accent.copy(alpha = 0.14f),
+            onPrimaryContainer = palette.text,
+            secondary = palette.green,
+            onSecondary = Color.White,
+            tertiary = palette.violet,
+            background = palette.page,
+            onBackground = palette.text,
+            surface = palette.surface,
+            onSurface = palette.text,
+            surfaceVariant = palette.surfaceStrong,
+            onSurfaceVariant = palette.textSoft,
+            outline = palette.lineStrong,
+            outlineVariant = palette.line,
+            error = palette.red,
+        )
+    }
 
     androidx.compose.runtime.CompositionLocalProvider(LocalTianjiColors provides palette) {
         MaterialTheme(
@@ -165,3 +218,15 @@ fun TianjiTheme(
         )
     }
 }
+
+private data class ThemeBases(
+    val page: Color,
+    val pageSoft: Color,
+    val surface: Color,
+    val surfaceStrong: Color,
+    val text: Color,
+    val textSoft: Color,
+    val textDim: Color,
+    val line: Color,
+    val lineStrong: Color,
+)

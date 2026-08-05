@@ -9,7 +9,6 @@ from .public_v4 import enhance_public_html
 
 FILTER_PATCH = r"""
 (()=>{
-  document.documentElement.classList.add('tianji-console-v4');
   const select=document.getElementById('v3Lottery');
   if(!select)return;
   fetch('/admin/api/state',{cache:'no-store'})
@@ -29,16 +28,13 @@ FILTER_PATCH = r"""
 @lru_cache(maxsize=1)
 def _assets() -> tuple[str, str]:
     root = Path(__file__).resolve().parent
-    style_text = "\n".join(
-        (
-            (root / "console_v3.css").read_text(encoding="utf-8"),
-            (root / "console_v5.css").read_text(encoding="utf-8"),
-        )
-    )
+    # Console V6 owns the complete visual layer. The V3 script remains only as the
+    # established records/operations data renderer; no V3/V5 stylesheet is stacked.
+    style_text = (root / "console_v6.css").read_text(encoding="utf-8")
     script_text = "\n".join(
         (
             (root / "console_v3.js").read_text(encoding="utf-8"),
-            (root / "console_v5.js").read_text(encoding="utf-8"),
+            (root / "console_v6.js").read_text(encoding="utf-8"),
         )
     )
     return style_text, script_text
@@ -47,7 +43,7 @@ def _assets() -> tuple[str, str]:
 def enhance_console_html(value: str) -> str:
     style_text, script_text = _assets()
     head_meta = (
-        '<meta name="theme-color" content="#f5f6fb">'
+        '<meta name="theme-color" content="#f4f6fb">'
         '<meta name="color-scheme" content="dark light">'
     )
     if "viewport-fit=cover" not in value:
@@ -55,8 +51,10 @@ def enhance_console_html(value: str) -> str:
             '<meta name="viewport" '
             'content="width=device-width,initial-scale=1,viewport-fit=cover">'
         )
+    # Keep the historical marker because deployment regression tests use it to confirm
+    # that the enhanced console has been installed.
     style = (
-        f"<style>/* Tianji Cloud Console V5 | Cloud Console V3 compatibility */"
+        f"<style>/* Tianji Cloud Console V6 | Cloud Console V3 compatibility */"
         f"{style_text}</style>"
     )
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"
