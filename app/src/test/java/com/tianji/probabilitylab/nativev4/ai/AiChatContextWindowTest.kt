@@ -33,6 +33,6 @@ class AiChatContextWindowTest {
         )
         val summary = AiChatProtocol.buildMemorySummary("", messages, listOf(candidate))
         assertTrue(summary.contains("降低最近20期热号权重"))
-        assertTrue(summary.contains("六码未中"))
+        assertTrue(summary.contains("6码未中"))
     }
 }
