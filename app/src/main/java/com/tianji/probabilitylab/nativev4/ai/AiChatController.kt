@@ -307,7 +307,7 @@ class AiChatController(context: Context) {
             isRunning = true,
             progress = when (intent) {
                 AiChatIntent.FREE_CHAT -> "正在回复…"
-                AiChatIntent.LOTTERY_ANALYSIS -> "正在读取开奖历史…"
+                AiChatIntent.LOTTERY_ANALYSIS -> "正在读取${snapshot.lottery.displayName}开奖 API…"
                 AiChatIntent.LOTTERY_PREDICTION -> "正在分析本期候选…"
             },
             error = null,
@@ -1087,7 +1087,12 @@ private class RemoteAiChatClient {
         } else {
             null
         }
-        val content = AiVerifiedAnswerComposer.compose(reconciled, verifiedFacts, intent)
+        val content = AiVerifiedAnswerComposer.compose(
+            modelText = reconciled,
+            facts = verifiedFacts,
+            intent = intent,
+            question = question,
+        )
         publisher.finish(content)
         val usage = extractUsage(response)
         val reasoningVerified = extractReasoning(response).isNotBlank() ||
@@ -1135,7 +1140,7 @@ private class RemoteAiChatClient {
                     .put("role", "user")
                     .put(
                         "content",
-                        "以下是当前彩种开奖接口历史、必要元数据与客户端逐期核验事实。独立模式不包含本机候选、模型选中名次、概率矩阵或因子权重；verified_position_facts只来自当前彩种原始历史，必须原样遵守。参考/反向模式才会额外附带native_model_reference：\n${context}",
+                        "以下是当前彩种上游开奖 API 返回的历史与必要元数据。独立模式不包含本机候选、模型选中名次、概率矩阵或因子权重；verified_position_facts由程序直接从本次 API 历史逐期计算，必须原样遵守。参考/反向模式才会额外附带native_model_reference：\n${context}",
                     ),
             )
         }
@@ -1186,7 +1191,7 @@ private class RemoteAiChatClient {
                     .put("role", "system")
                     .put(
                         "content",
-                        "当前本轮唯一分析名次为第${positionScope + 1}名。客户端已排除其他名次的旧分析上下文；保持自然对话，但不得沿用、复制或混合此前其他名次的数据与结论。verified_position_facts是本轮唯一数值事实源。",
+                        "用户当前这句话指定分析第${positionScope + 1}名，它的优先级高于之前所有名次。保持正常自然对话；之前其他名次只是聊天历史，不得沿用其数据或结论。当前上游开奖 API 数据和verified_position_facts是本轮唯一事实源。",
                     ),
             )
         }
@@ -1228,7 +1233,7 @@ private class RemoteAiChatClient {
                     "adaptive_learning由客户端根据此前真实前向开奖结果逐期更新，包含学习期数、命中率、连续未中、六类因子权重和最近策略变化。" +
                     "上一期未中或连续未中时，必须重新检查因子是否失效，并明确说明本期改变了什么；禁止机械复制旧候选。" +
                     "使用简体中文直接、自然地回答，只处理用户当前提出的问题。" +
-                    "所有模式中的期号、最近序列、20/60/120期次数和遗漏只能引用verified_position_facts。禁止自行重算、补全、修改或生成另一套统计；正文只做定性解释，避免重复整张数字表。不得虚构期号、次数或数据来源。" +
+                    "所有模式中的期号、最近序列、20/60/120期次数和遗漏只能引用当前上游开奖 API 对应的verified_position_facts。用户问什么就回答什么，不要擅自补充固定模板、其他名次、候选号码或另一套统计。不得虚构期号、次数或数据来源。" +
                     "所有转移、遗漏和趋势结论必须同时说明样本强弱；1次与2次之类的小差异不得包装成强规律。" +
                     "用户说出现几率大时，应解释为历史样本中的相对频次或模型相对评分，不得称为真实中奖概率。" +
                     "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小或没有强候选。" +
