@@ -418,7 +418,10 @@ fun AiChatDialog(
                                 top = 14.dp,
                                 bottom = 18.dp,
                             ),
-                            verticalArrangement = Arrangement.spacedBy(13.dp),
+                            verticalArrangement = Arrangement.spacedBy(
+                                13.dp,
+                                Alignment.Bottom,
+                            ),
                         ) {
                             if (session.messages.isEmpty()) {
                                 item("welcome") {
@@ -600,33 +603,53 @@ private fun ChatTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(66.dp)
-            .background(colors.header)
+            .height(70.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        colors.header,
+                        colors.page.copy(alpha = 0.96f),
+                    ),
+                ),
+            )
             .border(width = 0.5.dp, color = colors.line)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(
             onClick = onClose,
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(42.dp),
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                 contentDescription = "返回",
                 tint = colors.textSoft,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(23.dp),
             )
         }
 
         Box(
             modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(colors.accentSoft)
+                .size(42.dp)
+                .shadow(
+                    elevation = if (colors.isOled) 0.dp else 5.dp,
+                    shape = RoundedCornerShape(15.dp),
+                    ambientColor = colors.accent.copy(alpha = 0.20f),
+                    spotColor = colors.accent.copy(alpha = 0.20f),
+                )
+                .clip(RoundedCornerShape(15.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            colors.accent.copy(alpha = 0.24f),
+                            colors.violet.copy(alpha = 0.16f),
+                        ),
+                    ),
+                )
                 .border(
                     width = 1.dp,
-                    color = colors.accent.copy(alpha = 0.18f),
-                    shape = RoundedCornerShape(14.dp),
+                    color = colors.accent.copy(alpha = 0.28f),
+                    shape = RoundedCornerShape(15.dp),
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -634,7 +657,7 @@ private fun ChatTopBar(
                 imageVector = Icons.Rounded.AutoAwesome,
                 contentDescription = null,
                 tint = colors.accent,
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(20.dp),
             )
         }
 
@@ -644,61 +667,50 @@ private fun ChatTopBar(
             Text(
                 text = session.title.ifBlank { "新对话" },
                 color = colors.text,
-                fontSize = 15.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                lineHeight = 21.sp,
+                fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = selectedModel.ifBlank { "请选择模型" },
-                color = colors.textDim,
-                fontSize = 10.sp,
-                lineHeight = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        IconButton(
-            onClick = onHistory,
-            enabled = !session.isRunning,
-            modifier = Modifier.size(40.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.History,
-                contentDescription = "对话历史",
-                tint = colors.textSoft,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-
-        IconButton(
-            onClick = onNew,
-            enabled = !session.isRunning,
-            modifier = Modifier.size(40.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Add,
-                contentDescription = "新建对话",
-                tint = colors.textSoft,
-                modifier = Modifier.size(21.dp),
-            )
-        }
-
-        Box {
-            IconButton(
-                onClick = onMore,
-                enabled = !session.isRunning,
-                modifier = Modifier.size(40.dp),
+            Surface(
+                shape = CircleShape,
+                color = colors.accent.copy(alpha = 0.09f),
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.MoreVert,
-                    contentDescription = "更多",
-                    tint = colors.textSoft,
-                    modifier = Modifier.size(21.dp),
+                Text(
+                    text = selectedModel.ifBlank { "请选择模型" },
+                    color = colors.accent,
+                    fontSize = 9.5.sp,
+                    lineHeight = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                 )
             }
+        }
+
+        ChatTopActionButton(
+            icon = Icons.Rounded.History,
+            description = "对话历史",
+            enabled = !session.isRunning,
+            onClick = onHistory,
+        )
+        Spacer(Modifier.width(5.dp))
+        ChatTopActionButton(
+            icon = Icons.Rounded.Add,
+            description = "新建对话",
+            enabled = !session.isRunning,
+            onClick = onNew,
+        )
+        Spacer(Modifier.width(5.dp))
+        Box {
+            ChatTopActionButton(
+                icon = Icons.Rounded.MoreVert,
+                description = "更多",
+                enabled = !session.isRunning,
+                onClick = onMore,
+            )
             DropdownMenu(
                 expanded = moreExpanded,
                 onDismissRequest = dismissMore,
@@ -739,6 +751,39 @@ private fun ChatTopBar(
 }
 
 @Composable
+private fun ChatTopActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = LocalTianjiColors.current
+    Surface(
+        modifier = Modifier
+            .size(38.dp)
+            .shadow(
+                elevation = if (colors.isOled) 0.dp else 2.dp,
+                shape = RoundedCornerShape(13.dp),
+                ambientColor = Color.Black.copy(alpha = 0.12f),
+                spotColor = Color.Black.copy(alpha = 0.12f),
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(13.dp),
+        color = colors.glass,
+        border = BorderStroke(1.dp, colors.lineStrong),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                tint = if (enabled) colors.textSoft else colors.textDim.copy(alpha = 0.35f),
+                modifier = Modifier.size(19.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun SessionControlCard(
     expanded: Boolean,
     onToggle: () -> Unit,
@@ -759,79 +804,130 @@ private fun SessionControlCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .shadow(
+                elevation = if (colors.isOled) 0.dp else 3.dp,
+                shape = RoundedCornerShape(21.dp),
+                ambientColor = Color.Black.copy(alpha = 0.10f),
+                spotColor = Color.Black.copy(alpha = 0.10f),
+            )
             .animateContentSize(),
-        shape = RoundedCornerShape(19.dp),
+        shape = RoundedCornerShape(21.dp),
         color = colors.glass,
-        border = BorderStroke(1.dp, colors.line),
+        border = BorderStroke(1.dp, colors.lineStrong),
     ) {
         Column {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
                     .clickable(onClick = onToggle)
-                    .padding(horizontal = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 13.dp, vertical = 11.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(35.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.accentSoft),
-                    contentAlignment = Alignment.Center,
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        colors.accent.copy(alpha = 0.20f),
+                                        colors.violet.copy(alpha = 0.12f),
+                                    ),
+                                ),
+                            )
+                            .border(
+                                1.dp,
+                                colors.accent.copy(alpha = 0.20f),
+                                RoundedCornerShape(13.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = selectedModel.ifBlank { "选择模型" },
+                            color = colors.text,
+                            fontSize = 12.5.sp,
+                            lineHeight = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = "${session.judgementMode.label} · ${persona.displayName}",
+                            color = colors.textDim,
+                            fontSize = 9.5.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Icon(
-                        imageVector = Icons.Rounded.Tune,
-                        contentDescription = null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(18.dp),
+                        imageVector = if (expanded) {
+                            Icons.Rounded.KeyboardArrowUp
+                        } else {
+                            Icons.Rounded.KeyboardArrowDown
+                        },
+                        contentDescription = if (expanded) "收起" else "展开",
+                        tint = colors.textDim,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = selectedModel.ifBlank { "选择模型" },
-                        color = colors.text,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "${session.judgementMode.label} · ${persona.displayName}",
-                        color = colors.textDim,
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp,
-                        maxLines = 1,
-                    )
-                }
-                ContextUsagePill(session.contextUsagePercent)
-                Spacer(Modifier.width(7.dp))
-                Surface(
-                    shape = CircleShape,
-                    color = colors.accent.copy(alpha = 0.09f),
+
+                Spacer(Modifier.height(9.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = colors.surfaceSoft,
+                        border = BorderStroke(1.dp, colors.line),
+                    ) {
+                        Text(
+                            text = report?.targetPeriod?.let { "目标期  $it" } ?: "目标期待同步",
+                            color = colors.textSoft,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(7.dp))
+                    Surface(
+                        shape = CircleShape,
+                        color = colors.accent.copy(alpha = 0.08f),
+                    ) {
+                        Text(
+                            text = selectedConfig?.displayName ?: "未配置",
+                            color = colors.accent,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .widthIn(max = 142.dp)
+                                .padding(horizontal = 9.dp, vertical = 5.dp),
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
                     Text(
-                        text = report?.targetPeriod?.let { "第$it 期" } ?: "待同步",
-                        color = colors.accent,
+                        text = "上下文",
+                        color = colors.textDim,
                         fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                     )
+                    Spacer(Modifier.width(5.dp))
+                    ContextUsagePill(session.contextUsagePercent)
                 }
-                Spacer(Modifier.width(5.dp))
-                Icon(
-                    imageVector = if (expanded) {
-                        Icons.Rounded.KeyboardArrowUp
-                    } else {
-                        Icons.Rounded.KeyboardArrowDown
-                    },
-                    contentDescription = if (expanded) "收起" else "展开",
-                    tint = colors.textDim,
-                    modifier = Modifier.size(20.dp),
-                )
             }
 
             AnimatedVisibility(visible = expanded) {
@@ -889,8 +985,9 @@ private fun SessionControlCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 7.dp),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(15.dp),
                             color = colors.surfaceSoft,
+                            border = BorderStroke(1.dp, colors.line),
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1367,22 +1464,50 @@ private fun ChatMessageAction(
 @Composable
 private fun SystemEventChip(text: String) {
     val colors = LocalTianjiColors.current
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center,
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 390.dp),
+        shape = RoundedCornerShape(17.dp),
+        color = colors.surfaceSoft,
+        border = BorderStroke(1.dp, colors.lineStrong),
     ) {
-        Text(
-            text = text,
-            color = colors.textDim,
-            fontSize = 10.sp,
-            lineHeight = 15.sp,
-            modifier = Modifier
-                .widthIn(max = 350.dp)
-                .clip(RoundedCornerShape(13.dp))
-                .background(colors.surfaceSoft)
-                .border(1.dp, colors.line, RoundedCornerShape(13.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.accent.copy(alpha = 0.10f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = null,
+                    tint = colors.accent,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Spacer(Modifier.width(9.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "期次更新",
+                    color = colors.textSoft,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = text,
+                    color = colors.textDim,
+                    fontSize = 10.5.sp,
+                    lineHeight = 16.sp,
+                )
+            }
+        }
     }
 }
 
@@ -1535,9 +1660,16 @@ private fun ChatComposer(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.header)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        colors.header.copy(alpha = 0.96f),
+                        colors.page.copy(alpha = 0.99f),
+                    ),
+                ),
+            )
             .border(width = 0.5.dp, color = colors.line)
-            .padding(top = 8.dp, bottom = 7.dp),
+            .padding(top = 8.dp, bottom = 8.dp),
     ) {
         if (input.isBlank() && !isRunning && ready && suggestions.isNotEmpty()) {
             LazyRow(
@@ -1548,13 +1680,14 @@ private fun ChatComposer(
                     Surface(
                         modifier = Modifier.clickable { onSuggestion(suggestion) },
                         shape = CircleShape,
-                        color = colors.surfaceSoft,
-                        border = BorderStroke(1.dp, colors.line),
+                        color = colors.accent.copy(alpha = 0.07f),
+                        border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.15f)),
                     ) {
                         Text(
                             text = suggestion,
-                            color = colors.textDim,
+                            color = colors.textSoft,
                             fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
@@ -1570,14 +1703,20 @@ private fun ChatComposer(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            shape = RoundedCornerShape(21.dp),
+                .padding(horizontal = 12.dp)
+                .shadow(
+                    elevation = if (colors.isOled) 0.dp else 7.dp,
+                    shape = RoundedCornerShape(24.dp),
+                    ambientColor = Color.Black.copy(alpha = 0.16f),
+                    spotColor = Color.Black.copy(alpha = 0.16f),
+                ),
+            shape = RoundedCornerShape(24.dp),
             color = colors.glass,
             border = BorderStroke(1.dp, colors.lineStrong),
         ) {
             Row(
                 modifier = Modifier.padding(
-                    start = 14.dp,
+                    start = 15.dp,
                     top = 8.dp,
                     end = 7.dp,
                     bottom = 8.dp,
@@ -1590,7 +1729,8 @@ private fun ChatComposer(
                     enabled = ready,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(bottom = 4.dp),
+                        .heightIn(min = 42.dp, max = 132.dp)
+                        .padding(vertical = 9.dp),
                     textStyle = TextStyle(
                         color = colors.text,
                         fontSize = 13.sp,
@@ -1606,7 +1746,7 @@ private fun ChatComposer(
                         },
                     ),
                     decorationBox = { inner ->
-                        Box {
+                        Box(contentAlignment = Alignment.CenterStart) {
                             if (input.isBlank()) {
                                 Text(
                                     text = when {
@@ -1626,38 +1766,51 @@ private fun ChatComposer(
                     },
                 )
                 Spacer(Modifier.width(8.dp))
-                Surface(
+                val sendEnabled = isRunning || (ready && input.isNotBlank())
+                Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(44.dp)
+                        .shadow(
+                            elevation = if (sendEnabled && !colors.isOled) 5.dp else 0.dp,
+                            shape = CircleShape,
+                            ambientColor = colors.accent.copy(alpha = 0.24f),
+                            spotColor = colors.accent.copy(alpha = 0.24f),
+                        )
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                isRunning -> Brush.linearGradient(
+                                    listOf(colors.amber, colors.red.copy(alpha = 0.85f)),
+                                )
+                                ready && input.isNotBlank() -> Brush.linearGradient(
+                                    listOf(colors.accent, colors.violet),
+                                )
+                                else -> Brush.linearGradient(
+                                    listOf(colors.surfaceSoft, colors.surfaceSoft),
+                                )
+                            },
+                        )
+                        .border(
+                            1.dp,
+                            if (sendEnabled) Color.White.copy(alpha = 0.16f) else colors.line,
+                            CircleShape,
+                        )
                         .clickable(
-                            enabled = isRunning || (ready && input.isNotBlank()),
+                            enabled = sendEnabled,
                             onClick = if (isRunning) onStop else onSend,
                         ),
-                    shape = CircleShape,
-                    color = when {
-                        isRunning -> colors.amber
-                        ready && input.isNotBlank() -> colors.accent
-                        else -> colors.surfaceSoft
-                    },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = if (isRunning) {
-                                Icons.Rounded.StopCircle
-                            } else {
-                                Icons.AutoMirrored.Rounded.Send
-                            },
-                            contentDescription = if (isRunning) "停止" else "发送",
-                            tint = if (
-                                isRunning || (ready && input.isNotBlank())
-                            ) {
-                                Color.White
-                            } else {
-                                colors.textDim
-                            },
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
+                    Icon(
+                        imageVector = if (isRunning) {
+                            Icons.Rounded.StopCircle
+                        } else {
+                            Icons.AutoMirrored.Rounded.Send
+                        },
+                        contentDescription = if (isRunning) "停止" else "发送",
+                        tint = if (sendEnabled) Color.White else colors.textDim,
+                        modifier = Modifier.size(21.dp),
+                    )
                 }
             }
         }
