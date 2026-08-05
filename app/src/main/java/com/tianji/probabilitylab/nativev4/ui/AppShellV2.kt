@@ -169,7 +169,7 @@ fun MainBottomBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp, max = 72.dp)
+            .heightIn(min = 72.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 7.dp,
                 shape = RoundedCornerShape(21.dp),
@@ -179,7 +179,7 @@ fun MainBottomBar(
             .clip(RoundedCornerShape(21.dp))
             .background(colors.navSurface.copy(alpha = 0.98f))
             .border(1.dp, colors.lineStrong, RoundedCornerShape(21.dp))
-            .padding(horizontal = 4.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         listOf(
@@ -227,7 +227,7 @@ private fun StandardNavItem(
     val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .height(56.dp)
+            .heightIn(min = 58.dp)
             .scale(scale)
             .clip(RoundedCornerShape(15.dp))
             .background(background)
@@ -255,7 +255,9 @@ private fun StandardNavItem(
             item.label,
             color = if (active) colors.accent else colors.textDim,
             fontSize = 10.sp,
+            lineHeight = 14.sp,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
         )
     }
 }
@@ -270,8 +272,9 @@ private fun ChatNavItem(
     val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .height(56.dp)
+            .heightIn(min = 60.dp)
             .clip(RoundedCornerShape(16.dp))
+            .padding(vertical = 2.dp)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -281,19 +284,19 @@ private fun ChatNavItem(
         verticalArrangement = Arrangement.Center,
     ) {
         Box(
-            modifier = Modifier.size(42.dp),
+            modifier = Modifier.size(38.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (isRunning) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier.size(38.dp),
                     color = colors.accent,
                     strokeWidth = 2.dp,
                 )
             }
             Box(
                 modifier = Modifier
-                    .size(35.dp)
+                    .size(33.dp)
                     .shadow(
                         elevation = if (colors.isOled) 0.dp else 5.dp,
                         shape = CircleShape,
@@ -312,15 +315,18 @@ private fun ChatNavItem(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
                     tint = Color.White,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(17.dp),
                 )
             }
         }
+        Spacer(Modifier.height(1.dp))
         Text(
             if (isRunning) "运行中" else "AI",
             color = colors.accent,
             fontSize = 10.sp,
+            lineHeight = 14.sp,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
         )
     }
 }

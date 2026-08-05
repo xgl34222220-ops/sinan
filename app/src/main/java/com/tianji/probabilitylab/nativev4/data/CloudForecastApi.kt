@@ -83,7 +83,7 @@ class CloudForecastApi {
             id = cloudId,
             lottery = lottery,
             profileId = "cloud:$source:$model",
-            profileName = if (isAi) "天机云端 AI" else "天机云端本机",
+            profileName = if (isAi) "天机云端 AI" else "天机云端本地",
             targetPeriod = targetPeriod,
             trainedThroughPeriod = trainedThrough,
             position = position,
