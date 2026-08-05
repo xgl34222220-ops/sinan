@@ -65,7 +65,6 @@ enum class MainDestination(
 ) {
     HOME("预测", "天机预测", "开奖、冻结结果与 AI 共识", Icons.Rounded.Home),
     STRATEGY("策略", "策略与验证", "前向证据、模型表现与风险闸门", Icons.Rounded.AutoGraph),
-    CHAT("AI", "天机 AI", "基于当前真实历史继续对话", Icons.Rounded.AutoAwesome),
     ARCHIVE("档案", "预测档案", "开奖前冻结，开奖后按目标期结算", Icons.Rounded.History),
     SETTINGS("设置", "设置", "模型、数据、外观与应用信息", Icons.Rounded.Settings),
 }
@@ -84,7 +83,7 @@ fun CompactAppHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(66.dp)
+            .height(70.dp)
             .background(
                 Brush.verticalGradient(
                     listOf(
@@ -98,7 +97,7 @@ fun CompactAppHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (canGoBack && onBack != null) {
-            IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = "返回",
@@ -113,15 +112,15 @@ fun CompactAppHeader(
                 contentDescription = "天机",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(39.dp)
+                    .size(42.dp)
                     .shadow(
                         elevation = if (colors.isOled) 0.dp else 4.dp,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(15.dp),
                         ambientColor = colors.accent.copy(alpha = 0.18f),
                         spotColor = colors.accent.copy(alpha = 0.18f),
                     )
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(1.dp, colors.accent.copy(alpha = 0.30f), RoundedCornerShape(14.dp)),
+                    .clip(RoundedCornerShape(15.dp))
+                    .border(1.dp, colors.accent.copy(alpha = 0.30f), RoundedCornerShape(15.dp)),
             )
             Spacer(Modifier.width(10.dp))
         }
@@ -130,8 +129,8 @@ fun CompactAppHeader(
             Text(
                 destination.title,
                 color = colors.text,
-                fontSize = 18.sp,
-                lineHeight = 21.sp,
+                fontSize = 19.sp,
+                lineHeight = 23.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -140,36 +139,21 @@ fun CompactAppHeader(
             Text(
                 destination.subtitle,
                 color = colors.textDim,
-                fontSize = 10.5.sp,
-                lineHeight = 14.sp,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
 
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .shadow(
-                    elevation = if (colors.isOled) 0.dp else 2.dp,
-                    shape = RoundedCornerShape(14.dp),
-                    ambientColor = Color.Black.copy(alpha = 0.12f),
-                    spotColor = Color.Black.copy(alpha = 0.12f),
-                )
-                .clip(RoundedCornerShape(14.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(colors.glassStrong, colors.glass),
-                    ),
-                )
-                .border(1.dp, colors.lineStrong, RoundedCornerShape(14.dp))
-                .clickable(onClick = onAlerts),
-            contentAlignment = Alignment.Center,
+        HeaderActionButton(
+            onClick = onAlerts,
+            contentDescription = "打开预警中心",
         ) {
             Icon(
                 Icons.Rounded.Notifications,
-                contentDescription = "打开预警中心",
+                contentDescription = null,
                 tint = if (unreadAlerts > 0) colors.amber else colors.textSoft,
                 modifier = Modifier.size(20.dp),
             )
@@ -177,7 +161,7 @@ fun CompactAppHeader(
                 Text(
                     unreadAlerts.coerceAtMost(99).toString(),
                     color = Color.White,
-                    fontSize = 7.sp,
+                    fontSize = 8.sp,
                     fontWeight = FontWeight.ExtraBold,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -189,24 +173,10 @@ fun CompactAppHeader(
         }
         Spacer(Modifier.width(7.dp))
 
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .shadow(
-                    elevation = if (colors.isOled) 0.dp else 2.dp,
-                    shape = RoundedCornerShape(14.dp),
-                    ambientColor = Color.Black.copy(alpha = 0.12f),
-                    spotColor = Color.Black.copy(alpha = 0.12f),
-                )
-                .clip(RoundedCornerShape(14.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(colors.glassStrong, colors.glass),
-                    ),
-                )
-                .border(1.dp, colors.lineStrong, RoundedCornerShape(14.dp))
-                .clickable(enabled = !isRefreshing, onClick = onRefresh),
-            contentAlignment = Alignment.Center,
+        HeaderActionButton(
+            onClick = onRefresh,
+            enabled = !isRefreshing,
+            contentDescription = "刷新",
         ) {
             if (isRefreshing) {
                 CircularProgressIndicator(
@@ -217,12 +187,40 @@ fun CompactAppHeader(
             } else {
                 Icon(
                     Icons.Rounded.Refresh,
-                    contentDescription = "刷新",
+                    contentDescription = null,
                     tint = colors.textSoft,
                     modifier = Modifier.size(20.dp),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HeaderActionButton(
+    onClick: () -> Unit,
+    contentDescription: String,
+    enabled: Boolean = true,
+    content: @Composable Box.() -> Unit,
+) {
+    val colors = LocalTianjiColors.current
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .padding(2.dp)
+            .shadow(
+                elevation = if (colors.isOled) 0.dp else 2.dp,
+                shape = RoundedCornerShape(15.dp),
+                ambientColor = Color.Black.copy(alpha = 0.12f),
+                spotColor = Color.Black.copy(alpha = 0.12f),
+            )
+            .clip(RoundedCornerShape(15.dp))
+            .background(Brush.linearGradient(listOf(colors.glassStrong, colors.glass)))
+            .border(1.dp, colors.lineStrong, RoundedCornerShape(15.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 
@@ -238,7 +236,7 @@ fun MainBottomBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 76.dp)
+            .heightIn(min = 78.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 10.dp,
                 shape = RoundedCornerShape(24.dp),
@@ -258,28 +256,35 @@ fun MainBottomBar(
             .padding(horizontal = 5.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        listOf(
-            MainDestination.HOME,
-            MainDestination.STRATEGY,
-            MainDestination.CHAT,
-            MainDestination.ARCHIVE,
-            MainDestination.SETTINGS,
-        ).forEach { item ->
-            if (item == MainDestination.CHAT) {
-                ChatNavItem(
-                    onClick = onChat,
-                    isRunning = isAiRunning,
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
-                StandardNavItem(
-                    item = item,
-                    active = selected == item,
-                    onClick = { onSelected(item) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+        StandardNavItem(
+            item = MainDestination.HOME,
+            active = selected == MainDestination.HOME,
+            onClick = { onSelected(MainDestination.HOME) },
+            modifier = Modifier.weight(1f),
+        )
+        StandardNavItem(
+            item = MainDestination.STRATEGY,
+            active = selected == MainDestination.STRATEGY,
+            onClick = { onSelected(MainDestination.STRATEGY) },
+            modifier = Modifier.weight(1f),
+        )
+        ChatNavItem(
+            onClick = onChat,
+            isRunning = isAiRunning,
+            modifier = Modifier.weight(1f),
+        )
+        StandardNavItem(
+            item = MainDestination.ARCHIVE,
+            active = selected == MainDestination.ARCHIVE,
+            onClick = { onSelected(MainDestination.ARCHIVE) },
+            modifier = Modifier.weight(1f),
+        )
+        StandardNavItem(
+            item = MainDestination.SETTINGS,
+            active = selected == MainDestination.SETTINGS,
+            onClick = { onSelected(MainDestination.SETTINGS) },
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -303,7 +308,7 @@ private fun StandardNavItem(
     val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .heightIn(min = 61.dp)
+            .heightIn(min = 64.dp)
             .scale(scale)
             .clip(RoundedCornerShape(17.dp))
             .background(background)
@@ -338,8 +343,8 @@ private fun StandardNavItem(
         Text(
             item.label,
             color = if (active) colors.accent else colors.textDim,
-            fontSize = 10.sp,
-            lineHeight = 14.sp,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
         )
@@ -356,7 +361,7 @@ private fun ChatNavItem(
     val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .heightIn(min = 62.dp)
+            .heightIn(min = 64.dp)
             .clip(RoundedCornerShape(17.dp))
             .padding(vertical = 1.dp)
             .clickable(
@@ -368,19 +373,19 @@ private fun ChatNavItem(
         verticalArrangement = Arrangement.Center,
     ) {
         Box(
-            modifier = Modifier.size(42.dp),
+            modifier = Modifier.size(44.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (isRunning) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier.size(44.dp),
                     color = colors.accent,
                     strokeWidth = 2.dp,
                 )
             }
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(38.dp)
                     .shadow(
                         elevation = if (colors.isOled) 0.dp else 6.dp,
                         shape = CircleShape,
@@ -388,11 +393,7 @@ private fun ChatNavItem(
                         spotColor = colors.accent.copy(alpha = 0.28f),
                     )
                     .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            listOf(colors.accent, colors.violet),
-                        ),
-                    )
+                    .background(Brush.linearGradient(listOf(colors.accent, colors.violet)))
                     .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
@@ -400,15 +401,15 @@ private fun ChatNavItem(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
                     tint = Color.White,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(19.dp),
                 )
             }
         }
         Text(
             if (isRunning) "运行中" else "AI",
             color = colors.accent,
-            fontSize = 10.sp,
-            lineHeight = 14.sp,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
@@ -425,7 +426,7 @@ fun CompactLotterySwitcher(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(58.dp)
+            .height(60.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 3.dp,
                 shape = RoundedCornerShape(21.dp),
@@ -433,11 +434,7 @@ fun CompactLotterySwitcher(
                 spotColor = Color.Black.copy(alpha = 0.12f),
             )
             .clip(RoundedCornerShape(21.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(colors.glass, colors.surface.copy(alpha = 0.98f)),
-                ),
-            )
+            .background(Brush.verticalGradient(listOf(colors.glass, colors.surface.copy(alpha = 0.98f))))
             .border(1.dp, colors.lineStrong, RoundedCornerShape(21.dp))
             .padding(5.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -446,19 +443,11 @@ fun CompactLotterySwitcher(
             val active = selected == lottery
             val tint = if (lottery == LotteryType.XYFT) colors.amber else colors.violet
             val itemBackground by animateColorAsState(
-                targetValue = if (active) {
-                    tint.copy(alpha = 0.18f)
-                } else {
-                    colors.surfaceStrong.copy(alpha = 0.92f)
-                },
+                targetValue = if (active) tint.copy(alpha = 0.18f) else colors.surfaceStrong.copy(alpha = 0.92f),
                 label = "lottery-segment-background",
             )
             val itemBorder by animateColorAsState(
-                targetValue = if (active) {
-                    tint.copy(alpha = 0.46f)
-                } else {
-                    colors.lineStrong
-                },
+                targetValue = if (active) tint.copy(alpha = 0.46f) else colors.lineStrong,
                 label = "lottery-segment-border",
             )
             val scale by animateFloatAsState(
@@ -495,14 +484,8 @@ fun CompactLotterySwitcher(
                     modifier = Modifier
                         .size(14.dp)
                         .clip(CircleShape)
-                        .background(
-                            if (active) tint.copy(alpha = 0.16f) else colors.glassStrong,
-                        )
-                        .border(
-                            1.dp,
-                            if (active) tint.copy(alpha = 0.32f) else colors.line,
-                            CircleShape,
-                        ),
+                        .background(if (active) tint.copy(alpha = 0.16f) else colors.glassStrong)
+                        .border(1.dp, if (active) tint.copy(alpha = 0.32f) else colors.line, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     Box(
@@ -537,7 +520,7 @@ fun SegmentedTabs(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(55.dp)
+            .height(58.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 2.dp,
                 shape = RoundedCornerShape(20.dp),
@@ -545,14 +528,7 @@ fun SegmentedTabs(
                 spotColor = Color.Black.copy(alpha = 0.10f),
             )
             .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        colors.surfaceStrong,
-                        colors.glass.copy(alpha = 0.97f),
-                    ),
-                ),
-            )
+            .background(Brush.verticalGradient(listOf(colors.surfaceStrong, colors.glass.copy(alpha = 0.97f))))
             .border(1.dp, colors.lineStrong, RoundedCornerShape(20.dp))
             .padding(5.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -560,19 +536,11 @@ fun SegmentedTabs(
         items.forEachIndexed { index, item ->
             val active = index == selectedIndex
             val tabBackground by animateColorAsState(
-                targetValue = if (active) {
-                    colors.accent.copy(alpha = 0.18f)
-                } else {
-                    colors.surface.copy(alpha = 0.78f)
-                },
+                targetValue = if (active) colors.accent.copy(alpha = 0.18f) else colors.surface.copy(alpha = 0.78f),
                 label = "segmented-tab-background",
             )
             val tabBorder by animateColorAsState(
-                targetValue = if (active) {
-                    colors.accent.copy(alpha = 0.44f)
-                } else {
-                    colors.lineStrong
-                },
+                targetValue = if (active) colors.accent.copy(alpha = 0.44f) else colors.lineStrong,
                 label = "segmented-tab-border",
             )
             val scale by animateFloatAsState(
@@ -637,6 +605,7 @@ fun SettingsEntry(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 76.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 2.dp,
                 shape = RoundedCornerShape(19.dp),
@@ -644,11 +613,7 @@ fun SettingsEntry(
                 spotColor = Color.Black.copy(alpha = 0.10f),
             )
             .clip(RoundedCornerShape(19.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(colors.surfaceStrong, colors.surface),
-                ),
-            )
+            .background(Brush.linearGradient(listOf(colors.surfaceStrong, colors.surface)))
             .border(1.dp, colors.lineStrong, RoundedCornerShape(19.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
@@ -656,7 +621,7 @@ fun SettingsEntry(
     ) {
         Box(
             modifier = Modifier
-                .size(41.dp)
+                .size(44.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(colors.accentSoft)
                 .border(1.dp, colors.accent.copy(alpha = 0.20f), RoundedCornerShape(14.dp)),
@@ -670,7 +635,7 @@ fun SettingsEntry(
                 title,
                 color = colors.text,
                 fontSize = 14.sp,
-                lineHeight = 19.sp,
+                lineHeight = 20.sp,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(2.dp))
