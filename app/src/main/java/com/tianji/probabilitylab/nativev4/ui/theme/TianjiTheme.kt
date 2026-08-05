@@ -64,17 +64,20 @@ val LocalTianjiColors = staticCompositionLocalOf {
 }
 
 private val TianjiTypography = Typography(
-    bodySmall = TextStyle(fontSize = 13.sp, lineHeight = 19.sp),
-    bodyMedium = TextStyle(fontSize = 15.sp, lineHeight = 22.sp),
+    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 18.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp),
     bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp),
     labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
-    labelMedium = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
-    labelLarge = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
-    titleSmall = TextStyle(fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.Bold),
-    titleMedium = TextStyle(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 29.sp, fontWeight = FontWeight.ExtraBold),
-    headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 31.sp, fontWeight = FontWeight.ExtraBold),
+    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+    labelLarge = TextStyle(fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold),
+    titleMedium = TextStyle(fontSize = 18.sp, lineHeight = 25.sp, fontWeight = FontWeight.Bold),
+    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.ExtraBold),
+    headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.ExtraBold),
 )
+
+internal fun shouldUseDynamicPalette(mode: PaletteMode, supported: Boolean): Boolean =
+    supported && mode == PaletteMode.MONET
 
 @Composable
 fun TianjiTheme(
@@ -93,7 +96,8 @@ fun TianjiTheme(
         AppearanceMode.DARK, AppearanceMode.OLED -> true
     } || legacyOled
 
-    val dynamic = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    val monetSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val dynamicPalette = if (shouldUseDynamicPalette(mode, monetSupported)) {
         if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
         null
@@ -105,11 +109,11 @@ fun TianjiTheme(
         } else {
             Color(0xFF7C68F2)
         }
-        PaletteMode.MONET -> dynamic?.primary ?: Color(0xFF7C68F2)
+        PaletteMode.MONET -> dynamicPalette?.primary ?: Color(0xFF7C68F2)
         PaletteMode.AMBER -> Color(0xFFE99220)
         PaletteMode.VIOLET -> Color(0xFF7C68F2)
         PaletteMode.JADE -> Color(0xFF20A97D)
-        PaletteMode.OLED -> dynamic?.primary ?: Color(0xFF8F7CFF)
+        PaletteMode.OLED -> Color(0xFF8F7CFF)
     }
 
     val base = if (isDark) {
@@ -154,18 +158,18 @@ fun TianjiTheme(
             .copy(alpha = if (isDark) 0.97f else 0.99f),
         navSurface = lerp(base.surface, accent, if (isDark) 0.05f else 0.025f)
             .copy(alpha = if (isDark) 0.985f else 0.99f),
-        line = dynamic?.outlineVariant?.copy(alpha = if (isDark) 0.11f else 0.13f) ?: base.line,
-        lineStrong = dynamic?.outline?.copy(alpha = if (isDark) 0.19f else 0.22f) ?: base.lineStrong,
-        text = dynamic?.onBackground ?: base.text,
-        textSoft = dynamic?.onSurfaceVariant ?: base.textSoft,
-        textDim = lerp(dynamic?.onSurfaceVariant ?: base.textDim, base.page, if (isDark) 0.10f else 0.05f),
+        line = dynamicPalette?.outlineVariant?.copy(alpha = if (isDark) 0.11f else 0.13f) ?: base.line,
+        lineStrong = dynamicPalette?.outline?.copy(alpha = if (isDark) 0.19f else 0.22f) ?: base.lineStrong,
+        text = dynamicPalette?.onBackground ?: base.text,
+        textSoft = dynamicPalette?.onSurfaceVariant ?: base.textSoft,
+        textDim = lerp(dynamicPalette?.onSurfaceVariant ?: base.textDim, base.page, if (isDark) 0.10f else 0.05f),
         accent = accent,
         accentSoft = accent.copy(alpha = if (isDark) 0.17f else 0.12f),
-        violet = dynamic?.tertiary ?: Color(0xFF7C68F2),
-        green = dynamic?.secondary ?: if (isDark) Color(0xFF5BD8AB) else Color(0xFF16865F),
+        violet = dynamicPalette?.tertiary ?: Color(0xFF7C68F2),
+        green = dynamicPalette?.secondary ?: if (isDark) Color(0xFF5BD8AB) else Color(0xFF16865F),
         amber = if (isDark) Color(0xFFF1B354) else Color(0xFFA96800),
         red = if (isDark) Color(0xFFFF7D8C) else Color(0xFFC43A52),
-        monetSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+        monetSupported = monetSupported,
         isOled = isOled,
         isDark = isDark,
     )
