@@ -59,31 +59,41 @@ class TelegramEventTests(unittest.TestCase):
         self.assertEqual(1, database.settle_forecasts("xyft"))
 
     def activate_tracking(self) -> None:
-        self.save_forecast(target="100")
-        self.settle("100", 10)
-        self.save_forecast(target="101")
-        self.settle("101", 10)
+        for target in ("100", "101", "102"):
+            self.save_forecast(target=target)
+            self.settle(target, 10)
 
     def test_prediction_message_escapes_model_and_contains_top6(self) -> None:
         forecast_id = self.save_forecast()
         with database.connection() as db:
             row = db.execute("SELECT * FROM forecasts WHERE id=?", (forecast_id,)).fetchone()
-        message = telegram_events.format_prediction_message(row, 2)
+        message = telegram_events.format_prediction_message(row, 3)
         self.assertIn("deepseek&lt;pro&gt;", message)
         self.assertIn("01、02、03、04、05、06", message)
         self.assertIn("追踪中的新一期预测", message)
-        self.assertIn("连续 2 期未中", message)
+        self.assertIn("连续 3 期未中", message)
         self.assertIn("命中后发送中奖消息并停止追踪", message)
 
-    def test_prediction_waits_for_two_misses_and_stops_after_hit(self) -> None:
-        self.activate_tracking()
+    def test_two_misses_do_not_start_prediction_tracking(self) -> None:
+        for target in ("100", "101"):
+            self.save_forecast(target=target)
+            self.settle(target, 10)
         self.save_forecast(target="102")
+
+        self.assertEqual(0, telegram_events.materialize_events("xyft"))
+        with database.connection() as db:
+            count = int(db.execute("SELECT COUNT(*) FROM telegram_events").fetchone()[0])
+        self.assertEqual(0, count)
+
+    def test_prediction_waits_for_three_misses_and_stops_after_hit(self) -> None:
+        self.activate_tracking()
+        self.save_forecast(target="103")
 
         first = telegram_events.materialize_events("xyft")
         self.assertEqual(1, first)
 
-        self.settle("102", 3)
-        self.save_forecast(target="103")
+        self.settle("103", 3)
+        self.save_forecast(target="104")
         second = telegram_events.materialize_events("xyft")
         self.assertEqual(1, second)
 
@@ -96,7 +106,7 @@ class TelegramEventTests(unittest.TestCase):
                 """
             ).fetchall()
         self.assertEqual(
-            [("prediction", "102"), ("win", "102")],
+            [("prediction", "103"), ("win", "103")],
             [(str(row["event_type"]), str(row["target_period"])) for row in rows],
         )
         self.assertIn("追踪结束：Top 6 命中", str(rows[1]["message_html"]))
@@ -104,11 +114,11 @@ class TelegramEventTests(unittest.TestCase):
 
     def test_tracking_continues_after_another_miss(self) -> None:
         self.activate_tracking()
-        self.save_forecast(target="102")
+        self.save_forecast(target="103")
         self.assertEqual(1, telegram_events.materialize_events("xyft"))
 
-        self.settle("102", 10)
-        self.save_forecast(target="103")
+        self.settle("103", 10)
+        self.save_forecast(target="104")
         self.assertEqual(1, telegram_events.materialize_events("xyft"))
 
         with database.connection() as db:
@@ -122,22 +132,20 @@ class TelegramEventTests(unittest.TestCase):
                     """
                 ).fetchall()
             ]
-        self.assertEqual(["102", "103"], periods)
+        self.assertEqual(["103", "104"], periods)
 
     def test_ordinary_win_does_not_create_notification(self) -> None:
         self.save_forecast(target="100")
         self.settle("100", 3)
         self.assertEqual(0, telegram_events.materialize_events("xyft"))
         with database.connection() as db:
-            count = int(
-                db.execute("SELECT COUNT(*) FROM telegram_events").fetchone()[0]
-            )
+            count = int(db.execute("SELECT COUNT(*) FROM telegram_events").fetchone()[0])
         self.assertEqual(0, count)
 
     def test_miss_does_not_create_win_event(self) -> None:
         self.activate_tracking()
-        self.save_forecast(target="102")
-        self.settle("102", 10)
+        self.save_forecast(target="103")
+        self.settle("103", 10)
         telegram_events.materialize_events("xyft")
         with database.connection() as db:
             types = [
@@ -148,7 +156,7 @@ class TelegramEventTests(unittest.TestCase):
 
     def test_delivery_is_idempotent(self) -> None:
         self.activate_tracking()
-        self.save_forecast(target="102")
+        self.save_forecast(target="103")
         telegram_events.materialize_events("xyft")
         fake_settings = SimpleNamespace(
             telegram_enabled=True,
@@ -168,9 +176,9 @@ class TelegramEventTests(unittest.TestCase):
 
     def test_settled_prediction_is_not_sent_late(self) -> None:
         self.activate_tracking()
-        self.save_forecast(target="102")
+        self.save_forecast(target="103")
         telegram_events.materialize_events("xyft")
-        self.settle("102", 3)
+        self.settle("103", 3)
         telegram_events.materialize_events("xyft")
 
         fake_settings = SimpleNamespace(
@@ -195,6 +203,48 @@ class TelegramEventTests(unittest.TestCase):
         self.assertEqual(1, len(sent_messages))
         self.assertIn("追踪结束：Top 6 命中", sent_messages[0])
         self.assertNotIn("追踪中的新一期预测", sent_messages[0])
+
+    def test_legacy_two_miss_prediction_is_suppressed(self) -> None:
+        for target in ("100", "101"):
+            self.save_forecast(target=target)
+            self.settle(target, 10)
+        forecast_id = self.save_forecast(target="102")
+        with database.connection() as db:
+            row = db.execute("SELECT * FROM forecasts WHERE id=?", (forecast_id,)).fetchone()
+            db.execute(
+                """
+                INSERT INTO telegram_events(
+                    event_key,event_type,lottery,source,model,target_period,
+                    message_html,created_at
+                ) VALUES(?,?,?,?,?,?,?,?)
+                """,
+                (
+                    f"prediction:{forecast_id}",
+                    "prediction",
+                    "xyft",
+                    "ai",
+                    "deepseek<pro>",
+                    "102",
+                    telegram_events.format_prediction_message(row, 2),
+                    int(time.time() * 1000),
+                ),
+            )
+
+        fake_settings = SimpleNamespace(
+            telegram_enabled=True,
+            telegram_bot_token="123:test",
+            telegram_chat_ids=("987654321",),
+        )
+        with patch.object(telegram_events, "settings", fake_settings), patch.object(
+            telegram_alerts,
+            "send_html_message",
+            return_value=(True, 200, json.dumps({"ok": True})),
+        ) as sender:
+            result = telegram_events.deliver_pending_events()
+
+        self.assertEqual(0, result["sent"])
+        self.assertEqual(1, result["skipped"])
+        self.assertEqual(0, sender.call_count)
 
     def test_legacy_ordinary_win_event_is_suppressed(self) -> None:
         forecast_id = self.save_forecast(target="100")
@@ -237,9 +287,7 @@ class TelegramEventTests(unittest.TestCase):
         self.assertEqual(0, sender.call_count)
         with database.connection() as db:
             status = str(
-                db.execute(
-                    "SELECT status FROM telegram_event_deliveries"
-                ).fetchone()["status"]
+                db.execute("SELECT status FROM telegram_event_deliveries").fetchone()["status"]
             )
         self.assertEqual("suppressed", status)
 
