@@ -40,7 +40,11 @@ data class PushPreferences(
 data class PushConnectionStatus(
     val registered: Boolean = false,
     val firebaseConfigured: Boolean = false,
+    val serverConfigured: Boolean = false,
     val fcmTokenPresent: Boolean = false,
     val fallbackMinutes: Int = 15,
     val detail: String = "正在初始化预警服务",
-)
+) {
+    val instantReady: Boolean
+        get() = registered && firebaseConfigured && serverConfigured && fcmTokenPresent
+}
