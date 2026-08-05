@@ -79,19 +79,13 @@ object AiPositionScope {
     fun requestsAllPositions(text: String): Boolean = allPositionTerms.any(text::contains)
 
     fun resolve(question: String, previousMessages: List<AiChatMessage>): Int? {
-        // The latest user sentence always wins. "分析第一名" immediately replaces "分析第四名".
         extract(question)?.let { return it }
         if (requestsAllPositions(question)) return null
-        // Natural follow-ups such as "为什么" continue the most recently discussed rank.
         return previousMessages.asReversed().firstNotNullOfOrNull { message ->
             message.positionScope ?: extract(message.content)
         }
     }
 
-    /**
-     * The UI keeps the whole conversation. Only the context sent to the model excludes another
-     * rank's old analysis when the current sentence explicitly or implicitly selects one rank.
-     */
     fun filterPrevious(
         messages: List<AiChatMessage>,
         activePosition: Int?,
@@ -154,10 +148,7 @@ object AiVerifiedPositionEngine {
         .takeLast(120)
 }
 
-/**
- * Keeps exact API facts authoritative without turning every answer into a fixed report template.
- * The model still answers naturally; only conflicting numeric claims are removed.
- */
+/** Keeps API facts authoritative while allowing the model to answer naturally. */
 internal object AiVerifiedAnswerComposer {
     private val numericFactTriggers = listOf(
         "近10", "近20", "近60", "近120", "最近十", "最近20", "最近60", "最近120",
@@ -179,15 +170,11 @@ internal object AiVerifiedAnswerComposer {
 
         val interpretation = sanitize(modelText, intent)
         val sourceLine = "数据源：${facts.lotteryName}上游开奖 API，最新 ${facts.latestPeriod} 期；当前分析第${facts.position + 1}名。"
-        return buildString {
-            if (interpretation.isNotBlank()) {
-                append(interpretation)
-                append("\n\n")
-            }
-            append(sourceLine)
-            append("\n最近10期（新→旧）：")
-            append(facts.recent10NewestFirst.joinToString("、") { it.number.toString() })
-        }.trim()
+        return if (interpretation.isBlank()) {
+            sourceLine
+        } else {
+            "$interpretation\n\n$sourceLine"
+        }
     }
 
     private fun exactLookup(question: String, facts: AiVerifiedPositionFacts): String? {
