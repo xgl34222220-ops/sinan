@@ -1,0 +1,83 @@
+name: Apply Tianji v5.9.5 Bottom Nav Hotfix
+
+on:
+  push:
+    branches:
+      - hotfix/v5.9.5-bottom-nav
+    paths:
+      - tools/apply_v595_bottom_nav_hotfix.py
+      - .github/workflows/v595-bottom-nav-hotfix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout hotfix branch
+        uses: actions/checkout@v4
+        with:
+          ref: hotfix/v5.9.5-bottom-nav
+          fetch-depth: 0
+
+      - name: Apply hotfix
+        run: python3 tools/apply_v595_bottom_nav_hotfix.py
+
+      - name: Assert bounded bottom navigation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AppShellV2.kt').read_text(encoding='utf-8')
+          start = text.index('fun MainBottomBar(')
+          end = text.index('@Composable\nfun CompactLotterySwitcher', start)
+          block = text[start:end]
+          assert '.heightIn(min = 64.dp, max = 72.dp)' in block
+          assert block.count('.height(56.dp)') == 2
+          assert '.fillMaxHeight()' not in block
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Validate Android hotfix
+        run: >-
+          gradle --no-daemon --stacktrace
+          :app:testDebugUnitTest
+          :app:testReleaseUnitTest
+          :app:lintDebug
+          :app:assembleDebug
+          :app:assembleRelease
+
+      - name: Commit validated hotfix and remove migration files
+        run: |
+          rm -- tools/apply_v595_bottom_nav_hotfix.py
+          rm -- .github/workflows/v595-bottom-nav-hotfix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AppShellV2.kt \
+            app/build.gradle.kts \
+            .github/workflows/release.yml \
+            RELEASE_NOTES_v5.9.5.md \
+            tools/apply_v595_bottom_nav_hotfix.py \
+            .github/workflows/v595-bottom-nav-hotfix.yml
+          git commit -m "fix: bound bottom navigation height in v5.9.5"
+          git push origin HEAD:hotfix/v5.9.5-bottom-nav
