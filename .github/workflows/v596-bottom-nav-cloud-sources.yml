@@ -56,6 +56,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/tianji/probabilitylab/nativev4/ui/AppShellV2.kt
           git add app/src/main/java/com/tianji/probabilitylab/nativev4/ui/RefinedArchive.kt
-          git add app/src/main/java/com/tianji/probabilitylab/nativev4/data/CloudForecastApi.kt
+          git add -f app/src/main/java/com/tianji/probabilitylab/nativev4/data/CloudForecastApi.kt
           git commit -m "fix: prevent AI bottom nav clipping and split cloud sources"
           git push origin HEAD:hotfix/v5.9.6-bottom-nav-cloud-sources
