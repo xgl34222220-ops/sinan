@@ -1054,7 +1054,7 @@ private class RemoteAiChatClient {
         val content = AiTargetPeriodGuard.reconcilePredictionText(
             text = AiChatProtocol.visibleText(rawContent, prediction != null),
             expectedTargetPeriod = expectedTargetPeriod,
-            isPrediction = prediction != null,
+            isPrediction = wantsPrediction,
         )
         publisher.finish(content)
         val usage = extractUsage(response)
