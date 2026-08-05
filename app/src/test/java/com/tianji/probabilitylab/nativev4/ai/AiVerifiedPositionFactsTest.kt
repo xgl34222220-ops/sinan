@@ -162,7 +162,7 @@ class AiVerifiedPositionFactsTest {
     }
 
     @Test
-    fun generalAnalysisKeepsNaturalInterpretationButDropsInventedNumericClaims() {
+    fun generalAnalysisKeepsNaturalInterpretationButDoesNotForceUnusedStatistics() {
         val draws = listOf(7, 4, 5, 2, 2, 3, 10, 8, 4, 10).mapIndexed { index, first ->
             draw(period = "213481${(8 + index).toString().padStart(2, '0')}", first = first, fourth = 6)
         }
@@ -177,7 +177,8 @@ class AiVerifiedPositionFactsTest {
 
         assertFalse(composed.contains("3号出现18次"))
         assertTrue(composed.contains("整体波动较大"))
-        assertTrue(composed.contains("最近10期（新→旧）：10、4、8、10、3、2、2、5、4、7"))
+        assertTrue(composed.contains("数据源：澳洲幸运10上游开奖 API"))
+        assertFalse(composed.contains("最近10期（新→旧）"))
     }
 
     @Test
