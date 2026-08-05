@@ -15,7 +15,7 @@ from .predictor import predict
 from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
-SERVICE_VERSION = "1.5.0"
+SERVICE_VERSION = "1.6.0"
 SAFETY_WINDOW_MS = 5_000
 AI_RETRY_AFTER_MS = 30_000
 _AI_EXECUTOR = ThreadPoolExecutor(
@@ -111,7 +111,17 @@ def _run_ai_prediction(
         started_at_epoch_ms=started,
     )
     try:
-        result = ai.analyze(history, target_period, ai_config)
+        recent_ai_positions = [
+            forecast.position
+            for forecast in database.list_forecasts(spec.key, 20)
+            if forecast.source == "ai"
+        ][:12]
+        result = ai.analyze(
+            history,
+            target_period,
+            ai_config,
+            recent_positions=recent_ai_positions,
+        )
         if not _target_is_open(spec, trained_through_period, target_period):
             message = "AI 完成时目标期已经封盘，结果未写入前向档案"
             database.finish_forecast_job(

@@ -248,128 +248,26 @@ def analyze(
     history: list[DrawModel],
     target_period: str,
     config: RuntimeAiConfig | None = None,
+    *,
+    recent_positions: list[int] | None = None,
 ) -> AiPrediction:
+    """Generate an AI-only forward prediction through anonymous multi-review consensus."""
+    from .ai_ensemble import analyze_ensemble
+
     active = config or load_ai_config()
-    if not active.complete:
-        raise RuntimeError("服务器尚未完整配置 AI")
-    verified = [draw for draw in history if len(draw.numbers) == 10][-120:]
-    if len(verified) < 30:
-        raise ValueError("AI 分析至少需要 30 期有效历史")
-
-    history_payload = [
-        {"period": draw.period, "numbers": draw.numbers, "draw_time": draw.draw_time}
-        for draw in verified
-    ]
-    system_prompt = (
-        "你是天机的独立概率排序模型。只能依据提供的真实开奖历史进行统计比较，"
-        "不得承诺必中、盈利或准确率，不得输出隐藏思维链。"
-        "比较十个名次后选择证据相对更充分的一名，按号码1至10顺序给出10项非负评分。"
-        "analysis 与 risk_note 必须使用自然、易懂的简体中文完整句子，禁止输出英文句子、拼音或中英混排；"
-        "模型名称和必要技术缩写除外。"
-        "只返回紧凑JSON：{\"position\":1至10整数,\"scores\":[10项非负数],"
-        "\"analysis\":\"不超过100字的简体中文分析\",\"risk_note\":\"不超过80字的简体中文风险提示\"}。"
-    )
-    user_prompt = compact_json(
-        {
-            "target_period": target_period,
-            "trained_through_period": verified[-1].period,
-            "history_count": len(verified),
-            "history": history_payload,
-        }
-    )
-    endpoint = active.endpoint
-    is_responses = endpoint.rstrip("/").endswith("/responses")
-    if is_responses:
-        body: dict[str, Any] = {
-            "model": active.model,
-            "input": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        }
-    else:
-        body = {
-            "model": active.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.15,
-            "stream": False,
-            "response_format": {"type": "json_object"},
-            "max_tokens": 900,
-        }
-        if _is_official_deepseek(active):
-            body = _deepseek_fast_mode(body, max_tokens=900)
-
-    started = time.monotonic()
-    with httpx.Client(
-        timeout=httpx.Timeout(active.timeout_seconds, connect=15.0),
-        follow_redirects=True,
-    ) as client:
-        response = client.post(endpoint, headers=_headers(active), json=body)
-        if response.status_code >= 400 and not is_responses and "response_format" in body:
-            retry_body = dict(body)
-            retry_body.pop("response_format", None)
-            response = client.post(endpoint, headers=_headers(active), json=retry_body)
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise ValueError("AI 返回格式异常")
-        text = _response_text(payload).strip()
-
-        # DeepSeek 官方说明 JSON Output 偶尔可能返回空正文。
-        # 空正文时自动去掉 response_format 再请求一次，仍要求只输出 JSON。
-        if not text and not is_responses:
-            retry_body = dict(body)
-            retry_body.pop("response_format", None)
-            retry_messages = list(retry_body.get("messages") or [])
-            retry_messages.append(
-                {
-                    "role": "user",
-                    "content": "上一次返回为空。请立即只返回一行完整 JSON，analysis 和 risk_note 必须是简体中文，不要解释，不要留空。",
-                }
-            )
-            retry_body["messages"] = retry_messages
-            if _is_official_deepseek(active):
-                retry_body = _deepseek_fast_mode(retry_body, max_tokens=1200)
-            retry_payload = _post_json(
-                client,
-                endpoint=endpoint,
-                headers=_headers(active),
-                body=retry_body,
-            )
-            text = _response_text(retry_payload).strip()
-    latency_ms = int((time.monotonic() - started) * 1000)
-    if not text:
-        raise ValueError("模型接口已响应，但预测正文为空；系统已关闭思考模式并自动重试，仍未获得结果")
-    result = _extract_json(text)
-    position = int(result.get("position", 0)) - 1
-    if position not in range(10):
-        raise ValueError("AI 返回的名次无效")
-    raw_scores = result.get("scores")
-    if not isinstance(raw_scores, list) or len(raw_scores) != 10:
-        raise ValueError("AI 必须返回号码1至10的10项评分")
-    scores = [float(value) for value in raw_scores]
-    probabilities = _normalize(scores)
-    ranked = sorted(range(10), key=lambda index: probabilities[index], reverse=True)
-    analysis_text = _chinese_text(
-        result.get("analysis"),
-        "模型已完成独立统计比较；原始说明不是中文，已改用中文兜底说明。",
-        240,
-    )
-    risk_text = _chinese_text(
-        result.get("risk_note"),
-        "样本量和随机性都可能造成偏差，不能保证未来结果，仅用于前向验证。",
-        200,
+    result = analyze_ensemble(
+        history,
+        target_period,
+        active,
+        recent_positions=recent_positions,
     )
     return AiPrediction(
-        position=position,
-        probabilities=probabilities,
-        top6=[index + 1 for index in ranked[:6]],
-        top7=[index + 1 for index in ranked[:7]],
-        analysis=analysis_text,
-        risk_note=risk_text,
+        position=result.position,
+        probabilities=result.probabilities,
+        top6=result.top6,
+        top7=result.top7,
+        analysis=result.analysis,
+        risk_note=result.risk_note,
         model=active.model,
-        latency_ms=latency_ms,
+        latency_ms=result.latency_ms,
     )
