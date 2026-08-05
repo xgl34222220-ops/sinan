@@ -73,7 +73,7 @@ class TelegramEventTests(unittest.TestCase):
         self.assertIn("01、02、03、04、05、06", message)
         self.assertIn("追踪中的新一期预测", message)
         self.assertIn("连续 2 期未中", message)
-        self.assertIn("命中后自动停止", message)
+        self.assertIn("命中后发送中奖消息并停止追踪", message)
 
     def test_prediction_waits_for_two_misses_and_stops_after_hit(self) -> None:
         self.activate_tracking()
@@ -99,7 +99,8 @@ class TelegramEventTests(unittest.TestCase):
             [("prediction", "102"), ("win", "102")],
             [(str(row["event_type"]), str(row["target_period"])) for row in rows],
         )
-        self.assertIn("追踪预测推送现已停止", str(rows[1]["message_html"]))
+        self.assertIn("追踪结束：Top 6 命中", str(rows[1]["message_html"]))
+        self.assertIn("预测推送现已自动停止", str(rows[1]["message_html"]))
 
     def test_tracking_continues_after_another_miss(self) -> None:
         self.activate_tracking()
@@ -123,18 +124,15 @@ class TelegramEventTests(unittest.TestCase):
             ]
         self.assertEqual(["102", "103"], periods)
 
-    def test_ordinary_win_pushes_without_tracking_stop_text(self) -> None:
+    def test_ordinary_win_does_not_create_notification(self) -> None:
         self.save_forecast(target="100")
         self.settle("100", 3)
-        self.assertEqual(1, telegram_events.materialize_events("xyft"))
+        self.assertEqual(0, telegram_events.materialize_events("xyft"))
         with database.connection() as db:
-            row = db.execute(
-                "SELECT event_type,message_html FROM telegram_events"
-            ).fetchone()
-        self.assertIsNotNone(row)
-        self.assertEqual("win", str(row["event_type"]))
-        self.assertIn("Top 6 命中", str(row["message_html"]))
-        self.assertNotIn("追踪预测推送现已停止", str(row["message_html"]))
+            count = int(
+                db.execute("SELECT COUNT(*) FROM telegram_events").fetchone()[0]
+            )
+        self.assertEqual(0, count)
 
     def test_miss_does_not_create_win_event(self) -> None:
         self.activate_tracking()
@@ -195,8 +193,55 @@ class TelegramEventTests(unittest.TestCase):
 
         self.assertEqual(1, result["sent"])
         self.assertEqual(1, len(sent_messages))
-        self.assertIn("Top 6 命中", sent_messages[0])
+        self.assertIn("追踪结束：Top 6 命中", sent_messages[0])
         self.assertNotIn("追踪中的新一期预测", sent_messages[0])
+
+    def test_legacy_ordinary_win_event_is_suppressed(self) -> None:
+        forecast_id = self.save_forecast(target="100")
+        self.settle("100", 3)
+        with database.connection() as db:
+            row = db.execute("SELECT * FROM forecasts WHERE id=?", (forecast_id,)).fetchone()
+            db.execute(
+                """
+                INSERT INTO telegram_events(
+                    event_key,event_type,lottery,source,model,target_period,
+                    message_html,created_at
+                ) VALUES(?,?,?,?,?,?,?,?)
+                """,
+                (
+                    f"win:{forecast_id}",
+                    "win",
+                    "xyft",
+                    "ai",
+                    "deepseek<pro>",
+                    "100",
+                    telegram_events.format_win_message(row),
+                    int(time.time() * 1000),
+                ),
+            )
+
+        fake_settings = SimpleNamespace(
+            telegram_enabled=True,
+            telegram_bot_token="123:test",
+            telegram_chat_ids=("987654321",),
+        )
+        with patch.object(telegram_events, "settings", fake_settings), patch.object(
+            telegram_alerts,
+            "send_html_message",
+            return_value=(True, 200, json.dumps({"ok": True})),
+        ) as sender:
+            result = telegram_events.deliver_pending_events()
+
+        self.assertEqual(0, result["sent"])
+        self.assertEqual(1, result["skipped"])
+        self.assertEqual(0, sender.call_count)
+        with database.connection() as db:
+            status = str(
+                db.execute(
+                    "SELECT status FROM telegram_event_deliveries"
+                ).fetchone()["status"]
+            )
+        self.assertEqual("suppressed", status)
 
 
 if __name__ == "__main__":
