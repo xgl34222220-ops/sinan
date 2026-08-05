@@ -143,7 +143,7 @@ class AiChatArchiveStore(context: Context) {
 
 object AiChatArchiveCodec {
     fun encode(archives: List<AiChatArchive>): String = JSONObject()
-        .put("schema", 3)
+        .put("schema", 4)
         .put("archives", JSONArray(archives.map(::toJson)))
         .toString()
 
@@ -200,6 +200,7 @@ object AiChatArchiveCodec {
         .put("target_period", message.targetPeriod ?: JSONObject.NULL)
         .put("created_at", message.createdAtEpochMs)
         .put("latency_ms", message.latencyMs ?: JSONObject.NULL)
+        .put("position_scope", message.positionScope?.plus(1) ?: JSONObject.NULL)
 
     private fun candidateToJson(record: AiChatCandidateRecord): JSONObject = JSONObject()
         .put("id", record.id)
@@ -280,6 +281,8 @@ object AiChatArchiveCodec {
                             .takeUnless { it.isBlank() || it == "null" },
                         createdAtEpochMs = item.optLong("created_at", System.currentTimeMillis()),
                         latencyMs = item.optLong("latency_ms", -1L).takeIf { it >= 0L },
+                        positionScope = item.optInt("position_scope", 0)
+                            .takeIf { it in 1..10 }?.minus(1),
                     ),
                 )
             }

@@ -68,6 +68,7 @@ data class AiChatMessage(
     val targetPeriod: String? = null,
     val createdAtEpochMs: Long = System.currentTimeMillis(),
     val latencyMs: Long? = null,
+    val positionScope: Int? = null,
 )
 
 data class AiChatPrediction(
