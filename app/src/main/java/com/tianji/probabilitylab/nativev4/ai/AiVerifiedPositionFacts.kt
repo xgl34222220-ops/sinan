@@ -158,7 +158,7 @@ object AiVerifiedPositionEngine {
  * Keeps exact API facts authoritative without turning every answer into a fixed report template.
  * The model still answers naturally; only conflicting numeric claims are removed.
  */
-object AiVerifiedAnswerComposer {
+internal object AiVerifiedAnswerComposer {
     private val numericFactTriggers = listOf(
         "近10", "近20", "近60", "近120", "最近十", "最近20", "最近60", "最近120",
         "出现次数", "频率统计", "高频区", "低频区", "冷号", "热号", "遗漏", "后继",
