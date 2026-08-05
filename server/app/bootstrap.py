@@ -189,6 +189,19 @@ async def platform_middleware(request: Request, call_next):
     return response
 
 
+def _decode_state(key: str) -> dict[str, object] | None:
+    value = database.get_state(key)
+    if value is None:
+        return None
+    try:
+        decoded = json.loads(value[0])
+        if isinstance(decoded, dict):
+            return decoded
+        return {"value": decoded, "updated_at_epoch_ms": value[1]}
+    except json.JSONDecodeError:
+        return {"value": value[0], "updated_at_epoch_ms": value[1]}
+
+
 def _heartbeat_detail() -> dict[str, object]:
     value = database.get_state("worker_heartbeat")
     if value is None:
@@ -211,6 +224,24 @@ def _heartbeat_detail() -> dict[str, object]:
         }
     )
     return payload
+
+
+# Replace the legacy compatibility health route. Liveness remains independent from
+# database and Worker readiness so Docker can restart only truly dead API processes.
+app.routes[:] = [route for route in app.routes if getattr(route, "path", None) != "/health"]
+
+
+@app.get("/health", include_in_schema=False)
+def health_compatibility() -> dict[str, object]:
+    database_ok = database.ping()
+    heartbeat = _heartbeat_detail()
+    ready = database_ok and bool(heartbeat.get("fresh"))
+    return {
+        "status": "ok" if ready else "degraded",
+        "database": "ok" if database_ok else "error",
+        "worker": heartbeat.get("status"),
+        "version": SERVICE_VERSION,
+    }
 
 
 @app.get("/health/live", include_in_schema=False)
@@ -240,19 +271,15 @@ def health_ready():
 def health_detail() -> dict[str, object]:
     cycles = {}
     for lottery_key in LOTTERIES:
-        value = database.get_state(f"cycle:{lottery_key}")
-        if value is None:
-            cycles[lottery_key] = None
-            continue
-        try:
-            cycles[lottery_key] = json.loads(value[0])
-        except json.JSONDecodeError:
-            cycles[lottery_key] = {"value": value[0], "updated_at_epoch_ms": value[1]}
+        cycles[lottery_key] = _decode_state(f"cycle:{lottery_key}")
+    database_ok = database.ping()
+    heartbeat = _heartbeat_detail()
     return {
-        "status": "ok" if database.ping() and _heartbeat_detail().get("fresh") else "degraded",
-        "database": {"ok": database.ping(), "path": settings.database_path},
-        "worker": _heartbeat_detail(),
+        "status": "ok" if database_ok and heartbeat.get("fresh") else "degraded",
+        "database": {"ok": database_ok, "path": settings.database_path},
+        "worker": heartbeat,
         "cycles": cycles,
+        "backup": _decode_state("backup_status"),
         "maintenance": cleanup_runtime_state(),
         "version": SERVICE_VERSION,
     }
