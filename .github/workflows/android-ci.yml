@@ -15,11 +15,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-free-chat-patch:
+  apply-free-chat-cleanup:
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/fix/v5.10.2-free-chat' &&
-      !contains(github.event.head_commit.message, '[free-chat-patched]')
+      !contains(github.event.head_commit.message, '[free-chat-cleaned]')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -29,18 +29,15 @@ jobs:
           ref: fix/v5.10.2-free-chat
           fetch-depth: 0
 
-      - name: Apply free chat patch
+      - name: Clean generated patch
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/patch_free_chat_v5102.py
+          python3 tools/fix_free_chat_patch_v5102.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt \
-            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatIntent.kt \
-            app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiChatIntentRouterTest.kt \
-            app/build.gradle.kts RELEASE_NOTES_v5.10.2.md
-          git commit -m 'fix(ai): restore fast free conversation [free-chat-patched]'
+          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt
+          git commit -m 'fix(ai): clean free chat transport arguments [free-chat-cleaned]'
           git push origin HEAD:fix/v5.10.2-free-chat
 
   verify:
