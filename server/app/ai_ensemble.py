@@ -115,6 +115,7 @@ def _call_json(
     system_prompt: str,
     user_payload: dict[str, Any],
     max_tokens: int,
+    timeout_seconds: int,
 ) -> dict[str, Any]:
     endpoint = config.endpoint.rstrip("/")
     is_responses = endpoint.endswith("/responses")
@@ -151,8 +152,9 @@ def _call_json(
             if _is_official_deepseek(config):
                 request_body["thinking"] = {"type": "disabled"}
         try:
+            attempt_timeout = timeout_seconds if attempt == 0 else min(30, timeout_seconds)
             with httpx.Client(
-                timeout=httpx.Timeout(config.timeout_seconds, connect=15.0),
+                timeout=httpx.Timeout(attempt_timeout, connect=min(12.0, attempt_timeout)),
                 follow_redirects=True,
             ) as client:
                 response = client.post(
@@ -269,8 +271,40 @@ def _anonymized_items(
         mapping[label] = index
         value = dict(items[index])
         value.pop("position", None)
+        value.pop("number", None)
         payload.append({"candidate_id": label, "evidence": value})
     return payload, mapping
+
+
+def _anonymized_position_history(
+    history: list[DrawModel],
+    mapping: dict[str, int],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "period": draw.period,
+            "values_by_candidate": {
+                label: draw.numbers[position]
+                for label, position in mapping.items()
+            },
+        }
+        for draw in _canonical_history(history)
+    ]
+
+
+def _anonymized_number_series(
+    history: list[DrawModel],
+    position: int,
+    mapping: dict[str, int],
+) -> list[dict[str, Any]]:
+    label_by_number = {actual_index + 1: label for label, actual_index in mapping.items()}
+    return [
+        {
+            "period": draw.period,
+            "candidate_id": label_by_number[draw.numbers[position]],
+        }
+        for draw in _canonical_history(history)
+    ]
 
 
 def _parse_label_scores(result: dict[str, Any], mapping: dict[str, int]) -> _ReviewerResult:
@@ -295,6 +329,7 @@ def _parse_label_scores(result: dict[str, Any], mapping: dict[str, int]) -> _Rev
 def _position_review(
     config: RuntimeAiConfig,
     *,
+    history: list[DrawModel],
     evidence: list[dict[str, Any]],
     target_period: str,
     trained_through_period: str,
@@ -309,7 +344,7 @@ def _position_review(
     )
     prompt = (
         "你是天机服务端的独立前向预测评审。候选A至J对应十个真实名次，但映射已随机匿名，"
-        "不得猜测字母对应哪个名次，也不得偏向列表第一项。只能依据每个候选的真实API统计证据，"
+        "不得猜测字母对应哪个名次，也不得偏向列表第一项。你会同时看到匿名后的原始开奖序列和程序逐期核验的统计证据，"
         "对全部10个候选给出0以上评分。评分代表相对预测证据，不是真实中奖概率。"
         "必须明确选出证据最高的一个候选，每期必须形成预测，不得回答无法预测。"
         + (
@@ -328,9 +363,12 @@ def _position_review(
             "target_period": target_period,
             "trained_through_period": trained_through_period,
             "reviewer": reviewer + 1,
+            "history_order": "oldest_to_newest",
+            "anonymous_raw_draws": _anonymized_position_history(history, mapping),
             "candidates": candidates,
         },
         max_tokens=1200,
+        timeout_seconds=55,
     )
     return _parse_label_scores(result, mapping)
 
@@ -383,7 +421,7 @@ def _number_review(
     )
     prompt = (
         "你是天机服务端号码排序评审。候选A至J对应号码1至10，但映射已随机匿名。"
-        "只能依据当前选中名次的真实开奖API证据，对全部10个匿名候选给出0以上相对评分。"
+        "你会同时看到该名次匿名后的原始开奖序列与程序逐期核验的统计证据，对全部10个匿名号码候选给出0以上相对评分。"
         "不得偏向列表第一项，不得编造期号、次数或遗漏。每期必须给出完整排序。"
         "只返回紧凑JSON：{\"scores\":{\"A\":数值,...,\"J\":数值},"
         "\"selected\":\"A至J之一\",\"analysis\":\"不超过100字简体中文\"}。"
@@ -396,9 +434,16 @@ def _number_review(
             "trained_through_period": trained_through_period,
             "selected_position": position + 1,
             "reviewer": reviewer + 1,
+            "history_order": "oldest_to_newest",
+            "anonymous_raw_position_series": _anonymized_number_series(
+                history,
+                position,
+                mapping,
+            ),
             "candidates": candidates,
         },
         max_tokens=1000,
+        timeout_seconds=45,
     )
     return _parse_label_scores(result, mapping)
 
@@ -454,6 +499,7 @@ def analyze_ensemble(
         _POSITION_REVIEWERS,
         lambda reviewer: _position_review(
             config,
+            history=verified,
             evidence=evidence,
             target_period=target_period,
             trained_through_period=trained_through,
@@ -470,6 +516,7 @@ def analyze_ensemble(
             2,
             lambda reviewer: _position_review(
                 config,
+                history=verified,
                 evidence=evidence,
                 target_period=target_period,
                 trained_through_period=trained_through,
