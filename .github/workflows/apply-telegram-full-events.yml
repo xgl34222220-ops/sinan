@@ -5,6 +5,7 @@ on:
     branches: ['feature/v5.9.9-telegram-full-events-v2']
     paths:
       - 'tools/apply_telegram_full_events.py'
+      - 'tools/fix_telegram_event_queue.py'
       - 'server/app/telegram_events.py'
       - 'server/tests/test_telegram_events.py'
       - '.github/workflows/apply-telegram-full-events.yml'
@@ -29,7 +30,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply integration
-        run: python tools/apply_telegram_full_events.py
+        run: |
+          python tools/apply_telegram_full_events.py
+          python tools/fix_telegram_event_queue.py
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -51,12 +54,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git add -- server/app/service.py server/app/telegram_alerts.py
+          git add -- \
+            server/app/service.py \
+            server/app/telegram_alerts.py \
+            server/app/telegram_events.py
           if git diff --cached --quiet; then
             echo 'No generated integration changes.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'feat: push predictions and wins through Telegram'
+          git commit -m 'fix: keep Telegram event queue draining'
           git push origin HEAD:feature/v5.9.9-telegram-full-events-v2
