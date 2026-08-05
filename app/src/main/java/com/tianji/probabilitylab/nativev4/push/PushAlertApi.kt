@@ -121,17 +121,34 @@ class PushAlertApi {
     private fun JSONObject.toStatus(
         firebaseConfigured: Boolean,
         fcmTokenPresent: Boolean,
-    ) = PushConnectionStatus(
-        registered = optBoolean("registered", true),
-        firebaseConfigured = firebaseConfigured,
-        fcmTokenPresent = fcmTokenPresent,
-        fallbackMinutes = optInt("fallback_poll_minutes", 15),
-        detail = when {
-            firebaseConfigured && fcmTokenPresent -> "即时推送已连接，15 分钟后台检查作为兜底"
-            firebaseConfigured -> "Firebase 已配置，正在等待设备令牌"
-            else -> "即时推送尚未配置，当前使用 15 分钟后台检查"
-        },
-    )
+    ): PushConnectionStatus {
+        val registered = optBoolean("registered", true)
+        val serverConfigured = optBoolean("push_configured", false)
+        val fallbackMinutes = optInt("fallback_poll_minutes", 15)
+        return PushConnectionStatus(
+            registered = registered,
+            firebaseConfigured = firebaseConfigured,
+            serverConfigured = serverConfigured,
+            fcmTokenPresent = fcmTokenPresent,
+            fallbackMinutes = fallbackMinutes,
+            detail = when {
+                registered && firebaseConfigured && serverConfigured && fcmTokenPresent ->
+                    "FCM 即时推送已连接，${fallbackMinutes} 分钟后台检查作为兜底"
+                !firebaseConfigured && !serverConfigured ->
+                    "当前 APK 与云端均未配置 FCM，暂用 ${fallbackMinutes} 分钟后台检查"
+                !firebaseConfigured ->
+                    "当前 APK 未注入 Firebase 客户端配置，暂用 ${fallbackMinutes} 分钟后台检查"
+                firebaseConfigured && !fcmTokenPresent ->
+                    "Firebase 客户端已配置，正在等待设备令牌"
+                !serverConfigured ->
+                    "设备令牌已取得，但云端服务账号尚未配置"
+                !registered ->
+                    "设备尚未完成云端注册"
+                else ->
+                    "FCM 正在建立连接"
+            },
+        )
+    }
 
     private fun JSONObject.toAlert(): PushAlert? {
         val id = optLong("id", -1L)
