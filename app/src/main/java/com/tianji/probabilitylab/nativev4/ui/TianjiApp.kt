@@ -201,6 +201,7 @@ fun TianjiApp() {
                                 selected = destination,
                                 onSelected = { destination = it },
                                 onChat = { showChat = true },
+                                isAiRunning = state.isAiAnalyzing || chatRunning,
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .padding(start = 12.dp, end = 12.dp, bottom = 9.dp),

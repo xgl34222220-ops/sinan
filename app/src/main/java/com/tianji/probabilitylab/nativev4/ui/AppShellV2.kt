@@ -80,7 +80,7 @@ fun CompactAppHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(54.dp)
+            .height(58.dp)
             .background(colors.header)
             .border(0.5.dp, colors.line)
             .padding(horizontal = 11.dp),
@@ -122,8 +122,8 @@ fun CompactAppHeader(
             Text(
                 destination.subtitle,
                 color = colors.textDim,
-                fontSize = 10.sp,
-                lineHeight = 13.sp,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -161,13 +161,14 @@ fun MainBottomBar(
     selected: MainDestination,
     onSelected: (MainDestination) -> Unit,
     onChat: () -> Unit,
+    isAiRunning: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalTianjiColors.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(60.dp)
+            .height(64.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 7.dp,
                 shape = RoundedCornerShape(21.dp),
@@ -188,7 +189,11 @@ fun MainBottomBar(
             MainDestination.SETTINGS,
         ).forEach { item ->
             if (item == MainDestination.CHAT) {
-                ChatNavItem(onClick = onChat, modifier = Modifier.weight(1f))
+                ChatNavItem(
+                    onClick = onChat,
+                    isRunning = isAiRunning,
+                    modifier = Modifier.weight(1f),
+                )
             } else {
                 StandardNavItem(
                     item = item,
@@ -248,14 +253,18 @@ private fun StandardNavItem(
         Text(
             item.label,
             color = if (active) colors.accent else colors.textDim,
-            fontSize = 9.sp,
+            fontSize = 10.sp,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
         )
     }
 }
 
 @Composable
-private fun ChatNavItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ChatNavItem(
+    onClick: () -> Unit,
+    isRunning: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val colors = LocalTianjiColors.current
     val interaction = remember { MutableInteractionSource() }
     Column(
@@ -271,33 +280,45 @@ private fun ChatNavItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.Center,
     ) {
         Box(
-            modifier = Modifier
-                .size(34.dp)
-                .shadow(
-                    elevation = if (colors.isOled) 0.dp else 5.dp,
-                    shape = CircleShape,
-                    ambientColor = colors.accent.copy(alpha = 0.22f),
-                    spotColor = colors.accent.copy(alpha = 0.22f),
-                )
-                .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(
-                        listOf(colors.accent, colors.violet),
-                    ),
-                ),
+            modifier = Modifier.size(42.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                Icons.Rounded.AutoAwesome,
-                contentDescription = "打开 AI 对话",
-                tint = Color.White,
-                modifier = Modifier.size(18.dp),
-            )
+            if (isRunning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(42.dp),
+                    color = colors.accent,
+                    strokeWidth = 2.dp,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(35.dp)
+                    .shadow(
+                        elevation = if (colors.isOled) 0.dp else 5.dp,
+                        shape = CircleShape,
+                        ambientColor = colors.accent.copy(alpha = 0.22f),
+                        spotColor = colors.accent.copy(alpha = 0.22f),
+                    )
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(colors.accent, colors.violet),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.AutoAwesome,
+                    contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
         Text(
-            "AI",
+            if (isRunning) "运行中" else "AI",
             color = colors.accent,
-            fontSize = 8.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
         )
     }
@@ -313,7 +334,7 @@ fun CompactLotterySwitcher(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(48.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(colors.glass)
             .border(1.dp, colors.line, RoundedCornerShape(16.dp))
@@ -369,7 +390,7 @@ fun SegmentedTabs(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(43.dp)
+            .height(47.dp)
             .clip(RoundedCornerShape(15.dp))
             .background(colors.surfaceStrong)
             .border(1.dp, colors.line, RoundedCornerShape(15.dp))

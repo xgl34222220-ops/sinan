@@ -9,16 +9,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -30,10 +34,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +54,13 @@ private enum class ArchiveDisplayLimit(val label: String, val count: Int?) {
     ALL("显示全部", null),
 }
 
+private enum class ArchiveSettlementFilter(val label: String) {
+    ALL("全部"),
+    PENDING("待开奖"),
+    HIT("已命中"),
+    MISSED("未命中"),
+}
+
 @Composable
 fun RefinedArchiveScreen(
     state: AppUiState,
@@ -58,9 +71,15 @@ fun RefinedArchiveScreen(
         mutableStateOf(ArchiveDisplayLimit.RECENT_8.name)
     }
     var limitMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var settlementFilterName by rememberSaveable(state.lottery.apiKey) {
+        mutableStateOf(ArchiveSettlementFilter.ALL.name)
+    }
     val selectedLimit = ArchiveDisplayLimit.entries.firstOrNull { it.name == selectedLimitName }
         ?: ArchiveDisplayLimit.RECENT_8
     val maxItems = selectedLimit.count ?: Int.MAX_VALUE
+    val settlementFilter = ArchiveSettlementFilter.entries.firstOrNull {
+        it.name == settlementFilterName
+    } ?: ArchiveSettlementFilter.ALL
     val colors = LocalTianjiColors.current
     val localRate = if (state.liveAudit.settled > 0) {
         "${(state.liveAudit.top6Rate * 100).format1V2()}%"
@@ -72,6 +91,15 @@ fun RefinedArchiveScreen(
         "${(state.aiLiveAudit.top6Rate * 100).format1V2()}%"
     } else {
         "暂无"
+    }
+    val consensusRecords = state.aiConsensusRecords.filter {
+        archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit)
+    }
+    val aiRecords = state.aiRecords.filter {
+        archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit)
+    }
+    val nativeRecords = state.records.filter {
+        archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit)
     }
 
     LazyColumn(
@@ -191,17 +219,46 @@ fun RefinedArchiveScreen(
             }
         }
 
-        if (state.aiConsensusRecords.isNotEmpty()) {
+        item("archive-filters") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                ArchiveSettlementFilter.entries.forEach { option ->
+                    val active = option == settlementFilter
+                    Text(
+                        option.label,
+                        color = if (active) colors.accent else colors.textSoft,
+                        fontSize = 11.sp,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (active) colors.accentSoft else colors.surfaceStrong)
+                            .border(
+                                1.dp,
+                                if (active) colors.accent.copy(alpha = 0.24f) else colors.line,
+                                RoundedCornerShape(12.dp),
+                            )
+                            .clickable { settlementFilterName = option.name }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+
+        if (consensusRecords.isNotEmpty()) {
             item {
                 ArchiveLabelV2(
                     title = "AI 共识",
                     detail = "多个独立模型共同支持的冻结结果",
-                    count = state.aiConsensusRecords.size,
+                    count = consensusRecords.size,
                     tint = colors.violet,
                     icon = Icons.Rounded.AutoAwesome,
                 )
             }
-            state.aiConsensusRecords.take(maxItems).forEach { record ->
+            consensusRecords.take(maxItems).forEach { record ->
                 item("consensus-${record.consensusHash}") {
                     ArchiveRecordCompactV2(
                         title = "目标期 ${record.targetPeriod}",
@@ -220,17 +277,17 @@ fun RefinedArchiveScreen(
             }
         }
 
-        if (state.aiRecords.isNotEmpty()) {
+        if (aiRecords.isNotEmpty()) {
             item {
                 ArchiveLabelV2(
                     title = "独立 AI",
                     detail = "每个 AI 调用单独冻结并按目标期结算",
-                    count = state.aiRecords.size,
+                    count = aiRecords.size,
                     tint = colors.accent,
                     icon = Icons.Rounded.AutoAwesome,
                 )
             }
-            state.aiRecords.take(maxItems).forEach { record ->
+            aiRecords.take(maxItems).forEach { record ->
                 item("ai-${record.forecastHash}") {
                     ArchiveRecordCompactV2(
                         title = "目标期 ${record.targetPeriod}",
@@ -248,18 +305,18 @@ fun RefinedArchiveScreen(
             }
         }
 
-        if (state.records.isNotEmpty()) {
+        if (nativeRecords.isNotEmpty()) {
             val nativeTint = Color(0xFF35C3D2)
             item {
                 ArchiveLabelV2(
                     title = "本地模型",
                     detail = "11 模型集成冻结结果，作为本地算法对照",
-                    count = state.records.size,
+                    count = nativeRecords.size,
                     tint = nativeTint,
                     icon = Icons.Rounded.Psychology,
                 )
             }
-            state.records.take(maxItems).forEach { record ->
+            nativeRecords.take(maxItems).forEach { record ->
                 item("native-${record.reportHash}") {
                     ArchiveRecordCompactV2(
                         title = "目标期 ${record.targetPeriod}",
@@ -277,10 +334,31 @@ fun RefinedArchiveScreen(
             }
         }
 
-        if (state.records.isEmpty() && state.aiRecords.isEmpty() && state.aiConsensusRecords.isEmpty()) {
-            item { EmptyState("暂无冻结档案", "完成一次预测后会在开奖前自动锁定", false) }
+        if (nativeRecords.isEmpty() && aiRecords.isEmpty() && consensusRecords.isEmpty()) {
+            item {
+                EmptyState(
+                    if (settlementFilter == ArchiveSettlementFilter.ALL) "暂无冻结档案" else "当前筛选暂无档案",
+                    if (settlementFilter == ArchiveSettlementFilter.ALL) {
+                        "完成一次预测后会在开奖前自动锁定"
+                    } else {
+                        "切换筛选条件可查看其他结算状态"
+                    },
+                    false,
+                )
+            }
         }
     }
+}
+
+private fun archiveMatchesFilter(
+    filter: ArchiveSettlementFilter,
+    top6Hit: Boolean?,
+    top7Hit: Boolean?,
+): Boolean = when (filter) {
+    ArchiveSettlementFilter.ALL -> true
+    ArchiveSettlementFilter.PENDING -> top6Hit == null && top7Hit == null
+    ArchiveSettlementFilter.HIT -> top6Hit == true || top7Hit == true
+    ArchiveSettlementFilter.MISSED -> top6Hit == false && top7Hit == false
 }
 
 @Composable
@@ -341,6 +419,7 @@ private fun ArchiveRecordCompactV2(
 ) {
     var hashExpanded by rememberSaveable(hash) { mutableStateOf(false) }
     val colors = LocalTianjiColors.current
+    val clipboard = LocalClipboardManager.current
     SurfaceCard(
         modifier = Modifier.clickable { hashExpanded = !hashExpanded },
         radius = 18.dp,
@@ -379,18 +458,52 @@ private fun ArchiveRecordCompactV2(
             Spacer(Modifier.height(10.dp))
             CompactNumberRowV2(numbers, size = 29, spread = true)
             Spacer(Modifier.height(9.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (hashExpanded) "哈希 $hash" else "点击卡片查看完整哈希",
+                    if (hashExpanded) "验证信息已展开" else "查看验证信息",
                     color = if (hashExpanded) colors.textSoft else colors.textDim,
-                    fontSize = 10.sp,
-                    lineHeight = 14.sp,
-                    maxLines = if (hashExpanded) 3 else 1,
-                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.size(8.dp))
                 Text(time, color = colors.textDim, fontSize = 10.sp)
+                Spacer(Modifier.size(5.dp))
+                Icon(
+                    if (hashExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = if (hashExpanded) "收起验证信息" else "展开验证信息",
+                    tint = colors.textDim,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            if (hashExpanded) {
+                Spacer(Modifier.height(9.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.surfaceStrong)
+                        .border(1.dp, colors.line, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "哈希 $hash",
+                        color = colors.textSoft,
+                        fontSize = 10.sp,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        Icons.Rounded.ContentCopy,
+                        contentDescription = "复制完整哈希",
+                        tint = colors.accent,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .clickable { clipboard.setText(AnnotatedString(hash)) }
+                            .padding(6.dp),
+                    )
+                }
             }
         }
     }

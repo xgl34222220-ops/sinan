@@ -234,6 +234,7 @@ private fun AiSettingsPageV2(
     val colors = LocalTianjiColors.current
     var editor by remember { mutableStateOf<AiConfig?>(null) }
     var createNew by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<AiConfig?>(null) }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
@@ -293,7 +294,7 @@ private fun AiSettingsPageV2(
                         .filter(String::isNotBlank)
                         .distinct(),
                     onEdit = { editor = config },
-                    onDelete = { onDelete(config.id) },
+                    onDelete = { pendingDelete = config },
                     onTest = { onTest(config.id) },
                     onLoad = { onLoadModels(config.id) },
                     onAnalyze = { onAnalyze(config.id) },
@@ -327,6 +328,35 @@ private fun AiSettingsPageV2(
             },
         )
     }
+
+    pendingDelete?.let { config ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = colors.surface,
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("删除 AI 配置？", color = colors.text, fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Text(
+                    "将删除“${config.displayName}”的接口、模型与密钥配置。此操作不会影响已经冻结的预测档案。",
+                    color = colors.textSoft,
+                    lineHeight = 20.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(config.id)
+                        pendingDelete = null
+                    },
+                ) { Text("确认删除", color = colors.red, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text("取消", color = colors.textDim)
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -344,6 +374,7 @@ private fun AiConfigCardV2(
     onReasoning: (AiReasoningMode) -> Unit,
 ) {
     val colors = LocalTianjiColors.current
+    var expanded by rememberSaveable(config.id) { mutableStateOf(false) }
     val tint = when (status?.state) {
         AiConnectionState.CONNECTED -> colors.green
         AiConnectionState.FAILED -> colors.red
@@ -370,7 +401,7 @@ private fun AiConfigCardV2(
                     Text(
                         config.model.ifBlank { "尚未选择模型" },
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -378,9 +409,9 @@ private fun AiConfigCardV2(
                 Box(Modifier.size(7.dp).clip(CircleShape).background(tint))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    status?.state?.name ?: "UNTESTED",
+                    aiStateLabelV594(status?.state),
                     color = tint,
-                    fontSize = 9.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 IconButton(onClick = onEdit, modifier = Modifier.size(35.dp)) {
@@ -391,74 +422,98 @@ private fun AiConfigCardV2(
             Text(
                 status?.message ?: "配置已保存，尚未测试",
                 color = tint,
-                fontSize = 10.sp,
-                lineHeight = 15.sp,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
                 modifier = Modifier.padding(top = 8.dp),
             )
 
-            if (models.isNotEmpty()) {
-                Spacer(Modifier.height(9.dp))
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    models.forEach { model ->
-                        val active = model == config.model
-                        Text(
-                            model,
-                            color = if (active) colors.accent else colors.textSoft,
-                            fontSize = 10.sp,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(if (active) colors.accentSoft else colors.surfaceStrong)
-                                .border(
-                                    1.dp,
-                                    if (active) colors.accent.copy(alpha = 0.25f) else colors.line,
-                                    CircleShape,
-                                )
-                                .clickable { onModel(model) }
-                                .padding(horizontal = 9.dp, vertical = 7.dp),
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(9.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AiAnalysisMode.entries.forEach { mode ->
-                    SmallChoiceV2(mode.label, config.analysisMode == mode, Modifier.weight(1f)) { onMode(mode) }
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AiReasoningMode.entries.forEach { mode ->
-                    SmallChoiceV2(mode.label, config.reasoningMode == mode, Modifier.weight(1f)) {
-                        onReasoning(mode)
-                    }
-                }
-            }
-
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                MiniButtonV2("读取模型", onLoad, Modifier.weight(1f))
-                MiniButtonV2("测试连接", onTest, Modifier.weight(1f))
-                MiniButtonV2("立即分析", onAnalyze, Modifier.weight(1f), primary = true)
+                MiniButtonV2(
+                    if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",
+                    onAnalyze,
+                    Modifier.weight(1.25f),
+                    primary = true,
+                )
+                MiniButtonV2(
+                    if (expanded) "收起设置" else "更多设置",
+                    { expanded = !expanded },
+                    Modifier.weight(1f),
+                )
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "删除配置",
-                color = colors.red,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .clip(CircleShape)
-                    .clickable(onClick = onDelete)
-                    .padding(horizontal = 8.dp, vertical = 5.dp),
-            )
+
+            if (expanded) {
+                if (models.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        models.forEach { model ->
+                            val active = model == config.model
+                            Text(
+                                model,
+                                color = if (active) colors.accent else colors.textSoft,
+                                fontSize = 10.sp,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (active) colors.accentSoft else colors.surfaceStrong)
+                                    .border(
+                                        1.dp,
+                                        if (active) colors.accent.copy(alpha = 0.25f) else colors.line,
+                                        CircleShape,
+                                    )
+                                    .clickable { onModel(model) }
+                                    .padding(horizontal = 9.dp, vertical = 7.dp),
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(9.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AiAnalysisMode.entries.forEach { mode ->
+                        SmallChoiceV2(mode.label, config.analysisMode == mode, Modifier.weight(1f)) { onMode(mode) }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AiReasoningMode.entries.forEach { mode ->
+                        SmallChoiceV2(mode.label, config.reasoningMode == mode, Modifier.weight(1f)) {
+                            onReasoning(mode)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    MiniButtonV2("读取模型", onLoad, Modifier.weight(1f))
+                    MiniButtonV2("测试连接", onTest, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "删除配置",
+                    color = colors.red,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .clip(CircleShape)
+                        .clickable(onClick = onDelete)
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                )
+            }
         }
     }
+}
+
+private fun aiStateLabelV594(state: AiConnectionState?): String = when (state) {
+    AiConnectionState.CONNECTED -> "连接正常"
+    AiConnectionState.FAILED -> "连接失败"
+    AiConnectionState.ANALYZING -> "分析中"
+    AiConnectionState.TESTING -> "测试中"
+    else -> "未测试"
 }
 
 @Composable
