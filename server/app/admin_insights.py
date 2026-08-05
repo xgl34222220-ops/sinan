@@ -32,7 +32,7 @@ def _record_dict(row: Any) -> dict[str, Any]:
         "top7": json.loads(row["top7_json"]),
         "probabilities": json.loads(row["probabilities_json"]),
         "source": source,
-        "source_name": "云端 AI" if source == "ai" else "本机云端",
+        "source_name": "天机云端 AI" if source == "ai" else "天机云端本地",
         "model": str(row["model"]),
         "analysis": str(row["analysis"] or ""),
         "risk_note": str(row["risk_note"] or ""),
@@ -293,6 +293,109 @@ def records_insights(
     }
 
 
+
+def _prediction_miss_watch_from_records(
+    records_desc: list[dict[str, Any]],
+    threshold: int = 3,
+) -> dict[str, Any]:
+    safe_threshold = max(1, int(threshold))
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    seen_periods: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+
+    for record in records_desc:
+        lottery = str(record.get("lottery") or "")
+        source = str(record.get("source") or "")
+        model = str(record.get("model") or "")
+        target_period = str(record.get("target_period") or "")
+        if not lottery or not source or not model or not target_period:
+            continue
+        key = (lottery, source, model)
+        if target_period in seen_periods[key]:
+            continue
+        seen_periods[key].add(target_period)
+        grouped[key].append(record)
+
+    predictions_by_lottery: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    warning_count = 0
+    for (lottery, source, model), records in grouped.items():
+        settled = [record for record in records if record.get("top6_hit") is not None]
+        current_miss_streak = 0
+        for record in settled:
+            if record.get("top6_hit") is False:
+                current_miss_streak += 1
+            else:
+                break
+        warning = current_miss_streak >= safe_threshold
+        if warning:
+            warning_count += 1
+        recent = settled[:safe_threshold]
+        source_name = "天机云端 AI" if source == "ai" else "天机云端本地"
+        predictions_by_lottery[lottery].append(
+            {
+                "source": source,
+                "source_name": source_name,
+                "model": model,
+                "warning": warning,
+                "threshold": safe_threshold,
+                "current_miss_streak": current_miss_streak,
+                "total_records": len(records),
+                "settled_records": len(settled),
+                "pending_records": len(records) - len(settled),
+                "recent_three": [
+                    {
+                        "target_period": str(record.get("target_period") or ""),
+                        "hit": bool(record.get("top6_hit")),
+                        "actual_number": record.get("actual_number"),
+                        "position": int(record.get("position") or 0),
+                        "top6": list(record.get("top6") or []),
+                        "settled_at_epoch_ms": record.get("settled_at_epoch_ms"),
+                    }
+                    for record in recent
+                ],
+            }
+        )
+
+    lotteries = []
+    for key, spec in LOTTERIES.items():
+        predictions = predictions_by_lottery.get(key, [])
+        predictions.sort(
+            key=lambda item: (
+                not item["warning"],
+                -int(item["current_miss_streak"]),
+                str(item["source_name"]),
+                str(item["model"]),
+            )
+        )
+        lotteries.append(
+            {
+                "key": key,
+                "name": spec.name,
+                "warning_count": sum(1 for item in predictions if item["warning"]),
+                "predictions": predictions,
+            }
+        )
+
+    return {
+        "threshold": safe_threshold,
+        "warning_count": warning_count,
+        "lotteries": lotteries,
+        "generated_at_epoch_ms": int(
+            datetime.now(tz=timezone.utc).timestamp() * 1000
+        ),
+    }
+
+
+def prediction_miss_watch(threshold: int = 3) -> dict[str, Any]:
+    with database.connection() as db:
+        rows = db.execute(
+            "SELECT * FROM forecasts ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+    return _prediction_miss_watch_from_records(
+        [_record_dict(row) for row in rows],
+        threshold=threshold,
+    )
+
+
 def _read_json_file(path: str) -> dict[str, Any] | None:
     try:
         with open(path, "r", encoding="utf-8") as file:
@@ -498,6 +601,7 @@ def operations_overview() -> dict[str, Any]:
             "disk_used_ratio": round(disk.used / disk.total, 4) if disk.total else None,
         },
         "integrity": _data_integrity(),
+        "miss_watch": prediction_miss_watch(threshold=3),
         "timeline": _timeline(),
         "generated_at_epoch_ms": int(
             datetime.now(tz=timezone.utc).timestamp() * 1000

@@ -50,6 +50,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -87,7 +88,9 @@ class AppController(context: Context) {
     private val database = AppDatabase(appContext)
     private val api = LotteryApi()
     private val cloudApi = CloudForecastApi()
-    private val executor = Executors.newSingleThreadExecutor()
+    private val executor = Executors.newFixedThreadPool(
+        LotteryType.entries.size.coerceAtLeast(2),
+    )
     private val preferences = appContext.getSharedPreferences("tianji-native-v5", Context.MODE_PRIVATE)
     private val initialAiConcurrency = preferences.getInt("ai_concurrency", 3).coerceIn(1, 3)
     private val aiExecutor = ThreadPoolExecutor(
@@ -99,10 +102,12 @@ class AppController(context: Context) {
     )
     private val aiTasks = AiTaskRegistry(aiExecutor)
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val generation = AtomicInteger(0)
+    private val refreshGenerations = LotteryType.entries.associateWith { AtomicInteger(0) }
     private val aiGeneration = AtomicInteger(0)
-    private val verifiedHistoryReady = mutableSetOf<LotteryType>()
-    private val reportCache = mutableMapOf<LotteryType, CachedForecast>()
+    private val verifiedHistoryReady = ConcurrentHashMap.newKeySet<LotteryType>()
+    private val reportCache = ConcurrentHashMap<LotteryType, CachedForecast>()
+    private val stateCache = ConcurrentHashMap<LotteryType, AppUiState>()
+    private val loadingLotteries = ConcurrentHashMap.newKeySet<LotteryType>()
     private val aiConfigStore = SecureAiConfigStore(appContext)
     private val aiLearningStore = AiAdaptiveLearningStore(appContext)
     private val remoteAiAnalyzer = RemoteAiAnalyzer(appContext)
@@ -119,55 +124,128 @@ class AppController(context: Context) {
         private set
 
     init {
-        refresh()
+        refreshAll(force = true)
         aiConfigs.filter { it.canQueryModels }.forEach { loadAiModels(it.id) }
     }
 
     fun selectLottery(lottery: LotteryType) {
         if (lottery == state.lottery) return
+        val previous = state
+        stateCache[previous.lottery] = previous
         preferences.edit { putString("lottery", lottery.apiKey) }
-        state = AppUiState(lottery = lottery, aiConcurrency = state.aiConcurrency)
-        refresh()
+
+        val cached = stateCache[lottery]
+        state = (cached ?: AppUiState(
+            lottery = lottery,
+            aiConcurrency = previous.aiConcurrency,
+        )).copy(
+            lottery = lottery,
+            aiStatuses = previous.aiStatuses,
+            aiError = previous.aiError,
+            aiConcurrency = previous.aiConcurrency,
+        )
+        refreshLottery(lottery, force = false)
     }
 
     fun refresh() {
-        // Refreshing draw data must not disconnect a paid AI request. Every AI task already owns
-        // a frozen snapshot and is validated against its exact target period before archiving.
-        api.cancelActiveRequests()
+        refreshAll(force = true)
+    }
+
+    private fun refreshAll(force: Boolean) {
+        val selected = state.lottery
+        val order = buildList {
+            add(selected)
+            addAll(LotteryType.entries.filterNot { it == selected })
+        }
+        order.forEach { lottery -> refreshLottery(lottery, force) }
+    }
+
+    private fun refreshLottery(lottery: LotteryType, force: Boolean) {
+        val cached = stateCache[lottery]
+        if (!force && cached != null && !isCacheStale(cached)) return
+        if (!loadingLotteries.add(lottery)) return
+
+        val generation = refreshGenerations.getValue(lottery)
         val token = generation.incrementAndGet()
-        val lottery = state.lottery
-        state = state.copy(
-            isLoading = state.snapshot == null,
-            isRefreshing = state.snapshot != null,
-            error = null,
-        )
+        if (state.lottery == lottery) {
+            state = state.copy(
+                isLoading = state.snapshot == null,
+                isRefreshing = state.snapshot != null,
+                error = null,
+            )
+            stateCache[lottery] = state
+        }
+
         executor.execute {
             val result = runCatching { load(lottery) }
             mainHandler.post {
-                if (generation.get() != token || state.lottery != lottery) return@post
-                state = result.fold(
+                loadingLotteries.remove(lottery)
+                if (generation.get() != token) return@post
+
+                result.fold(
                     onSuccess = { loaded ->
-                        val preservedAi = if (state.report?.targetPeriod == loaded.report?.targetPeriod) {
-                            state.aiForecasts
+                        val previous = if (state.lottery == lottery) {
+                            state
+                        } else {
+                            stateCache[lottery]
+                        }
+                        val preservedAi = if (
+                            previous != null &&
+                            previous.report?.targetPeriod == loaded.report?.targetPeriod
+                        ) {
+                            previous.aiForecasts
                         } else {
                             emptyList()
                         }
-                        loaded.copy(
-                            aiForecasts = (preservedAi + loaded.aiForecasts).distinctBy { it.profileId },
-                            aiStatuses = state.aiStatuses,
-                            aiError = state.aiError,
+                        val merged = loaded.copy(
+                            aiForecasts = (preservedAi + loaded.aiForecasts)
+                                .distinctBy { it.profileId },
+                            aiStatuses = previous?.aiStatuses.orEmpty(),
+                            aiError = previous?.aiError,
+                            aiConcurrency = state.aiConcurrency,
                         )
+                        stateCache[lottery] = merged
+                        if (state.lottery == lottery) {
+                            val globalStatuses = state.aiStatuses
+                            val globalError = state.aiError
+                            val concurrency = state.aiConcurrency
+                            state = merged.copy(
+                                aiStatuses = globalStatuses,
+                                aiError = globalError,
+                                aiConcurrency = concurrency,
+                            )
+                            stateCache[lottery] = state
+                        }
                     },
-                    onFailure = {
-                        state.copy(
+                    onFailure = { failure ->
+                        val previous = stateCache[lottery]
+                            ?: AppUiState(
+                                lottery = lottery,
+                                aiConcurrency = state.aiConcurrency,
+                            )
+                        val failed = previous.copy(
                             isLoading = false,
                             isRefreshing = false,
-                            error = it.message ?: "数据加载失败",
+                            error = failure.message ?: "数据加载失败",
                         )
+                        stateCache[lottery] = failed
+                        if (state.lottery == lottery) {
+                            state = state.copy(
+                                isLoading = false,
+                                isRefreshing = false,
+                                error = failure.message ?: "数据加载失败",
+                            )
+                            stateCache[lottery] = state
+                        }
                     },
                 )
             }
         }
+    }
+
+    private fun isCacheStale(cached: AppUiState): Boolean {
+        val syncedAt = cached.snapshot?.sourceHealth?.syncedAtEpochMs ?: return true
+        return System.currentTimeMillis() - syncedAt > 45_000L
     }
 
     fun saveAiConfig(config: AiConfig) {
@@ -671,7 +749,7 @@ class AppController(context: Context) {
     }
 
     fun close() {
-        generation.incrementAndGet()
+        refreshGenerations.values.forEach { it.incrementAndGet() }
         aiGeneration.incrementAndGet()
         api.cancelActiveRequests()
         cloudApi.cancelActiveRequests()

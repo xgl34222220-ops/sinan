@@ -238,3 +238,44 @@
     rankDiagnostics();syncExpandableState();
   }).observe(document.body,{childList:true,subtree:true});
 })();
+
+
+(()=>{
+  const overview=document.querySelector('#panel-overview');
+  if(!overview)return;
+  const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const workspace=document.createElement('section');
+  workspace.className='section v597-watch-section';
+  workspace.id='v597MissWatchWorkspace';
+  workspace.innerHTML=`<div class="v3-head"><div><h3>双彩种三期不中预警</h3><p>幸运飞艇与澳洲幸运10放在同一处；每个预测来源和模型独立计算，连续三期六码未中立即报警。</p></div><span class="badge" id="v597WatchBadge">正在检查</span></div><div class="v597-watch-grid" id="v597WatchGrid"><div class="v3-empty"><strong>正在读取预测健康</strong>请稍候</div></div>`;
+  const draw=document.querySelector('#drawWorkspace');
+  if(draw)draw.insertAdjacentElement('afterend',workspace);else overview.prepend(workspace);
+
+  const periodRow=item=>{
+    const periods=item.recent_three||[];
+    if(!periods.length)return '<div class="v597-period-empty">暂无已结算记录</div>';
+    return `<div class="v597-periods">${periods.map(record=>`<span class="v597-period ${record.hit?'hit':'miss'}"><b>${esc(record.target_period)}</b><small>${record.hit?'命中':'未中'} · 第 ${Number(record.position)+1} 名</small></span>`).join('')}</div>`;
+  };
+  const predictionCard=item=>`<article class="v597-prediction ${item.warning?'warning':'safe'}"><div class="v597-prediction-head"><div><span class="v597-source ${item.source==='ai'?'ai':'native'}">${esc(item.source_name)}</span><strong>${esc(item.model)}</strong></div><span class="v597-streak">${item.current_miss_streak} 期未中</span></div><div class="v597-status ${item.warning?'bad':'good'}">${item.warning?'已达到三期预警':'当前未触发预警'}</div>${periodRow(item)}<div class="v597-meta">已结算 ${item.settled_records} · 待开奖 ${item.pending_records}</div></article>`;
+  const lotteryCard=lottery=>`<section class="v597-lottery ${lottery.warning_count?'warning':''}"><div class="v597-lottery-head"><div><h4>${esc(lottery.name)}</h4><p>每种预测单独追踪连续未中</p></div><span class="badge ${lottery.warning_count?'bad':'good'}">${lottery.warning_count?lottery.warning_count+' 项预警':'全部正常'}</span></div><div class="v597-prediction-list">${lottery.predictions?.length?lottery.predictions.map(predictionCard).join(''):'<div class="v3-empty"><strong>暂无预测记录</strong>等待云端产生并完成结算</div>'}</div></section>`;
+
+  async function loadMissWatch(){
+    const grid=document.querySelector('#v597WatchGrid'),badge=document.querySelector('#v597WatchBadge');
+    if(!grid||!badge)return;
+    try{
+      const response=await fetch('/admin/api/operations',{cache:'no-store',headers:{'X-Tianji-Admin':'1'}});
+      if(response.status===401){location.href='/admin';return}
+      const data=await response.json();
+      if(!response.ok)throw Error(data.detail||('HTTP '+response.status));
+      const watch=data.miss_watch||{warning_count:0,lotteries:[]};
+      badge.className='badge '+(watch.warning_count?'bad':'good');
+      badge.textContent=watch.warning_count?`${watch.warning_count} 项预警`:'暂无三期预警';
+      grid.innerHTML=watch.lotteries?.length?watch.lotteries.map(lotteryCard).join(''):'<div class="v3-empty"><strong>暂无预警数据</strong>等待正式预测完成结算</div>';
+    }catch(error){
+      badge.className='badge warn';badge.textContent='读取失败';
+      grid.innerHTML=`<div class="v3-empty"><strong>预警读取失败</strong>${esc(error.message)}</div>`;
+    }
+  }
+  loadMissWatch();
+  setInterval(loadMissWatch,30000);
+})();

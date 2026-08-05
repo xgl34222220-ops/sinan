@@ -1111,3 +1111,30 @@ html.tianji-console-v5 .v3-record{box-shadow:0 4px 14px rgba(40,45,72,.055)}
     scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;
   }
 }
+
+
+/* Tianji Console V5.9.7 dual-lottery miss watch */
+.v597-watch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.v597-lottery{padding:16px;border:1px solid var(--v5-line,var(--line));border-radius:22px;background:var(--v5-surface,var(--surface));box-shadow:0 5px 18px rgba(40,45,72,.055)}
+.v597-lottery.warning{border-color:color-mix(in srgb,var(--bad) 26%,var(--v5-line,var(--line)))}
+.v597-lottery-head,.v597-prediction-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.v597-lottery-head h4{margin:0;font-size:17px;letter-spacing:-.025em}
+.v597-lottery-head p{margin:3px 0 0;color:var(--muted);font-size:10px}
+.v597-prediction-list{display:grid;gap:8px;margin-top:12px}
+.v597-prediction{padding:12px;border:1px solid var(--v5-line,var(--line));border-radius:16px;background:var(--soft)}
+.v597-prediction.warning{background:linear-gradient(135deg,color-mix(in srgb,var(--bad-soft) 75%,var(--soft)),var(--soft));border-color:color-mix(in srgb,var(--bad) 25%,var(--line))}
+.v597-prediction-head strong{display:block;margin-top:5px;font-size:11px;overflow-wrap:anywhere}
+.v597-source{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border-radius:999px;font-size:8px;font-weight:820}
+.v597-source.ai{color:var(--primary);background:var(--primary-soft)}
+.v597-source.native{color:#168f99;background:color-mix(in srgb,#35c3d2 15%,transparent)}
+.v597-streak{flex:0 0 auto;font-size:11px;font-weight:850;color:var(--warn)}
+.v597-prediction.warning .v597-streak{color:var(--bad)}
+.v597-status{font-size:9px;font-weight:760;margin-top:8px}
+.v597-periods{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px}
+.v597-period{min-width:0;padding:7px;border-radius:11px;border:1px solid var(--line);background:var(--surface)}
+.v597-period b,.v597-period small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v597-period b{font-size:9px}.v597-period small{font-size:7px;color:var(--muted);margin-top:2px}
+.v597-period.hit{border-color:color-mix(in srgb,var(--good) 20%,var(--line))}.v597-period.miss{border-color:color-mix(in srgb,var(--bad) 18%,var(--line))}
+.v597-period-empty,.v597-meta{font-size:8px;color:var(--muted);margin-top:8px}
+@media(max-width:840px){.v597-watch-grid{grid-template-columns:1fr}}
+@media(max-width:430px){.v597-lottery{padding:13px}.v597-periods{grid-template-columns:1fr}.v597-period b,.v597-period small{white-space:normal}}
