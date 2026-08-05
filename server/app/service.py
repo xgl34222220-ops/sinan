@@ -5,7 +5,7 @@ import json
 import time
 from typing import Any
 
-from . import ai, push_alerts
+from . import ai, push_alerts, telegram_events
 from .config import settings
 from .db import database
 from .lottery import lottery_client
@@ -123,6 +123,15 @@ def _run_ai_prediction(
             analysis=f"{result.analysis} · 云端耗时 {result.latency_ms / 1000:.1f}s",
             risk_note=result.risk_note,
         )
+        if inserted is not None:
+            try:
+                telegram_events.process(spec.key)
+                database.delete_state(f"telegram_event_error:{spec.key}")
+            except Exception as notify_exc:
+                _state(
+                    f"telegram_event_error:{spec.key}",
+                    {"message": str(notify_exc)[:500], "at": int(time.time() * 1000)},
+                )
         final_status = "completed" if inserted is not None else "duplicate"
         final_message = "AI 前向结果已冻结" if inserted is not None else "该目标期已有更早冻结的 AI 结果"
         database.finish_forecast_job(
@@ -219,6 +228,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
     if spec is None:
         raise KeyError(f"未知彩种：{lottery_key}")
 
+    telegram_events.initialize()
     existing_count = len(database.list_draws(lottery_key, 180))
     sync_days = settings.history_days if existing_count < 180 else 2
     draws, next_period, server_time, next_draw_at = lottery_client.fetch_recent(spec, sync_days)
@@ -226,6 +236,19 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
 
     # 结算必须先于任何预测和 AI 调用；即使模型失败，也不能阻塞已开奖档案更新。
     settled = database.settle_forecasts(lottery_key)
+    try:
+        telegram_result = telegram_events.process(lottery_key)
+        database.delete_state(f"telegram_event_error:{lottery_key}")
+    except Exception as exc:
+        telegram_result = {
+            "created": 0,
+            "delivery": {"sent": 0, "failed": 0, "skipped": 0},
+            "error": str(exc)[:500],
+        }
+        _state(
+            f"telegram_event_error:{lottery_key}",
+            {"message": str(exc)[:500], "at": int(time.time() * 1000)},
+        )
     try:
         push_result = push_alerts.process_prediction_alerts(lottery_key)
         database.delete_state(f"push_error:{lottery_key}")
@@ -264,6 +287,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         "sync_days": sync_days,
         "settled": settled,
         "push": push_result,
+        "telegram": telegram_result,
         "generated": generated,
         "scheduled": scheduled,
         "errors": errors,
@@ -297,6 +321,18 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
                 )
                 if inserted is not None:
                     generated.append("native")
+                    try:
+                        telegram_result = telegram_events.process(lottery_key)
+                        database.delete_state(f"telegram_event_error:{lottery_key}")
+                    except Exception as notify_exc:
+                        errors["telegram"] = str(notify_exc)[:500]
+                        _state(
+                            f"telegram_event_error:{lottery_key}",
+                            {
+                                "message": errors["telegram"],
+                                "at": int(time.time() * 1000),
+                            },
+                        )
             except Exception as exc:
                 errors["native"] = str(exc)[:500]
                 _state(
@@ -329,6 +365,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
 
     base_result.update(
         {
+            "telegram": telegram_result,
             "generated": generated,
             "scheduled": scheduled,
             "errors": errors,

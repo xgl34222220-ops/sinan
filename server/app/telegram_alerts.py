@@ -68,6 +68,35 @@ def format_alert_message(alert: Any) -> str:
     return "\n".join(lines)
 
 
+def send_html_message(
+    *,
+    bot_token: str,
+    chat_id: str,
+    text: str,
+    timeout_seconds: int = 12,
+    disable_notification: bool = False,
+) -> tuple[bool, int | None, str]:
+    token = bot_token.strip()
+    target = chat_id.strip()
+    if not token or not target:
+        return False, None, "Telegram 配置不完整"
+
+    url = f"{_TELEGRAM_API}/bot{token}/sendMessage"
+    payload = {
+        "chat_id": target,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "disable_notification": disable_notification,
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=timeout_seconds)
+        message = response.text[:800]
+        return response.ok, int(response.status_code), message
+    except requests.RequestException as exc:
+        return False, None, str(exc)[:800]
+
+
 def send_alert(
     *,
     bot_token: str,
