@@ -241,29 +241,46 @@ class AiChatController(context: Context) {
         ensureContextCapacity()
         val activeConfig = config.copy(model = activeModel)
         val plan = AiChatProtocol.planContext(session.messages, session.memorySummary)
+        val activePosition = if (intent.usesLotteryContext) {
+            AiPositionScope.resolve(text, plan.messages)
+        } else {
+            null
+        }
+        val continuity = if (intent.usesLotteryContext) {
+            AiConversationContinuity.resolve(
+                question = text,
+                activePosition = activePosition,
+                currentTargetPeriod = report.targetPeriod,
+                latestApiPeriod = snapshot.latest.period,
+                messages = plan.messages,
+                candidates = session.candidates,
+            )
+        } else {
+            null
+        }
         val previousMessages = if (intent == AiChatIntent.FREE_CHAT) {
             plan.messages.filter { it.role != AiChatRole.SYSTEM }.takeLast(16)
         } else {
-            plan.messages
+            continuity?.previousMessages.orEmpty()
         }
         val userMessage = AiChatMessage(
             role = AiChatRole.USER,
             content = text,
             targetPeriod = report.targetPeriod,
+            positionScope = activePosition,
         )
         val assistantMessage = AiChatMessage(
             role = AiChatRole.ASSISTANT,
             content = "",
             targetPeriod = report.targetPeriod,
+            positionScope = activePosition,
         )
         val persona = AiChatPersona.fromId(session.personaId)
         val judgementMode = session.judgementMode
         val learningStrategy = AiLearningStrategy.chat(activeModel, persona.id, judgementMode)
-        val requestedPosition = AiAdaptiveSignalEngine.extractRequestedPosition(text)
-        // Never default an independent chat request to the native model's selected position.
-        // The provisional position only drives the local status card; strict independent prompts
-        // omit this learning context and compare all ten positions from raw history.
-        val learningPosition = requestedPosition ?: session.prediction?.position ?: 0
+        // The current turn's explicit rank is authoritative. A natural follow-up inherits the
+        // most recent rank, while an all-rank request deliberately clears the scope.
+        val learningPosition = activePosition ?: 0
         val learningProfile = if (intent.usesLotteryContext) {
             learningStore.profile(
                 snapshot.lottery.apiKey,
@@ -297,7 +314,7 @@ class AiChatController(context: Context) {
             isRunning = true,
             progress = when (intent) {
                 AiChatIntent.FREE_CHAT -> "正在回复…"
-                AiChatIntent.LOTTERY_ANALYSIS -> "正在读取开奖历史…"
+                AiChatIntent.LOTTERY_ANALYSIS -> "正在读取${snapshot.lottery.displayName}开奖 API…"
                 AiChatIntent.LOTTERY_PREDICTION -> "正在分析本期候选…"
             },
             error = null,
@@ -316,12 +333,17 @@ class AiChatController(context: Context) {
                     snapshot = snapshot,
                     report = report,
                     previousMessages = previousMessages,
-                    memorySummary = session.memorySummary,
+                    memorySummary = if (intent.usesLotteryContext) {
+                        continuity?.relevantFeedback.orEmpty()
+                    } else {
+                        session.memorySummary
+                    },
                     question = text,
                     persona = persona,
                     judgementMode = judgementMode,
                     learningContext = learningContext,
                     intent = intent,
+                    positionScope = activePosition,
                     onProgress = { progress ->
                         mainHandler.post {
                             if (generation.get() == token && session.isRunning) {
@@ -331,7 +353,10 @@ class AiChatController(context: Context) {
                     },
                     onStreamText = { content ->
                         mainHandler.post {
-                            if (generation.get() == token && session.isRunning) {
+                            if (
+                                generation.get() == token && session.isRunning &&
+                                (!intent.usesLotteryContext || activePosition == null)
+                            ) {
                                 replaceMessage(assistantMessage.id) { current -> current.copy(content = content) }
                             }
                         }
@@ -690,12 +715,13 @@ object AiChatContextBuilder {
         judgementMode: AiJudgementMode,
         learningContext: JSONObject,
         wantsPrediction: Boolean = AiChatProtocol.wantsPrediction(question),
+        positionScope: Int? = null,
     ): JSONObject {
         val verifiedHistory = snapshot.history
             .filter { it.numbers.size == 10 }
             .takeLast(120)
         require(verifiedHistory.isNotEmpty()) { "没有可用于对话分析的接口历史" }
-        val requestedPosition = extractPosition(question)
+        val requestedPosition = positionScope ?: AiPositionScope.extract(question)
         val positions = requestedPosition?.let(::listOf) ?: (0 until 10).toList()
         val rawWindow = when {
             wantsPrediction -> 120
@@ -715,6 +741,12 @@ object AiChatContextBuilder {
             .put("position_scope", JSONArray(positions.map { it + 1 }))
             .put("latest_numbers", JSONArray(snapshot.latest.numbers))
             .put(
+                "verified_position_facts",
+                JSONArray(positions.map { position ->
+                    AiVerifiedPositionEngine.calculate(snapshot, report, position).toJson()
+                }),
+            )
+            .put(
                 "compact_history",
                 JSONArray(compactHistory.map { draw ->
                     JSONObject()
@@ -725,17 +757,17 @@ object AiChatContextBuilder {
             .put(
                 "input_isolation",
                 if (independent) {
-                    "strict: no native selected position, candidates, matrix, factor weights or client precomputed statistics"
+                    "strict: no native selected position, candidates, matrix or factor weights; only deterministic facts recalculated from the current lottery snapshot"
                 } else {
                     "native reference explicitly enabled by the user"
                 },
             )
             .apply {
                 if (independent) {
-                    put("independence_protocol", "raw-history-v1")
+                    put("independence_protocol", "raw-history-plus-client-verified-facts-v2")
                     put(
                         "independent_analysis_rule",
-                        "自行从原始历史提取特征并比较名次；不得猜测本机答案，也不得为了刻意不同而反向选择。",
+                        "verified_position_facts是客户端从当前彩种原始历史逐期计算的权威事实。只能解释和比较，禁止重算、改写或另造期号、序列、次数与遗漏。用户明确指定名次时只处理该名次；只有用户要求全名次比较时才比较十名。",
                     )
                 } else {
                     put(
@@ -766,16 +798,7 @@ object AiChatContextBuilder {
             }
     }
 
-    private fun extractPosition(question: String): Int? {
-        val token = Regex("""第\s*([一二三四五六七八九十0-9]{1,2})\s*名""")
-            .find(question)?.groupValues?.getOrNull(1) ?: return null
-        val value = token.toIntOrNull() ?: when (token) {
-            "一" -> 1; "二" -> 2; "三" -> 3; "四" -> 4; "五" -> 5
-            "六" -> 6; "七" -> 7; "八" -> 8; "九" -> 9; "十" -> 10
-            else -> return null
-        }
-        return (value - 1).takeIf { it in 0..9 }
-    }
+    private fun extractPosition(question: String): Int? = AiPositionScope.extract(question)
 
     internal fun computePositionStatistics(
         historyInput: List<Draw>,
@@ -862,6 +885,7 @@ private class RemoteAiChatClient {
         judgementMode: AiJudgementMode,
         learningContext: JSONObject,
         intent: AiChatIntent,
+        positionScope: Int?,
         onProgress: (String) -> Unit,
         onStreamText: (String) -> Unit,
     ): AiChatReply {
@@ -880,6 +904,7 @@ private class RemoteAiChatClient {
                 judgementMode = judgementMode,
                 learningContext = learningContext,
                 wantsPrediction = wantsPrediction,
+                positionScope = positionScope,
             )
         } else {
             null
@@ -896,6 +921,7 @@ private class RemoteAiChatClient {
             judgementMode = judgementMode,
             intent = intent,
             expectedTargetPeriod = expectedTargetPeriod,
+            positionScope = positionScope,
         )
         val publisher = VisibleStreamPublisher(onStreamText)
 
@@ -1050,11 +1076,29 @@ private class RemoteAiChatClient {
                 "模型接口已响应，但流式与普通输出均没有返回正文"
             }
         }
-        val prediction = if (wantsPrediction) AiChatProtocol.parsePrediction(rawContent) else null
-        val content = AiTargetPeriodGuard.reconcilePredictionText(
+        val parsedPrediction = if (wantsPrediction) AiChatProtocol.parsePrediction(rawContent) else null
+        val prediction = parsedPrediction?.let { value ->
+            if (positionScope != null && value.position != positionScope) {
+                value.copy(position = positionScope)
+            } else {
+                value
+            }
+        }
+        val reconciled = AiTargetPeriodGuard.reconcilePredictionText(
             text = AiChatProtocol.visibleText(rawContent, prediction != null),
             expectedTargetPeriod = expectedTargetPeriod,
             isPrediction = wantsPrediction,
+        )
+        val verifiedFacts = if (intent.usesLotteryContext && positionScope != null) {
+            AiVerifiedPositionEngine.calculate(snapshot, report, positionScope)
+        } else {
+            null
+        }
+        val content = AiVerifiedAnswerComposer.compose(
+            modelText = reconciled,
+            facts = verifiedFacts,
+            intent = intent,
+            question = question,
         )
         publisher.finish(content)
         val usage = extractUsage(response)
@@ -1090,6 +1134,7 @@ private class RemoteAiChatClient {
         judgementMode: AiJudgementMode,
         intent: AiChatIntent,
         expectedTargetPeriod: String,
+        positionScope: Int?,
     ): JSONArray = JSONArray().apply {
         put(
             JSONObject()
@@ -1102,7 +1147,7 @@ private class RemoteAiChatClient {
                     .put("role", "user")
                     .put(
                         "content",
-                        "以下是当前开奖接口原始历史与必要元数据。独立模式不会包含本机候选、名次、概率矩阵或本机预计算统计；参考/反向模式才会明确附带native_model_reference：\n${context}",
+                        "以下是当前彩种上游开奖 API 返回的历史与必要元数据。独立模式不包含本机候选、模型选中名次、概率矩阵或因子权重；verified_position_facts由程序直接从本次 API 历史逐期计算，必须原样遵守。参考/反向模式才会额外附带native_model_reference：\n${context}",
                     ),
             )
         }
@@ -1112,7 +1157,7 @@ private class RemoteAiChatClient {
                     .put("role", "system")
                     .put(
                         "content",
-                        "以下是客户端保存的长期策略记忆。它包含用户明确反馈、前期候选和真实开奖核验；必须与adaptive_learning一起用于下一期纠偏，但不得伪称供应商模型已在后台训练：\n$memorySummary",
+                        "以下内容仅是与用户当前问题直接相关、且已按期号核验的结算记录。只有这里明确给出的记录才能称为上次或前一期；没有这段内容时不得主动翻旧账。adaptive_learning只是同名次长期汇总，不代表最近一期结果：\n$memorySummary",
                     ),
             )
         }
@@ -1147,8 +1192,22 @@ private class RemoteAiChatClient {
                     ),
             )
         }
+        if (intent.usesLotteryContext && positionScope != null) {
+            put(
+                JSONObject()
+                    .put("role", "system")
+                    .put(
+                        "content",
+                        "用户当前这句话指定分析第${positionScope + 1}名，它的优先级高于之前所有名次。保持正常自然对话；之前其他名次只是聊天历史，不得沿用其数据或结论。当前上游开奖 API 数据和verified_position_facts是本轮唯一事实源。",
+                    ),
+            )
+        }
         val currentQuestion = if (intent.usesLotteryContext && expectedTargetPeriod.isNotBlank()) {
-            "【当前唯一目标期：${expectedTargetPeriod}期】\n$question"
+            buildString {
+                append("【当前唯一目标期：${expectedTargetPeriod}期】\n")
+                if (positionScope != null) append("【当前唯一分析名次：第${positionScope + 1}名】\n")
+                append(question)
+            }
         } else {
             question
         }
@@ -1169,7 +1228,7 @@ private class RemoteAiChatClient {
         return buildString {
             val judgementInstruction = when (judgementMode) {
                 AiJudgementMode.INDEPENDENT ->
-                    "当前为严格独立模式：客户端只提供原始开奖历史，不提供本机选择的名次、候选、概率矩阵、因子权重或本机预计算统计。必须自行提取特征并比较十个名次；不得猜测本机答案，也不得为了显得不同而故意反选。"
+                    "当前为严格独立模式：客户端不提供本机候选、模型选择名次、概率矩阵或因子权重；但会提供由当前彩种原始历史逐期计算的verified_position_facts。用户明确指定名次时只分析该名次，用户要求全名次时才比较十名。不得改写核验事实，也不得为了显得不同而故意反选。"
                 AiJudgementMode.NATIVE_REFERENCE ->
                     "当前为参考本机模式：native_model_reference只是一份可质疑参考，必须独立计算并在不同时坚持自己的结论。"
                 AiJudgementMode.CONTRARIAN ->
@@ -1178,10 +1237,9 @@ private class RemoteAiChatClient {
             append(
                 "你是天机内置的开奖记录分析助手，当前分析人设为【${persona.displayName}】。" +
                     "人设要求：${persona.instruction}" + judgementInstruction +
-                    "adaptive_learning由客户端根据此前真实前向开奖结果逐期更新，包含学习期数、命中率、连续未中、六类因子权重和最近策略变化。" +
-                    "上一期未中或连续未中时，必须重新检查因子是否失效，并明确说明本期改变了什么；禁止机械复制旧候选。" +
+                    "adaptive_learning由客户端根据同彩种、同名次的真实前向开奖结果累计更新，只能作为长期汇总信号。除非上下文明确提供与当前问题直接相关的已结算记录，否则不得把历史未中说成上一期，也不得主动复盘几天前的预测。若提供了紧邻当前目标期的未中记录，必须比较当时候选与实际号码，说明哪些信号没有区分力以及本期如何调整；禁止机械复制旧候选。" +
                     "使用简体中文直接、自然地回答，只处理用户当前提出的问题。" +
-                    "独立模式只能引用客户端提供的原始开奖历史；参考/反向模式可额外使用明确标注的核验统计与本机参考。不得虚构期号、次数或数据来源。" +
+                    "所有模式中的期号、最近序列、20/60/120期次数和遗漏只能引用当前上游开奖 API 对应的verified_position_facts。用户问什么就回答什么，不要擅自补充固定模板、其他名次、候选号码或另一套统计。不得虚构期号、次数或数据来源。" +
                     "所有转移、遗漏和趋势结论必须同时说明样本强弱；1次与2次之类的小差异不得包装成强规律。" +
                     "用户说出现几率大时，应解释为历史样本中的相对频次或模型相对评分，不得称为真实中奖概率。" +
                     "不要输出隐藏思维链，不得承诺必中、盈利或准确率。证据接近时明确说差异小或没有强候选。" +
