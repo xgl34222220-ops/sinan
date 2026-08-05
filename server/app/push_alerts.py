@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import threading
 import time
@@ -160,7 +161,7 @@ def _verify_device(installation_id: str, secret: str) -> dict[str, Any]:
             "SELECT * FROM push_devices WHERE installation_id=?",
             (safe_id,),
         ).fetchone()
-    if row is None or not hashlib.compare_digest(
+    if row is None or not hmac.compare_digest(
         str(row["secret_hash"]),
         _secret_hash(safe_secret),
     ):
@@ -194,7 +195,7 @@ def register_device(
             (safe_id,),
         ).fetchone()
         secret_digest = _secret_hash(safe_secret)
-        if existing is not None and not hashlib.compare_digest(
+        if existing is not None and not hmac.compare_digest(
             str(existing["secret_hash"]),
             secret_digest,
         ):

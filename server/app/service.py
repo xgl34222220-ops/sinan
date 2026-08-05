@@ -5,7 +5,7 @@ import json
 import time
 from typing import Any
 
-from . import ai
+from . import ai, push_alerts
 from .config import settings
 from .db import database
 from .lottery import lottery_client
@@ -14,7 +14,7 @@ from .predictor import predict
 from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
-SERVICE_VERSION = "1.3.0"
+SERVICE_VERSION = "1.4.0"
 SAFETY_WINDOW_MS = 5_000
 AI_RETRY_AFTER_MS = 30_000
 _AI_EXECUTOR = ThreadPoolExecutor(
@@ -226,6 +226,19 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
 
     # 结算必须先于任何预测和 AI 调用；即使模型失败，也不能阻塞已开奖档案更新。
     settled = database.settle_forecasts(lottery_key)
+    try:
+        push_result = push_alerts.process_prediction_alerts(lottery_key)
+        database.delete_state(f"push_error:{lottery_key}")
+    except Exception as exc:
+        push_result = {
+            "created_alert_ids": [],
+            "delivery": {"sent": 0, "failed": 0, "skipped": 0},
+            "error": str(exc)[:500],
+        }
+        _state(
+            f"push_error:{lottery_key}",
+            {"message": str(exc)[:500], "at": int(time.time() * 1000)},
+        )
     history = database.list_draws(lottery_key, spec.history_target)
     latest = history[-1]
 
@@ -250,6 +263,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         "draws": len(history),
         "sync_days": sync_days,
         "settled": settled,
+        "push": push_result,
         "generated": generated,
         "scheduled": scheduled,
         "errors": errors,

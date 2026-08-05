@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.AutoGraph
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,6 +77,8 @@ fun CompactAppHeader(
     onRefresh: () -> Unit,
     canGoBack: Boolean = false,
     onBack: (() -> Unit)? = null,
+    unreadAlerts: Int = 0,
+    onAlerts: () -> Unit = {},
 ) {
     val colors = LocalTianjiColors.current
     Row(
@@ -129,6 +132,37 @@ fun CompactAppHeader(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.glass)
+                .border(1.dp, colors.lineStrong, RoundedCornerShape(12.dp))
+                .clickable(onClick = onAlerts),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Notifications,
+                contentDescription = "打开预警中心",
+                tint = if (unreadAlerts > 0) colors.amber else colors.textSoft,
+                modifier = Modifier.size(19.dp),
+            )
+            if (unreadAlerts > 0) {
+                Text(
+                    unreadAlerts.coerceAtMost(99).toString(),
+                    color = Color.White,
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .clip(CircleShape)
+                        .background(colors.red)
+                        .padding(horizontal = 3.dp, vertical = 1.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(6.dp))
 
         Box(
             modifier = Modifier
