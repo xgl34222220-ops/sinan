@@ -298,16 +298,27 @@ def deliver_pending_events() -> dict[str, int]:
     initialize()
     if not settings.telegram_enabled:
         return {"sent": 0, "failed": 0, "skipped": 0}
-    with database.connection() as db:
-        events = db.execute(
-            "SELECT * FROM telegram_events ORDER BY created_at ASC LIMIT 500"
-        ).fetchall()
 
     sent = failed = skipped = 0
-    for event in events:
-        event_key = str(event["event_key"])
-        for chat_id in settings.telegram_chat_ids:
-            target_key = telegram_alerts.delivery_key(chat_id)
+    for chat_id in settings.telegram_chat_ids:
+        target_key = telegram_alerts.delivery_key(chat_id)
+        with database.connection() as db:
+            events = db.execute(
+                """
+                SELECT event.*
+                FROM telegram_events AS event
+                LEFT JOIN telegram_event_deliveries AS delivery
+                  ON delivery.event_key=event.event_key
+                 AND delivery.target_key=?
+                WHERE delivery.status IS NULL OR delivery.status<>'sent'
+                ORDER BY event.created_at ASC
+                LIMIT 500
+                """,
+                (target_key,),
+            ).fetchall()
+
+        for event in events:
+            event_key = str(event["event_key"])
             now = _now_ms()
             if not _claim_delivery(event_key, target_key, now):
                 skipped += 1
