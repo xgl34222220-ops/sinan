@@ -4,13 +4,17 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: tianji-validate-${{ github.event.pull_request.number || github.ref }}
+  group: tianji-validate-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
