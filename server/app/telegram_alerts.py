@@ -10,6 +10,9 @@ import requests
 
 _TELEGRAM_API = "https://api.telegram.org"
 _SPLIT_CHAT_IDS = re.compile(r"[\s,;]+")
+_NATIVE_SOURCE = "native"
+_NATIVE_SOURCE_FRAGMENT = "<b>来源：</b>天机云端本地"
+_NATIVE_SUPPRESSED_MESSAGE = "Telegram 已忽略天机云端本地来源"
 
 
 def parse_chat_ids(raw: str) -> tuple[str, ...]:
@@ -27,6 +30,17 @@ def parse_chat_ids(raw: str) -> tuple[str, ...]:
 def delivery_key(chat_id: str) -> str:
     digest = hashlib.sha256(chat_id.encode("utf-8")).hexdigest()[:24]
     return f"telegram:{digest}"
+
+
+def _is_native_alert(alert: Any) -> bool:
+    try:
+        return str(alert["source"]).strip().lower() == _NATIVE_SOURCE
+    except (KeyError, TypeError, IndexError):
+        return False
+
+
+def _is_native_message(text: str) -> bool:
+    return _NATIVE_SOURCE_FRAGMENT in str(text)
 
 
 def format_alert_message(alert: Any) -> str:
@@ -80,6 +94,8 @@ def send_html_message(
     target = chat_id.strip()
     if not token or not target:
         return False, None, "Telegram 配置不完整"
+    if _is_native_message(text):
+        return True, 204, _NATIVE_SUPPRESSED_MESSAGE
 
     url = f"{_TELEGRAM_API}/bot{token}/sendMessage"
     payload = {
@@ -108,6 +124,8 @@ def send_alert(
     target = chat_id.strip()
     if not token or not target:
         return False, None, "Telegram 配置不完整"
+    if _is_native_alert(alert):
+        return True, 204, _NATIVE_SUPPRESSED_MESSAGE
 
     url = f"{_TELEGRAM_API}/bot{token}/sendMessage"
     payload = {
