@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 import json
 import time
-from typing import Any
+from typing import Any, Iterator
 
 from . import ai, push_alerts, telegram_events
 from .config import settings
@@ -14,7 +15,7 @@ from .predictor import predict
 from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
-SERVICE_VERSION = "1.4.0"
+SERVICE_VERSION = "1.5.0"
 SAFETY_WINDOW_MS = 5_000
 AI_RETRY_AFTER_MS = 30_000
 _AI_EXECUTOR = ThreadPoolExecutor(
@@ -25,6 +26,28 @@ _AI_EXECUTOR = ThreadPoolExecutor(
 
 def _state(key: str, value: dict[str, Any]) -> None:
     database.set_state(key, json.dumps(value, ensure_ascii=False))
+
+
+@contextmanager
+def _record_stage(stages: list[dict[str, Any]], name: str) -> Iterator[None]:
+    started = time.monotonic()
+    started_at = int(time.time() * 1000)
+    entry: dict[str, Any] = {
+        "name": name,
+        "status": "running",
+        "started_at_epoch_ms": started_at,
+    }
+    stages.append(entry)
+    try:
+        yield
+        entry["status"] = "ok"
+    except Exception as exc:
+        entry["status"] = "error"
+        entry["message"] = str(exc)[:500]
+        raise
+    finally:
+        entry["completed_at_epoch_ms"] = int(time.time() * 1000)
+        entry["duration_ms"] = round((time.monotonic() - started) * 1000, 1)
 
 
 def _ai_job_state(
@@ -228,17 +251,22 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
     if spec is None:
         raise KeyError(f"未知彩种：{lottery_key}")
 
+    stages: list[dict[str, Any]] = []
     telegram_events.initialize()
     existing_count = len(database.list_draws(lottery_key, 180))
     sync_days = settings.history_days if existing_count < 180 else 2
-    draws, next_period, server_time, next_draw_at = lottery_client.fetch_recent(spec, sync_days)
-    database.save_draws(draws)
 
-    # 结算必须先于任何预测和 AI 调用；即使模型失败，也不能阻塞已开奖档案更新。
-    settled = database.settle_forecasts(lottery_key)
+    with _record_stage(stages, "sync_draws"):
+        draws, next_period, server_time, next_draw_at = lottery_client.fetch_recent(spec, sync_days)
+        database.save_draws(draws)
+
+    with _record_stage(stages, "settle_forecasts"):
+        settled = database.settle_forecasts(lottery_key)
+
     try:
-        telegram_result = telegram_events.process(lottery_key)
-        database.delete_state(f"telegram_event_error:{lottery_key}")
+        with _record_stage(stages, "deliver_telegram"):
+            telegram_result = telegram_events.process(lottery_key)
+            database.delete_state(f"telegram_event_error:{lottery_key}")
     except Exception as exc:
         telegram_result = {
             "created": 0,
@@ -249,9 +277,11 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
             f"telegram_event_error:{lottery_key}",
             {"message": str(exc)[:500], "at": int(time.time() * 1000)},
         )
+
     try:
-        push_result = push_alerts.process_prediction_alerts(lottery_key)
-        database.delete_state(f"push_error:{lottery_key}")
+        with _record_stage(stages, "deliver_push"):
+            push_result = push_alerts.process_prediction_alerts(lottery_key)
+            database.delete_state(f"push_error:{lottery_key}")
     except Exception as exc:
         push_result = {
             "created_alert_ids": [],
@@ -262,8 +292,10 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
             f"push_error:{lottery_key}",
             {"message": str(exc)[:500], "at": int(time.time() * 1000)},
         )
-    history = database.list_draws(lottery_key, spec.history_target)
-    latest = history[-1]
+
+    with _record_stage(stages, "load_history"):
+        history = database.list_draws(lottery_key, spec.history_target)
+        latest = history[-1]
 
     generated: list[str] = []
     scheduled: list[str] = []
@@ -291,6 +323,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         "generated": generated,
         "scheduled": scheduled,
         "errors": errors,
+        "stages": stages,
         "ai_model": ai_config.model,
         "ai_allowed": allow_ai,
         "server_time_epoch_ms": server_time,
@@ -304,26 +337,29 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         native_model = "tianji-native-cloud-v1"
         if not database.has_forecast(lottery_key, next_period, "native", native_model):
             try:
-                native = predict(history)
-                selected = native.selected
-                inserted = database.save_forecast(
-                    lottery=lottery_key,
-                    target_period=next_period,
-                    trained_through_period=latest.period,
-                    position=selected.position,
-                    top6=selected.top6,
-                    top7=selected.top7,
-                    probabilities=selected.probabilities,
-                    source="native",
-                    model=native_model,
-                    analysis=native.analysis,
-                    risk_note=native.risk_note,
-                )
+                with _record_stage(stages, "generate_native"):
+                    native = predict(history)
+                    selected = native.selected
+                    inserted = database.save_forecast(
+                        lottery=lottery_key,
+                        target_period=next_period,
+                        trained_through_period=latest.period,
+                        position=selected.position,
+                        top6=selected.top6,
+                        top7=selected.top7,
+                        probabilities=selected.probabilities,
+                        source="native",
+                        model=native_model,
+                        analysis=native.analysis,
+                        risk_note=native.risk_note,
+                    )
+                    if inserted is not None:
+                        generated.append("native")
                 if inserted is not None:
-                    generated.append("native")
                     try:
-                        telegram_result = telegram_events.process(lottery_key)
-                        database.delete_state(f"telegram_event_error:{lottery_key}")
+                        with _record_stage(stages, "notify_native_result"):
+                            telegram_result = telegram_events.process(lottery_key)
+                            database.delete_state(f"telegram_event_error:{lottery_key}")
                     except Exception as notify_exc:
                         errors["telegram"] = str(notify_exc)[:500]
                         _state(
@@ -345,34 +381,40 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
                 )
 
         ai_has_time = remaining_ms is None or remaining_ms > _minimum_ai_lead_ms(ai_config)
-        if (
-            allow_ai
-            and ai_config.complete
-            and ai_has_time
-            and not database.has_forecast(lottery_key, next_period, "ai", ai_config.model)
-        ):
-            if _schedule_ai_prediction(spec, history, next_period, latest.period, ai_config):
-                scheduled.append("ai")
-        elif allow_ai and ai_config.complete and not ai_has_time:
-            errors["ai"] = "距离开奖时间不足，本期不再启动新的 AI 请求"
-            _ai_job_state(
-                spec,
-                status="skipped",
-                target_period=next_period,
-                model=ai_config.model,
-                message=errors["ai"],
-            )
+        try:
+            with _record_stage(stages, "schedule_ai"):
+                if (
+                    allow_ai
+                    and ai_config.complete
+                    and ai_has_time
+                    and not database.has_forecast(lottery_key, next_period, "ai", ai_config.model)
+                ):
+                    if _schedule_ai_prediction(spec, history, next_period, latest.period, ai_config):
+                        scheduled.append("ai")
+                elif allow_ai and ai_config.complete and not ai_has_time:
+                    errors["ai"] = "距离开奖时间不足，本期不再启动新的 AI 请求"
+                    _ai_job_state(
+                        spec,
+                        status="skipped",
+                        target_period=next_period,
+                        model=ai_config.model,
+                        message=errors["ai"],
+                    )
+        except Exception as exc:
+            errors["ai"] = str(exc)[:500]
 
-    base_result.update(
-        {
-            "telegram": telegram_result,
-            "generated": generated,
-            "scheduled": scheduled,
-            "errors": errors,
-            "completed_at_epoch_ms": int(time.time() * 1000),
-        }
-    )
-    _state(f"cycle:{lottery_key}", base_result)
+    with _record_stage(stages, "publish_metrics"):
+        base_result.update(
+            {
+                "telegram": telegram_result,
+                "generated": generated,
+                "scheduled": scheduled,
+                "errors": errors,
+                "stages": stages,
+                "completed_at_epoch_ms": int(time.time() * 1000),
+            }
+        )
+        _state(f"cycle:{lottery_key}", base_result)
     return base_result
 
 
@@ -381,7 +423,6 @@ def run_all_cycles(allow_ai: bool = True) -> dict[str, Any]:
     results: dict[str, Any] = {}
     errors: dict[str, str] = {}
 
-    # 两个彩种并发同步，避免幸运飞艇历史接口较慢时把澳洲幸运10排在后面。
     keys = list(LOTTERIES)
     with ThreadPoolExecutor(
         max_workers=max(1, len(keys)),
@@ -398,9 +439,11 @@ def run_all_cycles(allow_ai: bool = True) -> dict[str, Any]:
             except Exception as exc:
                 errors[lottery_key] = str(exc)[:500]
 
+    completed = int(time.time() * 1000)
     heartbeat = {
         "started_at_epoch_ms": started,
-        "completed_at_epoch_ms": int(time.time() * 1000),
+        "completed_at_epoch_ms": completed,
+        "duration_ms": max(0, completed - started),
         "ai_allowed": allow_ai,
         "results": results,
         "errors": errors,
