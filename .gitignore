@@ -10,3 +10,9 @@ backups/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Local signing and Firebase credentials/configuration.
+.signing/
+.firebase/
+app/google-services.json
+firebase-service-account*.json
