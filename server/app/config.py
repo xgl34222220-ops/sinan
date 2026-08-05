@@ -21,6 +21,15 @@ class Settings:
     telegram_bot_token: str
     telegram_chat_ids: tuple[str, ...]
     push_threshold: int
+    docs_enabled: bool
+    login_max_failures: int
+    login_window_seconds: int
+    login_lock_seconds: int
+    worker_cycle_timeout_seconds: int
+    worker_backoff_max_seconds: int
+    backup_interval_seconds: int
+    backup_retention_daily: int
+    backup_retention_monthly: int
 
     @property
     def ai_enabled(self) -> bool:
@@ -61,6 +70,13 @@ def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on", "enabled"}
+
+
 def load_settings() -> Settings:
     return Settings(
         database_path=os.getenv("TIANJI_DATABASE", "./data/tianji.db").strip(),
@@ -78,6 +94,15 @@ def load_settings() -> Settings:
         telegram_bot_token=os.getenv("TIANJI_TELEGRAM_BOT_TOKEN", "").strip(),
         telegram_chat_ids=_list_env("TIANJI_TELEGRAM_CHAT_IDS"),
         push_threshold=_int_env("TIANJI_PUSH_THRESHOLD", 3, 3, 10),
+        docs_enabled=_bool_env("TIANJI_DOCS_ENABLED", False),
+        login_max_failures=_int_env("TIANJI_LOGIN_MAX_FAILURES", 5, 3, 20),
+        login_window_seconds=_int_env("TIANJI_LOGIN_WINDOW_SECONDS", 600, 60, 86_400),
+        login_lock_seconds=_int_env("TIANJI_LOGIN_LOCK_SECONDS", 900, 60, 86_400),
+        worker_cycle_timeout_seconds=_int_env("TIANJI_WORKER_CYCLE_TIMEOUT_SECONDS", 240, 60, 1800),
+        worker_backoff_max_seconds=_int_env("TIANJI_WORKER_BACKOFF_MAX_SECONDS", 600, 60, 3600),
+        backup_interval_seconds=_int_env("TIANJI_BACKUP_INTERVAL_SECONDS", 86_400, 3600, 604_800),
+        backup_retention_daily=_int_env("TIANJI_BACKUP_RETENTION_DAILY", 7, 2, 90),
+        backup_retention_monthly=_int_env("TIANJI_BACKUP_RETENTION_MONTHLY", 6, 1, 36),
     )
 
 
