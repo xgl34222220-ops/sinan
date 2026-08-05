@@ -15,6 +15,8 @@ from .models import LOTTERIES
 _INIT_LOCK = threading.Lock()
 _INITIALIZED = False
 _BASELINE_KEY = "telegram_events_baseline_ms"
+_PREDICTION_POLICY_KEY = "telegram_prediction_policy_two_misses_v1"
+_TRACK_AFTER_MISSES = 2
 
 
 def _now_ms() -> int:
@@ -72,6 +74,32 @@ def initialize() -> None:
                 """,
                 (_BASELINE_KEY, str(now), now),
             )
+            policy = db.execute(
+                "SELECT 1 FROM telegram_event_state WHERE state_key=?",
+                (_PREDICTION_POLICY_KEY,),
+            ).fetchone()
+            if policy is None:
+                # 清除旧版“每期都推”的尚未成功发送队列。符合新规则的预测会在
+                # 本轮 materialize_events 中以相同事件键重新生成。
+                db.execute(
+                    """
+                    DELETE FROM telegram_events
+                    WHERE event_type='prediction'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM telegram_event_deliveries AS delivery
+                          WHERE delivery.event_key=telegram_events.event_key
+                            AND delivery.status='sent'
+                      )
+                    """
+                )
+                db.execute(
+                    """
+                    INSERT INTO telegram_event_state(
+                        state_key,state_value,updated_at
+                    ) VALUES(?,?,?)
+                    """,
+                    (_PREDICTION_POLICY_KEY, "two_misses_until_hit", now),
+                )
         _INITIALIZED = True
 
 
@@ -111,28 +139,39 @@ def _number_text(values: list[int]) -> str:
     return "、".join(f"{value:02d}" for value in values)
 
 
-def format_prediction_message(forecast: Any) -> str:
+def format_prediction_message(
+    forecast: Any,
+    miss_streak: int | None = None,
+) -> str:
     lottery = str(forecast["lottery"])
     source = str(forecast["source"])
     top6 = _numbers(forecast["top6_json"])
     top7 = _numbers(forecast["top7_json"])
     lines = [
-        "🔮 <b>新一期预测</b>",
+        "🔮 <b>追踪中的新一期预测</b>",
         "",
         f"<b>彩种：</b>{html.escape(_lottery_name(lottery))}",
         f"<b>目标期：</b><code>{html.escape(str(forecast['target_period']))}</code>",
         f"<b>来源：</b>{html.escape(_source_name(source))}",
         f"<b>模型：</b><code>{html.escape(str(forecast['model']))}</code>",
-        f"<b>预测名次：</b>第 {int(forecast['position_index']) + 1} 名",
-        f"<b>Top 6：</b>{_number_text(top6)}",
     ]
+    if miss_streak is not None:
+        lines.append(
+            f"<b>追踪状态：</b>Top 6 已连续 {max(0, int(miss_streak))} 期未中"
+        )
+    lines.extend(
+        [
+            f"<b>预测名次：</b>第 {int(forecast['position_index']) + 1} 名",
+            f"<b>Top 6：</b>{_number_text(top6)}",
+        ]
+    )
     if top7:
         lines.append(f"<b>Top 7：</b>{_number_text(top7)}")
     lines.extend(
         [
             f"<b>训练截止期：</b><code>{html.escape(str(forecast['trained_through_period']))}</code>",
             "",
-            "预测已按目标期冻结；开奖后自动结算，Top 6 命中会再次通知。",
+            "已进入追踪推送；后续每期继续发送，下一次 Top 6 命中后自动停止预测推送。",
         ]
     )
     return "\n".join(lines)
@@ -160,8 +199,41 @@ def format_win_message(forecast: Any) -> str:
     ]
     if hit_rank:
         lines.append(f"<b>命中顺位：</b>Top 6 第 {hit_rank} 位")
-    lines.extend(["", "该预测已完成真实前向开奖结算。"])
+    lines.extend(
+        [
+            "",
+            "该预测已完成真实前向开奖结算；本轮追踪预测推送现已停止。",
+        ]
+    )
     return "\n".join(lines)
+
+
+def _consecutive_misses_before(db: Any, forecast: Any) -> int:
+    rows = db.execute(
+        """
+        SELECT top6_hit
+        FROM forecasts
+        WHERE lottery=?
+          AND source=?
+          AND model=?
+          AND id<?
+          AND settled_at IS NOT NULL
+        ORDER BY id DESC
+        LIMIT 1000
+        """,
+        (
+            str(forecast["lottery"]),
+            str(forecast["source"]),
+            str(forecast["model"]),
+            int(forecast["id"]),
+        ),
+    ).fetchall()
+    streak = 0
+    for row in rows:
+        if int(row["top6_hit"]) == 1:
+            break
+        streak += 1
+    return streak
 
 
 def materialize_events(lottery_filter: str | None = None) -> int:
@@ -194,6 +266,9 @@ def materialize_events(lottery_filter: str | None = None) -> int:
         created = 0
         now = _now_ms()
         for row in predictions:
+            miss_streak = _consecutive_misses_before(db, row)
+            if miss_streak < _TRACK_AFTER_MISSES:
+                continue
             cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO telegram_events(
@@ -208,7 +283,7 @@ def materialize_events(lottery_filter: str | None = None) -> int:
                     str(row["source"]),
                     str(row["model"]),
                     str(row["target_period"]),
-                    format_prediction_message(row),
+                    format_prediction_message(row, miss_streak),
                     int(row["created_at"] or now),
                 ),
             )
@@ -310,7 +385,15 @@ def deliver_pending_events() -> dict[str, int]:
                 LEFT JOIN telegram_event_deliveries AS delivery
                   ON delivery.event_key=event.event_key
                  AND delivery.target_key=?
-                WHERE delivery.status IS NULL OR delivery.status<>'sent'
+                WHERE (delivery.status IS NULL OR delivery.status<>'sent')
+                  AND (
+                      event.event_type<>'prediction'
+                      OR EXISTS (
+                          SELECT 1 FROM forecasts AS forecast
+                          WHERE event.event_key='prediction:' || forecast.id
+                            AND forecast.settled_at IS NULL
+                      )
+                  )
                 ORDER BY event.created_at ASC
                 LIMIT 500
                 """,
