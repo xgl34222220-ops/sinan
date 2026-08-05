@@ -328,7 +328,8 @@ def _prediction_miss_watch_from_records(
         warning = current_miss_streak >= safe_threshold
         if warning:
             warning_count += 1
-        recent = settled[:safe_threshold]
+        # 两期预警也需要保留三期上下文，便于第三期加强提醒展示完整期号。
+        recent = settled[:max(3, safe_threshold)]
         source_name = "天机云端 AI" if source == "ai" else "天机云端本地"
         predictions_by_lottery[lottery].append(
             {

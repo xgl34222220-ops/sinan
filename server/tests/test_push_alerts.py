@@ -85,16 +85,30 @@ class PushAlertsTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             device_status(installation_id, "b" * 64)
 
-    def test_warning_is_idempotent_and_escalation_is_separate(self) -> None:
-        first = materialize_warning_alerts(self.watch())
-        duplicate = materialize_warning_alerts(self.watch())
+    def test_two_miss_prealert_strong_alert_and_escalation_are_separate(self) -> None:
+        prealert = materialize_warning_alerts(self.watch(streak=2, latest="102"))
+        duplicate = materialize_warning_alerts(self.watch(streak=2, latest="102"))
+        strong = materialize_warning_alerts(self.watch(streak=3, latest="103"))
         escalation = materialize_warning_alerts(self.watch(streak=4, latest="104"))
-        self.assertEqual(1, len(first))
+        self.assertEqual(1, len(prealert))
         self.assertEqual([], duplicate)
+        self.assertEqual(1, len(strong))
         self.assertEqual(1, len(escalation))
         with database.connection() as db:
-            count = int(db.execute("SELECT COUNT(*) FROM push_alerts").fetchone()[0])
-        self.assertEqual(2, count)
+            rows = db.execute(
+                "SELECT streak,threshold,title FROM push_alerts ORDER BY streak"
+            ).fetchall()
+        self.assertEqual(
+            [
+                (2, 3, "两期不中预警"),
+                (3, 3, "三期不中加强提醒"),
+                (4, 3, "连续 4 期不中升级预警"),
+            ],
+            [
+                (int(row["streak"]), int(row["threshold"]), str(row["title"]))
+                for row in rows
+            ],
+        )
 
     def test_alert_read_state_is_per_device(self) -> None:
         installation_id, secret = self.register()

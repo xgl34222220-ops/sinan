@@ -61,7 +61,10 @@ def format_alert_message(alert: Any) -> str:
     except (TypeError, ValueError):
         recent_periods = []
 
-    if streak == threshold:
+    if streak == 2:
+        heading = "⚠️ <b>连续两期不中 · 提前预警</b>"
+        notice = "已连续两期 Top 6 未中，请留意下一期；每期云端 AI 预测仍会正常推送。"
+    elif streak == threshold:
         heading = "🚨🚨 <b>连续三期不中 · 加强提醒</b>"
         notice = "已达到加强提醒条件，请重点关注下一期预测；后续每期预测仍会正常推送。"
     else:
@@ -84,7 +87,7 @@ def format_alert_message(alert: Any) -> str:
         [
             "",
             notice,
-            "命中后连续未中计数清零；下一次重新连续三期不中时再次加强提醒。",
+            "命中后连续未中计数清零；下一次两期不中先预警，三期不中再加强提醒。",
         ]
     )
     return "\n".join(lines)
