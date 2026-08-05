@@ -9,7 +9,7 @@ from .public_v4 import enhance_public_html
 
 FILTER_PATCH = r"""
 (()=>{
-  document.documentElement.classList.add('tianji-console-v4');
+  document.documentElement.classList.add('tianji-console-v510');
   const select=document.getElementById('v3Lottery');
   if(!select)return;
   fetch('/admin/api/state',{cache:'no-store'})
@@ -29,7 +29,8 @@ FILTER_PATCH = r"""
 @lru_cache(maxsize=1)
 def _assets() -> tuple[str, str]:
     root = Path(__file__).resolve().parent
-    # V5.9.4 ships a single consolidated runtime asset to prevent override drift.
+    # v5.10 keeps one canonical console stylesheet and script. Older generated
+    # console_v3/v5/v6 assets were removed to prevent cascade and event-handler drift.
     style_text = (root / "console_v594.css").read_text(encoding="utf-8")
     script_text = (root / "console_v594.js").read_text(encoding="utf-8")
     return style_text, script_text
@@ -49,7 +50,7 @@ def enhance_console_html(value: str) -> str:
     # Keep the historical marker because deployment regression tests use it to confirm
     # that the enhanced console has been installed.
     style = (
-        f"<style>/* Tianji Cloud Console V5.9.4 unified | Cloud Console V3 compatibility */"
+        f"<style>/* Tianji Cloud Console V5.10 canonical | Cloud Console V3 compatibility */"
         f"{style_text}</style>"
     )
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"
