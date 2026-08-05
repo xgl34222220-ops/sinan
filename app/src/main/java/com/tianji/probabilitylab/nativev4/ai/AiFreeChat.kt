@@ -335,7 +335,7 @@ object AiChatProtocol {
         val ranking = probabilities.indices
             .sortedWith(compareByDescending<Int> { probabilities[it] }.thenBy { it })
             .map { it + 1 }
-        val candidateCount = candidateCountContext.get().coerceIn(1, 10)
+        val candidateCount = (candidateCountContext.get() ?: DEFAULT_CANDIDATE_COUNT).coerceIn(1, 10)
         val prediction = AiChatPrediction(
             position = position - 1,
             top6 = ranking.take(candidateCount),
