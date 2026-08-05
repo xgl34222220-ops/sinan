@@ -29,21 +29,9 @@ FILTER_PATCH = r"""
 @lru_cache(maxsize=1)
 def _assets() -> tuple[str, str]:
     root = Path(__file__).resolve().parent
-    # Keep the proven V5 visual baseline and append only small, isolated polish files.
-    style_text = "\n".join(
-        (
-            (root / "console_v3.css").read_text(encoding="utf-8"),
-            (root / "console_v5.css").read_text(encoding="utf-8"),
-            (root / "console_v5_polish.css").read_text(encoding="utf-8"),
-        )
-    )
-    script_text = "\n".join(
-        (
-            (root / "console_v3.js").read_text(encoding="utf-8"),
-            (root / "console_v5.js").read_text(encoding="utf-8"),
-            (root / "console_v5_polish.js").read_text(encoding="utf-8"),
-        )
-    )
+    # V5.9.4 ships a single consolidated runtime asset to prevent override drift.
+    style_text = (root / "console_v594.css").read_text(encoding="utf-8")
+    script_text = (root / "console_v594.js").read_text(encoding="utf-8")
     return style_text, script_text
 
 
@@ -61,7 +49,7 @@ def enhance_console_html(value: str) -> str:
     # Keep the historical marker because deployment regression tests use it to confirm
     # that the enhanced console has been installed.
     style = (
-        f"<style>/* Tianji Cloud Console V5 polish | Cloud Console V3 compatibility */"
+        f"<style>/* Tianji Cloud Console V5.9.4 unified | Cloud Console V3 compatibility */"
         f"{style_text}</style>"
     )
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"

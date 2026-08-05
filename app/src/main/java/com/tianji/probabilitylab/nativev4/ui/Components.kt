@@ -362,35 +362,47 @@ fun LotteryBall(
     muted: Boolean = false,
 ) {
     val pair = ballColors(number)
-    val alpha = if (muted) 0.44f else 1f
+    val alpha = if (muted) 0.42f else 1f
     Box(
         modifier = modifier
             .size(size)
             .shadow(
-                elevation = if (muted) 1.dp else 4.dp,
+                elevation = if (muted) 1.dp else 5.dp,
                 shape = CircleShape,
-                ambientColor = pair.second.copy(alpha = 0.20f),
-                spotColor = pair.second.copy(alpha = 0.20f),
+                ambientColor = pair.second.copy(alpha = 0.24f),
+                spotColor = pair.second.copy(alpha = 0.24f),
             )
             .clip(CircleShape)
             .background(
-                Brush.radialGradient(
+                Brush.linearGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.42f * alpha),
+                        Color.White.copy(alpha = 0.18f * alpha),
                         pair.first.copy(alpha = alpha),
                         pair.second.copy(alpha = alpha),
                     ),
-                    radius = size.value * 1.45f,
                 ),
             )
-            .border(1.dp, Color.White.copy(alpha = 0.22f * alpha), CircleShape),
+            .border(1.dp, Color.White.copy(alpha = 0.26f * alpha), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.34f * alpha),
+                            Color.Transparent,
+                        ),
+                        radius = size.value * 0.72f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
                 .padding(3.dp)
-                .border(1.dp, Color.White.copy(alpha = 0.10f * alpha), CircleShape),
+                .border(1.dp, Color.White.copy(alpha = 0.13f * alpha), CircleShape),
         )
         Text(
             text = number.toString(),

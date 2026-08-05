@@ -307,6 +307,7 @@ private fun RefinedAiPanel(
     val evaluation = remember(state.aiForecasts, state.aiProfileAudits) {
         AiConsensusEngine.evaluateForecasts(state.aiForecasts, state.aiProfileAudits)
     }
+    var showAllStatuses by rememberSaveable { mutableStateOf(false) }
     SurfaceCard(radius = 21.dp) {
         Column(Modifier.padding(15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -348,8 +349,45 @@ private fun RefinedAiPanel(
             }
 
             if (state.aiStatuses.isNotEmpty()) {
+                val statuses = state.aiStatuses.values.toList()
+                val running = statuses.count {
+                    it.state == AiConnectionState.ANALYZING ||
+                        it.state == AiConnectionState.TESTING
+                }
+                val failed = statuses.count { it.state == AiConnectionState.FAILED }
+                val completed = statuses.count { it.state == AiConnectionState.CONNECTED }
                 Spacer(Modifier.height(12.dp))
-                state.aiStatuses.values.take(3).forEach { status ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(colors.surfaceStrong)
+                        .border(1.dp, colors.line, RoundedCornerShape(13.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "运行 $running · 完成 $completed · 失败 $failed",
+                        color = if (failed > 0) colors.red else colors.textSoft,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (statuses.size > 3) {
+                        Text(
+                            if (showAllStatuses) "收起" else "查看全部 ${statuses.size} 项",
+                            color = colors.accent,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { showAllStatuses = !showAllStatuses }
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                        )
+                    }
+                }
+                val visibleStatuses = if (showAllStatuses) statuses else statuses.take(3)
+                visibleStatuses.forEach { status ->
                     val tint = when (status.state) {
                         AiConnectionState.CONNECTED -> colors.green
                         AiConnectionState.FAILED -> colors.red
@@ -357,7 +395,9 @@ private fun RefinedAiPanel(
                         else -> colors.amber
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.size(7.dp).clip(CircleShape).background(tint))
@@ -365,8 +405,8 @@ private fun RefinedAiPanel(
                         Text(
                             status.message,
                             color = colors.textSoft,
-                            fontSize = 10.sp,
-                            maxLines = 1,
+                            fontSize = 11.sp,
+                            maxLines = if (showAllStatuses) 2 else 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
