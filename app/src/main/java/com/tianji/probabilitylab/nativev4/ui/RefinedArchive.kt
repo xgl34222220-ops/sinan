@@ -21,9 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -67,8 +70,22 @@ private enum class ArchiveSettlementFilter(val label: String) {
 private enum class ArchiveSourceFilter(val label: String) {
     ALL("全部来源"),
     CONSENSUS("AI 共识"),
-    AI("独立 AI"),
-    NATIVE("本地模型"),
+    DEVICE_AI("手机独立 AI"),
+    CLOUD_AI("天机云端 AI"),
+    CLOUD_LOCAL("天机云端本地"),
+    NATIVE("手机本地模型"),
+}
+
+private enum class AiArchiveOrigin {
+    DEVICE,
+    CLOUD_AI,
+    CLOUD_LOCAL,
+}
+
+private fun aiArchiveOrigin(profileId: String): AiArchiveOrigin = when {
+    profileId.startsWith("cloud:ai:", ignoreCase = true) -> AiArchiveOrigin.CLOUD_AI
+    profileId.startsWith("cloud:", ignoreCase = true) -> AiArchiveOrigin.CLOUD_LOCAL
+    else -> AiArchiveOrigin.DEVICE
 }
 
 @Composable
@@ -117,14 +134,32 @@ fun RefinedArchiveScreen(
             (periodNeedle.isEmpty() ||
                 it.targetPeriod.contains(periodNeedle, ignoreCase = true))
     }
-    val aiRecords = state.aiRecords.filter {
+    val deviceAiRecords = state.aiRecords.filter {
         (sourceFilter == ArchiveSourceFilter.ALL ||
-            sourceFilter == ArchiveSourceFilter.AI) &&
+            sourceFilter == ArchiveSourceFilter.DEVICE_AI) &&
+            aiArchiveOrigin(it.profileId) == AiArchiveOrigin.DEVICE &&
+            archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit) &&
+            (periodNeedle.isEmpty() ||
+                it.targetPeriod.contains(periodNeedle, ignoreCase = true))
+    }
+    val cloudAiRecords = state.aiRecords.filter {
+        (sourceFilter == ArchiveSourceFilter.ALL ||
+            sourceFilter == ArchiveSourceFilter.CLOUD_AI) &&
+            aiArchiveOrigin(it.profileId) == AiArchiveOrigin.CLOUD_AI &&
+            archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit) &&
+            (periodNeedle.isEmpty() ||
+                it.targetPeriod.contains(periodNeedle, ignoreCase = true))
+    }
+    val cloudLocalRecords = state.aiRecords.filter {
+        (sourceFilter == ArchiveSourceFilter.ALL ||
+            sourceFilter == ArchiveSourceFilter.CLOUD_LOCAL) &&
+            aiArchiveOrigin(it.profileId) == AiArchiveOrigin.CLOUD_LOCAL &&
             archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit) &&
             (periodNeedle.isEmpty() ||
                 it.targetPeriod.contains(periodNeedle, ignoreCase = true))
     }
     val nativeRecords = state.records.filter {
+
         (sourceFilter == ArchiveSourceFilter.ALL ||
             sourceFilter == ArchiveSourceFilter.NATIVE) &&
             archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit) &&
@@ -327,18 +362,18 @@ fun RefinedArchiveScreen(
             }
         }
 
-        if (aiRecords.isNotEmpty()) {
+        if (deviceAiRecords.isNotEmpty()) {
             item {
                 ArchiveLabelV2(
-                    title = "独立 AI",
-                    detail = "每个 AI 调用单独冻结并按目标期结算",
-                    count = aiRecords.size,
+                    title = "手机独立 AI",
+                    detail = "手机端配置的 AI 接口，每个模型单独冻结并结算",
+                    count = deviceAiRecords.size,
                     tint = colors.accent,
-                    icon = Icons.Rounded.AutoAwesome,
+                    icon = Icons.Rounded.PhoneAndroid,
                 )
             }
-            aiRecords.take(maxItems).forEach { record ->
-                item("ai-${record.forecastHash}") {
+            deviceAiRecords.take(maxItems).forEach { record ->
+                item("device-ai-${record.forecastHash}") {
                     ArchiveRecordCompactV2(
                         title = "目标期 ${record.targetPeriod}",
                         detail = "${record.profileName} · ${record.model} · 第${positionNameV2(record.position)}名",
@@ -347,9 +382,66 @@ fun RefinedArchiveScreen(
                         statusTint = settlementTintV2(record.top6Hit, record.top7Hit),
                         time = formatTimeV2(record.createdAtEpochMs),
                         hash = record.forecastHash,
-                        sourceLabel = "独立 AI",
+                        sourceLabel = "手机独立 AI",
                         sourceTint = colors.accent,
-                        sourceIcon = Icons.Rounded.AutoAwesome,
+                        sourceIcon = Icons.Rounded.PhoneAndroid,
+                    )
+                }
+            }
+        }
+
+        if (cloudAiRecords.isNotEmpty()) {
+            item {
+                ArchiveLabelV2(
+                    title = "天机云端 AI",
+                    detail = "服务器后台调用 AI 模型生成的独立冻结结果",
+                    count = cloudAiRecords.size,
+                    tint = colors.violet,
+                    icon = Icons.Rounded.Cloud,
+                )
+            }
+            cloudAiRecords.take(maxItems).forEach { record ->
+                item("cloud-ai-${record.forecastHash}") {
+                    ArchiveRecordCompactV2(
+                        title = "目标期 ${record.targetPeriod}",
+                        detail = "${record.model} · 第${positionNameV2(record.position)}名",
+                        numbers = record.top6,
+                        status = settlementLabelV2(record.top6Hit, record.top7Hit),
+                        statusTint = settlementTintV2(record.top6Hit, record.top7Hit),
+                        time = formatTimeV2(record.createdAtEpochMs),
+                        hash = record.forecastHash,
+                        sourceLabel = "天机云端 AI",
+                        sourceTint = colors.violet,
+                        sourceIcon = Icons.Rounded.Cloud,
+                    )
+                }
+            }
+        }
+
+        if (cloudLocalRecords.isNotEmpty()) {
+            val cloudLocalTint = Color(0xFF35C3D2)
+            item {
+                ArchiveLabelV2(
+                    title = "天机云端本地",
+                    detail = "服务器本地算法后台生成，不调用外部 AI 接口",
+                    count = cloudLocalRecords.size,
+                    tint = cloudLocalTint,
+                    icon = Icons.Rounded.Memory,
+                )
+            }
+            cloudLocalRecords.take(maxItems).forEach { record ->
+                item("cloud-local-${record.forecastHash}") {
+                    ArchiveRecordCompactV2(
+                        title = "目标期 ${record.targetPeriod}",
+                        detail = "${record.model} · 第${positionNameV2(record.position)}名",
+                        numbers = record.top6,
+                        status = settlementLabelV2(record.top6Hit, record.top7Hit),
+                        statusTint = settlementTintV2(record.top6Hit, record.top7Hit),
+                        time = formatTimeV2(record.createdAtEpochMs),
+                        hash = record.forecastHash,
+                        sourceLabel = "天机云端本地",
+                        sourceTint = cloudLocalTint,
+                        sourceIcon = Icons.Rounded.Memory,
                     )
                 }
             }
@@ -359,8 +451,8 @@ fun RefinedArchiveScreen(
             val nativeTint = Color(0xFF35C3D2)
             item {
                 ArchiveLabelV2(
-                    title = "本地模型",
-                    detail = "11 模型集成冻结结果，作为本地算法对照",
+                    title = "手机本地模型",
+                    detail = "手机端 11 模型集成冻结结果，作为本地算法对照",
                     count = nativeRecords.size,
                     tint = nativeTint,
                     icon = Icons.Rounded.Psychology,
@@ -376,7 +468,7 @@ fun RefinedArchiveScreen(
                         statusTint = settlementTintV2(record.top6Hit, record.top7Hit),
                         time = formatTimeV2(record.createdAtEpochMs),
                         hash = record.reportHash,
-                        sourceLabel = "本地模型",
+                        sourceLabel = "手机本地模型",
                         sourceTint = nativeTint,
                         sourceIcon = Icons.Rounded.Psychology,
                     )
@@ -384,7 +476,10 @@ fun RefinedArchiveScreen(
             }
         }
 
-        if (nativeRecords.isEmpty() && aiRecords.isEmpty() && consensusRecords.isEmpty()) {
+        if (nativeRecords.isEmpty() && deviceAiRecords.isEmpty() &&
+            cloudAiRecords.isEmpty() && cloudLocalRecords.isEmpty() &&
+            consensusRecords.isEmpty()
+        ) {
             item {
                 EmptyState(
                     if (settlementFilter == ArchiveSettlementFilter.ALL) "暂无冻结档案" else "当前筛选暂无档案",
@@ -519,14 +614,28 @@ private fun ArchiveRecordCompactV2(
                 Spacer(Modifier.size(9.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "$sourceLabel · $detail",
-                        color = colors.textDim,
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            sourceLabel,
+                            color = sourceTint,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(sourceTint.copy(alpha = 0.10f))
+                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                        )
+                        Spacer(Modifier.size(6.dp))
+                        Text(
+                            detail,
+                            color = colors.textDim,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
                 StatusChipV2(status, statusTint)
             }
