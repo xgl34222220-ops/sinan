@@ -18,7 +18,9 @@ class TelegramAlertTests(unittest.TestCase):
             db.execute("DELETE FROM push_devices")
 
     @staticmethod
-    def watch() -> dict:
+    def watch(source: str = "ai") -> dict:
+        source_name = "天机云端 AI" if source == "ai" else "天机云端本地"
+        model = "deepseek<pro>" if source == "ai" else "local-ensemble"
         return {
             "threshold": 3,
             "lotteries": [
@@ -27,9 +29,9 @@ class TelegramAlertTests(unittest.TestCase):
                     "name": "幸运飞艇",
                     "predictions": [
                         {
-                            "source": "ai",
-                            "source_name": "天机云端 AI",
-                            "model": "deepseek<pro>",
+                            "source": source,
+                            "source_name": source_name,
+                            "model": model,
                             "warning": True,
                             "current_miss_streak": 3,
                             "recent_three": [
@@ -81,6 +83,40 @@ class TelegramAlertTests(unittest.TestCase):
         self.assertEqual(0, first["fcm_sent"])
         self.assertEqual(0, second["telegram_sent"])
         self.assertEqual(1, sender.call_count)
+
+    def test_native_prediction_message_is_suppressed_without_http_request(self) -> None:
+        message = (
+            "🔮 <b>追踪中的新一期预测</b>\n\n"
+            "<b>来源：</b>天机云端本地\n"
+            "<b>模型：</b><code>local-ensemble</code>"
+        )
+        with patch.object(telegram_alerts.requests, "post") as sender:
+            result = telegram_alerts.send_html_message(
+                bot_token="123:test-token",
+                chat_id="987654321",
+                text=message,
+            )
+
+        self.assertEqual((True, 204, "Telegram 已忽略天机云端本地来源"), result)
+        sender.assert_not_called()
+
+    def test_native_warning_is_suppressed_without_http_request(self) -> None:
+        alert_id = push_alerts.materialize_warning_alerts(self.watch("native"))[0]
+        with database.connection() as db:
+            alert = db.execute(
+                "SELECT * FROM push_alerts WHERE id=?",
+                (alert_id,),
+            ).fetchone()
+
+        with patch.object(telegram_alerts.requests, "post") as sender:
+            result = telegram_alerts.send_alert(
+                bot_token="123:test-token",
+                chat_id="987654321",
+                alert=alert,
+            )
+
+        self.assertEqual((True, 204, "Telegram 已忽略天机云端本地来源"), result)
+        sender.assert_not_called()
 
 
 if __name__ == "__main__":
