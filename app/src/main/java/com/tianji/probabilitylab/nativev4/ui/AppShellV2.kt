@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -80,7 +81,7 @@ fun CompactAppHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp)
+            .heightIn(min = 58.dp)
             .background(colors.header)
             .border(0.5.dp, colors.line)
             .padding(horizontal = 11.dp),
@@ -168,7 +169,7 @@ fun MainBottomBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .heightIn(min = 64.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 7.dp,
                 shape = RoundedCornerShape(21.dp),
@@ -334,7 +335,7 @@ fun CompactLotterySwitcher(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(colors.glass)
             .border(1.dp, colors.line, RoundedCornerShape(16.dp))
@@ -390,7 +391,7 @@ fun SegmentedTabs(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(47.dp)
+            .heightIn(min = 47.dp)
             .clip(RoundedCornerShape(15.dp))
             .background(colors.surfaceStrong)
             .border(1.dp, colors.line, RoundedCornerShape(15.dp))

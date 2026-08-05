@@ -207,6 +207,8 @@
   qa('.nav-btn[data-panel]').forEach(btn=>btn.addEventListener('click',()=>sessionStorage.setItem('tianji-console-panel',btn.dataset.panel||'overview')));
   const label=(id,value)=>{const el=document.getElementById(id);if(el&&!el.getAttribute('aria-label'))el.setAttribute('aria-label',value)};
   label('logoutBtn','退出登录');label('runBtn','立即同步开奖与任务');
+  const logoutButton=document.getElementById('logoutBtn');
+  logoutButton?.addEventListener('click',event=>{if(!confirm('确认退出天机控制台？')){event.preventDefault();event.stopImmediatePropagation()}},true);
   qa('.topbar .icon-btn').forEach((el,index)=>{if(!el.getAttribute('aria-label'))el.setAttribute('aria-label',index===0?'切换明暗主题':'退出登录')});
   const syncExpandableState=()=>{
     const account=document.querySelector('.v5-account-toggle');

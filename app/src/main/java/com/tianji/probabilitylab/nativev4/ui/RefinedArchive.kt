@@ -28,6 +28,8 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,6 +64,13 @@ private enum class ArchiveSettlementFilter(val label: String) {
     MISSED("未命中"),
 }
 
+private enum class ArchiveSourceFilter(val label: String) {
+    ALL("全部来源"),
+    CONSENSUS("AI 共识"),
+    AI("独立 AI"),
+    NATIVE("本地模型"),
+}
+
 @Composable
 fun RefinedArchiveScreen(
     state: AppUiState,
@@ -75,12 +84,20 @@ fun RefinedArchiveScreen(
     var settlementFilterName by rememberSaveable(state.lottery.apiKey) {
         mutableStateOf(ArchiveSettlementFilter.ALL.name)
     }
+    var sourceFilterName by rememberSaveable(state.lottery.apiKey) {
+        mutableStateOf(ArchiveSourceFilter.ALL.name)
+    }
+    var periodQuery by rememberSaveable(state.lottery.apiKey) { mutableStateOf("") }
     val selectedLimit = ArchiveDisplayLimit.entries.firstOrNull { it.name == selectedLimitName }
         ?: ArchiveDisplayLimit.RECENT_8
     val maxItems = selectedLimit.count ?: Int.MAX_VALUE
     val settlementFilter = ArchiveSettlementFilter.entries.firstOrNull {
         it.name == settlementFilterName
     } ?: ArchiveSettlementFilter.ALL
+    val sourceFilter = ArchiveSourceFilter.entries.firstOrNull {
+        it.name == sourceFilterName
+    } ?: ArchiveSourceFilter.ALL
+    val periodNeedle = periodQuery.trim()
     val colors = LocalTianjiColors.current
     val localRate = if (state.liveAudit.settled > 0) {
         "${(state.liveAudit.top6Rate * 100).format1V2()}%"
@@ -94,13 +111,25 @@ fun RefinedArchiveScreen(
         "暂无"
     }
     val consensusRecords = state.aiConsensusRecords.filter {
-        archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit)
+        (sourceFilter == ArchiveSourceFilter.ALL ||
+            sourceFilter == ArchiveSourceFilter.CONSENSUS) &&
+            archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit) &&
+            (periodNeedle.isEmpty() ||
+                it.targetPeriod.contains(periodNeedle, ignoreCase = true))
     }
     val aiRecords = state.aiRecords.filter {
-        archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit)
+        (sourceFilter == ArchiveSourceFilter.ALL ||
+            sourceFilter == ArchiveSourceFilter.AI) &&
+            archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit) &&
+            (periodNeedle.isEmpty() ||
+                it.targetPeriod.contains(periodNeedle, ignoreCase = true))
     }
     val nativeRecords = state.records.filter {
-        archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit)
+        (sourceFilter == ArchiveSourceFilter.ALL ||
+            sourceFilter == ArchiveSourceFilter.NATIVE) &&
+            archiveMatchesFilter(settlementFilter, it.top6Hit, it.top7Hit) &&
+            (periodNeedle.isEmpty() ||
+                it.targetPeriod.contains(periodNeedle, ignoreCase = true))
     }
 
     LazyColumn(
@@ -221,30 +250,50 @@ fun RefinedArchiveScreen(
         }
 
         item("archive-filters") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                ArchiveSettlementFilter.entries.forEach { option ->
-                    val active = option == settlementFilter
-                    Text(
-                        option.label,
-                        color = if (active) colors.accent else colors.textSoft,
-                        fontSize = 11.sp,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (active) colors.accentSoft else colors.surfaceStrong)
-                            .border(
-                                1.dp,
-                                if (active) colors.accent.copy(alpha = 0.24f) else colors.line,
-                                RoundedCornerShape(12.dp),
-                            )
-                            .clickable { settlementFilterName = option.name }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = periodQuery,
+                    onValueChange = { periodQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("搜索目标期，例如 20260805123") },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.accent,
+                        unfocusedBorderColor = colors.lineStrong,
+                        focusedTextColor = colors.text,
+                        unfocusedTextColor = colors.text,
+                        focusedContainerColor = colors.surfaceStrong,
+                        unfocusedContainerColor = colors.surfaceStrong,
+                    ),
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    ArchiveSourceFilter.entries.forEach { option ->
+                        ArchiveFilterChipV594(
+                            label = option.label,
+                            active = option == sourceFilter,
+                            onClick = { sourceFilterName = option.name },
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    ArchiveSettlementFilter.entries.forEach { option ->
+                        ArchiveFilterChipV594(
+                            label = option.label,
+                            active = option == settlementFilter,
+                            onClick = { settlementFilterName = option.name },
+                        )
+                    }
                 }
             }
         }
@@ -349,6 +398,31 @@ fun RefinedArchiveScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ArchiveFilterChipV594(
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = LocalTianjiColors.current
+    Text(
+        label,
+        color = if (active) colors.accent else colors.textSoft,
+        fontSize = 11.sp,
+        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (active) colors.accentSoft else colors.surfaceStrong)
+            .border(
+                1.dp,
+                if (active) colors.accent.copy(alpha = 0.24f) else colors.line,
+                RoundedCornerShape(12.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
 }
 
 private fun archiveMatchesFilter(
