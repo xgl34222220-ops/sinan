@@ -177,7 +177,10 @@ def format_prediction_message(
     return "\n".join(lines)
 
 
-def format_win_message(forecast: Any) -> str:
+def format_win_message(
+    forecast: Any,
+    tracking_was_active: bool = False,
+) -> str:
     lottery = str(forecast["lottery"])
     source = str(forecast["source"])
     top6 = _numbers(forecast["top6_json"])
@@ -199,12 +202,11 @@ def format_win_message(forecast: Any) -> str:
     ]
     if hit_rank:
         lines.append(f"<b>命中顺位：</b>Top 6 第 {hit_rank} 位")
-    lines.extend(
-        [
-            "",
-            "该预测已完成真实前向开奖结算；本轮追踪预测推送现已停止。",
-        ]
-    )
+    lines.append("")
+    if tracking_was_active:
+        lines.append("该预测已完成真实前向开奖结算；本轮追踪预测推送现已停止。")
+    else:
+        lines.append("该预测已完成真实前向开奖结算。")
     return "\n".join(lines)
 
 
@@ -234,6 +236,23 @@ def _consecutive_misses_before(db: Any, forecast: Any) -> int:
             break
         streak += 1
     return streak
+
+
+def _prediction_event_is_eligible(event_key: str) -> bool:
+    if not event_key.startswith("prediction:"):
+        return True
+    try:
+        forecast_id = int(event_key.split(":", 1)[1])
+    except (IndexError, ValueError):
+        return False
+    with database.connection() as db:
+        forecast = db.execute(
+            "SELECT * FROM forecasts WHERE id=?",
+            (forecast_id,),
+        ).fetchone()
+        if forecast is None or forecast["settled_at"] is not None:
+            return False
+        return _consecutive_misses_before(db, forecast) >= _TRACK_AFTER_MISSES
 
 
 def materialize_events(lottery_filter: str | None = None) -> int:
@@ -290,6 +309,9 @@ def materialize_events(lottery_filter: str | None = None) -> int:
             created += int(bool(cursor.rowcount))
 
         for row in wins:
+            tracking_was_active = (
+                _consecutive_misses_before(db, row) >= _TRACK_AFTER_MISSES
+            )
             cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO telegram_events(
@@ -304,7 +326,7 @@ def materialize_events(lottery_filter: str | None = None) -> int:
                     str(row["source"]),
                     str(row["model"]),
                     str(row["target_period"]),
-                    format_win_message(row),
+                    format_win_message(row, tracking_was_active),
                     int(row["settled_at"] or now),
                 ),
             )
@@ -325,7 +347,7 @@ def _claim_delivery(event_key: str, target_key: str, now: int) -> bool:
             (event_key, target_key),
         ).fetchone()
         if row is not None:
-            if str(row["status"]) == "sent":
+            if str(row["status"]) in {"sent", "suppressed"}:
                 return False
             if int(row["attempted_at"]) > retry_before:
                 return False
@@ -340,6 +362,27 @@ def _claim_delivery(event_key: str, target_key: str, now: int) -> bool:
             (event_key, target_key, now),
         )
     return True
+
+
+def _suppress_delivery(
+    event_key: str,
+    target_key: str,
+    *,
+    attempted_at: int,
+    message: str,
+) -> None:
+    with database.connection() as db:
+        db.execute(
+            """
+            INSERT INTO telegram_event_deliveries(
+                event_key,target_key,status,response_code,message,attempted_at
+            ) VALUES(?,?,'suppressed',NULL,?,?)
+            ON CONFLICT(event_key,target_key) DO UPDATE SET
+                status='suppressed',response_code=NULL,
+                message=excluded.message,attempted_at=excluded.attempted_at
+            """,
+            (event_key, target_key, message[:800], attempted_at),
+        )
 
 
 def _finish_delivery(
@@ -385,15 +428,8 @@ def deliver_pending_events() -> dict[str, int]:
                 LEFT JOIN telegram_event_deliveries AS delivery
                   ON delivery.event_key=event.event_key
                  AND delivery.target_key=?
-                WHERE (delivery.status IS NULL OR delivery.status<>'sent')
-                  AND (
-                      event.event_type<>'prediction'
-                      OR EXISTS (
-                          SELECT 1 FROM forecasts AS forecast
-                          WHERE event.event_key='prediction:' || forecast.id
-                            AND forecast.settled_at IS NULL
-                      )
-                  )
+                WHERE delivery.status IS NULL
+                   OR delivery.status NOT IN ('sent','suppressed')
                 ORDER BY event.created_at ASC
                 LIMIT 500
                 """,
@@ -403,6 +439,18 @@ def deliver_pending_events() -> dict[str, int]:
         for event in events:
             event_key = str(event["event_key"])
             now = _now_ms()
+            if (
+                str(event["event_type"]) == "prediction"
+                and not _prediction_event_is_eligible(event_key)
+            ):
+                _suppress_delivery(
+                    event_key,
+                    target_key,
+                    attempted_at=now,
+                    message="预测未达到连续两期未中条件，或目标期已经开奖",
+                )
+                skipped += 1
+                continue
             if not _claim_delivery(event_key, target_key, now):
                 skipped += 1
                 continue
