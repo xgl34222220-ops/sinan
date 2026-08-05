@@ -15,9 +15,10 @@ from .models import LOTTERIES
 _INIT_LOCK = threading.Lock()
 _INITIALIZED = False
 _BASELINE_KEY = "telegram_events_baseline_ms"
-_PREDICTION_POLICY_KEY = "telegram_prediction_policy_three_misses_v2"
+_PREDICTION_POLICY_KEY = "telegram_prediction_policy_always_v3"
+_PREDICTION_START_KEY = "telegram_prediction_always_from_ms_v1"
 _WIN_POLICY_KEY = "telegram_win_policy_tracking_only_v1"
-_TRACK_AFTER_MISSES = 3
+_STRONG_ALERT_AFTER_MISSES = 3
 
 
 def _now_ms() -> int:
@@ -81,8 +82,7 @@ def initialize() -> None:
                 (_PREDICTION_POLICY_KEY,),
             ).fetchone()
             if prediction_policy is None:
-                # 从旧版“两期不中”升级时，清掉尚未成功发送的预测队列。
-                # 本轮会按“三期不中”新规则重新生成符合条件的事件。
+                # 新策略从服务器升级完成后开始，不补发旧预测，避免历史消息轰炸。
                 db.execute(
                     """
                     DELETE FROM telegram_events
@@ -100,7 +100,18 @@ def initialize() -> None:
                         state_key,state_value,updated_at
                     ) VALUES(?,?,?)
                     """,
-                    (_PREDICTION_POLICY_KEY, "three_misses_until_hit", now),
+                    (_PREDICTION_POLICY_KEY, "always_push_cloud_ai", now),
+                )
+                db.execute(
+                    """
+                    INSERT INTO telegram_event_state(
+                        state_key,state_value,updated_at
+                    ) VALUES(?,?,?)
+                    ON CONFLICT(state_key) DO UPDATE SET
+                        state_value=excluded.state_value,
+                        updated_at=excluded.updated_at
+                    """,
+                    (_PREDICTION_START_KEY, str(now), now),
                 )
 
             win_policy = db.execute(
@@ -108,8 +119,7 @@ def initialize() -> None:
                 (_WIN_POLICY_KEY,),
             ).fetchone()
             if win_policy is None:
-                # 旧版会生成所有中奖事件；新规则只保留追踪结束时的中奖。
-                # 先清掉尚未成功发送的旧中奖队列，后续按新规则重新生成。
+                # 普通中奖保持静默，只保留连续三期不中后的恢复命中消息。
                 db.execute(
                     """
                     DELETE FROM telegram_events
@@ -127,22 +137,31 @@ def initialize() -> None:
                         state_key,state_value,updated_at
                     ) VALUES(?,?,?)
                     """,
-                    (_WIN_POLICY_KEY, "tracking_end_only", now),
+                    (_WIN_POLICY_KEY, "recovery_after_three_misses_only", now),
                 )
         _INITIALIZED = True
 
 
-def _baseline_ms() -> int:
+def _state_ms(state_key: str, fallback: int) -> int:
     initialize()
     with database.connection() as db:
         row = db.execute(
             "SELECT state_value FROM telegram_event_state WHERE state_key=?",
-            (_BASELINE_KEY,),
+            (state_key,),
         ).fetchone()
     try:
-        return int(row["state_value"]) if row is not None else _now_ms()
+        return int(row["state_value"]) if row is not None else fallback
     except (TypeError, ValueError):
-        return _now_ms()
+        return fallback
+
+
+def _baseline_ms() -> int:
+    return _state_ms(_BASELINE_KEY, _now_ms())
+
+
+def _prediction_start_ms() -> int:
+    baseline = _baseline_ms()
+    return max(baseline, _state_ms(_PREDICTION_START_KEY, baseline))
 
 
 def _lottery_name(key: str) -> str:
@@ -176,18 +195,21 @@ def format_prediction_message(
     source = str(forecast["source"])
     top6 = _numbers(forecast["top6_json"])
     top7 = _numbers(forecast["top7_json"])
+    streak = max(0, int(miss_streak or 0))
     lines = [
-        "🔮 <b>追踪中的新一期预测</b>",
+        "🔮 <b>新一期云端 AI 预测</b>",
         "",
         f"<b>彩种：</b>{html.escape(_lottery_name(lottery))}",
         f"<b>目标期：</b><code>{html.escape(str(forecast['target_period']))}</code>",
         f"<b>来源：</b>{html.escape(_source_name(source))}",
         f"<b>模型：</b><code>{html.escape(str(forecast['model']))}</code>",
     ]
-    if miss_streak is not None:
-        lines.append(
-            f"<b>追踪状态：</b>Top 6 已连续 {max(0, int(miss_streak))} 期未中"
-        )
+    if streak >= _STRONG_ALERT_AFTER_MISSES:
+        lines.append(f"<b>🚨 加强关注：</b>Top 6 已连续 {streak} 期未中")
+    elif streak > 0:
+        lines.append(f"<b>当前状态：</b>Top 6 已连续 {streak} 期未中")
+    else:
+        lines.append("<b>当前状态：</b>连续未中计数为 0")
     lines.extend(
         [
             f"<b>预测名次：</b>第 {int(forecast['position_index']) + 1} 名",
@@ -196,13 +218,14 @@ def format_prediction_message(
     )
     if top7:
         lines.append(f"<b>Top 7：</b>{_number_text(top7)}")
-    lines.extend(
-        [
-            f"<b>训练截止期：</b><code>{html.escape(str(forecast['trained_through_period']))}</code>",
-            "",
-            "已进入追踪推送；后续每期继续发送，下一次 Top 6 命中后发送中奖消息并停止追踪。",
-        ]
+    lines.append(
+        f"<b>训练截止期：</b><code>{html.escape(str(forecast['trained_through_period']))}</code>"
     )
+    lines.append("")
+    if streak >= _STRONG_ALERT_AFTER_MISSES:
+        lines.append("当前处于连续不中加强关注阶段；预测仍会逐期推送，恢复命中后发送一次结果提醒。")
+    else:
+        lines.append("云端 AI 预测将每期推送；连续三期 Top 6 未中时会发送加强提醒。")
     return "\n".join(lines)
 
 
@@ -216,7 +239,7 @@ def format_win_message(forecast: Any) -> str:
     except ValueError:
         hit_rank = 0
     lines = [
-        "🎉 <b>追踪结束：Top 6 命中</b>",
+        "🎉 <b>连续不中后恢复命中</b>",
         "",
         f"<b>彩种：</b>{html.escape(_lottery_name(lottery))}",
         f"<b>开奖期号：</b><code>{html.escape(str(forecast['target_period']))}</code>",
@@ -231,7 +254,7 @@ def format_win_message(forecast: Any) -> str:
     lines.extend(
         [
             "",
-            "本轮连续不中追踪已命中，预测推送现已自动停止。",
+            "连续不中计数已清零；下一期云端 AI 预测仍会正常推送。",
         ]
     )
     return "\n".join(lines)
@@ -281,57 +304,71 @@ def _event_forecast(event_key: str, prefix: str) -> Any | None:
 
 def _prediction_event_is_eligible(event_key: str) -> bool:
     forecast = _event_forecast(event_key, "prediction")
-    if forecast is None or forecast["settled_at"] is not None:
-        return False
-    with database.connection() as db:
-        return _consecutive_misses_before(db, forecast) >= _TRACK_AFTER_MISSES
+    return bool(
+        forecast is not None
+        and str(forecast["source"]) == "ai"
+        and forecast["settled_at"] is None
+    )
 
 
 def _win_event_is_eligible(event_key: str) -> bool:
     forecast = _event_forecast(event_key, "win")
     if (
         forecast is None
+        or str(forecast["source"]) != "ai"
         or forecast["settled_at"] is None
         or int(forecast["top6_hit"] or 0) != 1
     ):
         return False
     with database.connection() as db:
-        return _consecutive_misses_before(db, forecast) >= _TRACK_AFTER_MISSES
+        return (
+            _consecutive_misses_before(db, forecast)
+            >= _STRONG_ALERT_AFTER_MISSES
+        )
 
 
 def materialize_events(lottery_filter: str | None = None) -> int:
     initialize()
     baseline = _baseline_ms()
+    prediction_start = _prediction_start_ms()
     lottery_sql = " AND lottery=?" if lottery_filter else ""
-    params: tuple[Any, ...] = (baseline, lottery_filter) if lottery_filter else (baseline,)
+    prediction_params: tuple[Any, ...] = (
+        (prediction_start, lottery_filter)
+        if lottery_filter
+        else (prediction_start,)
+    )
+    win_params: tuple[Any, ...] = (
+        (baseline, lottery_filter) if lottery_filter else (baseline,)
+    )
     with database.connection() as db:
         predictions = db.execute(
             f"""
             SELECT * FROM forecasts
-            WHERE created_at>=?{lottery_sql}
+            WHERE created_at>=?
+              AND source='ai'
+              AND settled_at IS NULL{lottery_sql}
             ORDER BY id DESC
             LIMIT 1000
             """,
-            params,
+            prediction_params,
         ).fetchall()
         wins = db.execute(
             f"""
             SELECT * FROM forecasts
             WHERE settled_at IS NOT NULL
               AND settled_at>=?
+              AND source='ai'
               AND top6_hit=1{lottery_sql}
             ORDER BY id DESC
             LIMIT 1000
             """,
-            params,
+            win_params,
         ).fetchall()
 
         created = 0
         now = _now_ms()
         for row in predictions:
             miss_streak = _consecutive_misses_before(db, row)
-            if miss_streak < _TRACK_AFTER_MISSES:
-                continue
             cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO telegram_events(
@@ -353,7 +390,10 @@ def materialize_events(lottery_filter: str | None = None) -> int:
             created += int(bool(cursor.rowcount))
 
         for row in wins:
-            if _consecutive_misses_before(db, row) < _TRACK_AFTER_MISSES:
+            if (
+                _consecutive_misses_before(db, row)
+                < _STRONG_ALERT_AFTER_MISSES
+            ):
                 continue
             cursor = db.execute(
                 """
@@ -471,8 +511,11 @@ def deliver_pending_events() -> dict[str, int]:
                 LEFT JOIN telegram_event_deliveries AS delivery
                   ON delivery.event_key=event.event_key
                  AND delivery.target_key=?
-                WHERE delivery.status IS NULL
-                   OR delivery.status NOT IN ('sent','suppressed')
+                WHERE event.source='ai'
+                  AND (
+                    delivery.status IS NULL
+                    OR delivery.status NOT IN ('sent','suppressed')
+                  )
                 ORDER BY event.created_at ASC
                 LIMIT 500
                 """,
@@ -483,12 +526,15 @@ def deliver_pending_events() -> dict[str, int]:
             event_key = str(event["event_key"])
             event_type = str(event["event_type"])
             now = _now_ms()
-            if event_type == "prediction" and not _prediction_event_is_eligible(event_key):
+            if (
+                event_type == "prediction"
+                and not _prediction_event_is_eligible(event_key)
+            ):
                 _suppress_delivery(
                     event_key,
                     target_key,
                     attempted_at=now,
-                    message="预测未达到连续三期未中条件，或目标期已经开奖",
+                    message="预测目标期已经开奖，或事件不是云端 AI 来源",
                 )
                 skipped += 1
                 continue
@@ -497,7 +543,7 @@ def deliver_pending_events() -> dict[str, int]:
                     event_key,
                     target_key,
                     attempted_at=now,
-                    message="普通中奖不推送，仅追踪结束时发送中奖消息",
+                    message="普通中奖不推送，仅连续三期不中后的恢复命中才提醒",
                 )
                 skipped += 1
                 continue
