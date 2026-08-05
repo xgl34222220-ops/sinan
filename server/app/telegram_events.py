@@ -16,6 +16,7 @@ _INIT_LOCK = threading.Lock()
 _INITIALIZED = False
 _BASELINE_KEY = "telegram_events_baseline_ms"
 _PREDICTION_POLICY_KEY = "telegram_prediction_policy_two_misses_v1"
+_WIN_POLICY_KEY = "telegram_win_policy_tracking_only_v1"
 _TRACK_AFTER_MISSES = 2
 
 
@@ -74,13 +75,12 @@ def initialize() -> None:
                 """,
                 (_BASELINE_KEY, str(now), now),
             )
-            policy = db.execute(
+
+            prediction_policy = db.execute(
                 "SELECT 1 FROM telegram_event_state WHERE state_key=?",
                 (_PREDICTION_POLICY_KEY,),
             ).fetchone()
-            if policy is None:
-                # 清除旧版“每期都推”的尚未成功发送队列。符合新规则的预测会在
-                # 本轮 materialize_events 中以相同事件键重新生成。
+            if prediction_policy is None:
                 db.execute(
                     """
                     DELETE FROM telegram_events
@@ -99,6 +99,33 @@ def initialize() -> None:
                     ) VALUES(?,?,?)
                     """,
                     (_PREDICTION_POLICY_KEY, "two_misses_until_hit", now),
+                )
+
+            win_policy = db.execute(
+                "SELECT 1 FROM telegram_event_state WHERE state_key=?",
+                (_WIN_POLICY_KEY,),
+            ).fetchone()
+            if win_policy is None:
+                # 旧版会生成所有中奖事件；新规则只保留追踪结束时的中奖。
+                # 先清掉尚未成功发送的旧中奖队列，后续按新规则重新生成。
+                db.execute(
+                    """
+                    DELETE FROM telegram_events
+                    WHERE event_type='win'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM telegram_event_deliveries AS delivery
+                          WHERE delivery.event_key=telegram_events.event_key
+                            AND delivery.status='sent'
+                      )
+                    """
+                )
+                db.execute(
+                    """
+                    INSERT INTO telegram_event_state(
+                        state_key,state_value,updated_at
+                    ) VALUES(?,?,?)
+                    """,
+                    (_WIN_POLICY_KEY, "tracking_end_only", now),
                 )
         _INITIALIZED = True
 
@@ -171,16 +198,13 @@ def format_prediction_message(
         [
             f"<b>训练截止期：</b><code>{html.escape(str(forecast['trained_through_period']))}</code>",
             "",
-            "已进入追踪推送；后续每期继续发送，下一次 Top 6 命中后自动停止预测推送。",
+            "已进入追踪推送；后续每期继续发送，下一次 Top 6 命中后发送中奖消息并停止追踪。",
         ]
     )
     return "\n".join(lines)
 
 
-def format_win_message(
-    forecast: Any,
-    tracking_was_active: bool = False,
-) -> str:
+def format_win_message(forecast: Any) -> str:
     lottery = str(forecast["lottery"])
     source = str(forecast["source"])
     top6 = _numbers(forecast["top6_json"])
@@ -190,7 +214,7 @@ def format_win_message(
     except ValueError:
         hit_rank = 0
     lines = [
-        "🎉 <b>Top 6 命中</b>",
+        "🎉 <b>追踪结束：Top 6 命中</b>",
         "",
         f"<b>彩种：</b>{html.escape(_lottery_name(lottery))}",
         f"<b>开奖期号：</b><code>{html.escape(str(forecast['target_period']))}</code>",
@@ -202,11 +226,12 @@ def format_win_message(
     ]
     if hit_rank:
         lines.append(f"<b>命中顺位：</b>Top 6 第 {hit_rank} 位")
-    lines.append("")
-    if tracking_was_active:
-        lines.append("该预测已完成真实前向开奖结算；本轮追踪预测推送现已停止。")
-    else:
-        lines.append("该预测已完成真实前向开奖结算。")
+    lines.extend(
+        [
+            "",
+            "本轮连续不中追踪已命中，预测推送现已自动停止。",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -238,20 +263,37 @@ def _consecutive_misses_before(db: Any, forecast: Any) -> int:
     return streak
 
 
-def _prediction_event_is_eligible(event_key: str) -> bool:
-    if not event_key.startswith("prediction:"):
-        return True
+def _event_forecast(event_key: str, prefix: str) -> Any | None:
+    if not event_key.startswith(prefix + ":"):
+        return None
     try:
         forecast_id = int(event_key.split(":", 1)[1])
     except (IndexError, ValueError):
-        return False
+        return None
     with database.connection() as db:
-        forecast = db.execute(
+        return db.execute(
             "SELECT * FROM forecasts WHERE id=?",
             (forecast_id,),
         ).fetchone()
-        if forecast is None or forecast["settled_at"] is not None:
-            return False
+
+
+def _prediction_event_is_eligible(event_key: str) -> bool:
+    forecast = _event_forecast(event_key, "prediction")
+    if forecast is None or forecast["settled_at"] is not None:
+        return False
+    with database.connection() as db:
+        return _consecutive_misses_before(db, forecast) >= _TRACK_AFTER_MISSES
+
+
+def _win_event_is_eligible(event_key: str) -> bool:
+    forecast = _event_forecast(event_key, "win")
+    if (
+        forecast is None
+        or forecast["settled_at"] is None
+        or int(forecast["top6_hit"] or 0) != 1
+    ):
+        return False
+    with database.connection() as db:
         return _consecutive_misses_before(db, forecast) >= _TRACK_AFTER_MISSES
 
 
@@ -309,9 +351,8 @@ def materialize_events(lottery_filter: str | None = None) -> int:
             created += int(bool(cursor.rowcount))
 
         for row in wins:
-            tracking_was_active = (
-                _consecutive_misses_before(db, row) >= _TRACK_AFTER_MISSES
-            )
+            if _consecutive_misses_before(db, row) < _TRACK_AFTER_MISSES:
+                continue
             cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO telegram_events(
@@ -326,7 +367,7 @@ def materialize_events(lottery_filter: str | None = None) -> int:
                     str(row["source"]),
                     str(row["model"]),
                     str(row["target_period"]),
-                    format_win_message(row, tracking_was_active),
+                    format_win_message(row),
                     int(row["settled_at"] or now),
                 ),
             )
@@ -438,16 +479,23 @@ def deliver_pending_events() -> dict[str, int]:
 
         for event in events:
             event_key = str(event["event_key"])
+            event_type = str(event["event_type"])
             now = _now_ms()
-            if (
-                str(event["event_type"]) == "prediction"
-                and not _prediction_event_is_eligible(event_key)
-            ):
+            if event_type == "prediction" and not _prediction_event_is_eligible(event_key):
                 _suppress_delivery(
                     event_key,
                     target_key,
                     attempted_at=now,
                     message="预测未达到连续两期未中条件，或目标期已经开奖",
+                )
+                skipped += 1
+                continue
+            if event_type == "win" and not _win_event_is_eligible(event_key):
+                _suppress_delivery(
+                    event_key,
+                    target_key,
+                    attempted_at=now,
+                    message="普通中奖不推送，仅追踪结束时发送中奖消息",
                 )
                 skipped += 1
                 continue
