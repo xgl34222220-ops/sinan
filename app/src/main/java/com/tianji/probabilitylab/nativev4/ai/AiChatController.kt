@@ -870,6 +870,7 @@ private class RemoteAiChatClient {
         require(endpoint.protocol == "https") { "AI 接口必须使用 HTTPS" }
         val started = System.currentTimeMillis()
         val wantsPrediction = intent.wantsPrediction
+        val expectedTargetPeriod = if (intent.usesLotteryContext) report.targetPeriod.trim() else ""
         AiChatProtocol.wantsPrediction(if (wantsPrediction) question else "")
         val context = if (intent.usesLotteryContext) {
             AiChatContextBuilder.build(
@@ -894,6 +895,7 @@ private class RemoteAiChatClient {
             persona = persona,
             judgementMode = judgementMode,
             intent = intent,
+            expectedTargetPeriod = expectedTargetPeriod,
         )
         val publisher = VisibleStreamPublisher(onStreamText)
 
@@ -995,7 +997,7 @@ private class RemoteAiChatClient {
                         .put(
                             "content",
                             if (wantsPrediction) {
-                                "上一请求没有产生最终正文。请立即基于同一份原始历史完成回答，不要输出思考过程，并按原要求在正文后追加完整 tianji_forecast。"
+                                "上一请求没有产生最终正文。当前唯一目标期为${expectedTargetPeriod}期。请立即基于同一份原始历史完成回答，不要输出思考过程，并按原要求在正文后追加完整 tianji_forecast；不得沿用旧期号。"
                             } else {
                                 "上一请求没有产生最终正文。请立即基于同一上下文给出简体中文最终回答，不要输出思考过程。"
                             },
@@ -1049,7 +1051,11 @@ private class RemoteAiChatClient {
             }
         }
         val prediction = if (wantsPrediction) AiChatProtocol.parsePrediction(rawContent) else null
-        val content = AiChatProtocol.visibleText(rawContent, prediction != null)
+        val content = AiTargetPeriodGuard.reconcilePredictionText(
+            text = AiChatProtocol.visibleText(rawContent, prediction != null),
+            expectedTargetPeriod = expectedTargetPeriod,
+            isPrediction = prediction != null,
+        )
         publisher.finish(content)
         val usage = extractUsage(response)
         val reasoningVerified = extractReasoning(response).isNotBlank() ||
@@ -1083,6 +1089,7 @@ private class RemoteAiChatClient {
         persona: AiChatPersona,
         judgementMode: AiJudgementMode,
         intent: AiChatIntent,
+        expectedTargetPeriod: String,
     ): JSONArray = JSONArray().apply {
         put(
             JSONObject()
@@ -1118,9 +1125,34 @@ private class RemoteAiChatClient {
                 AiChatRole.USER -> "user"
                 AiChatRole.ASSISTANT -> "assistant"
             }
-            put(JSONObject().put("role", role).put("content", message.content))
+            put(
+                JSONObject()
+                    .put("role", role)
+                    .put(
+                        "content",
+                        AiTargetPeriodGuard.contextualizePreviousMessage(
+                            message = message,
+                            expectedTargetPeriod = expectedTargetPeriod,
+                        ),
+                    ),
+            )
         }
-        put(JSONObject().put("role", "user").put("content", question))
+        if (intent.usesLotteryContext && expectedTargetPeriod.isNotBlank()) {
+            put(
+                JSONObject()
+                    .put("role", "system")
+                    .put(
+                        "content",
+                        AiTargetPeriodGuard.currentRequestInstruction(expectedTargetPeriod),
+                    ),
+            )
+        }
+        val currentQuestion = if (intent.usesLotteryContext && expectedTargetPeriod.isNotBlank()) {
+            "【当前唯一目标期：${expectedTargetPeriod}期】\n$question"
+        } else {
+            question
+        }
+        put(JSONObject().put("role", "user").put("content", currentQuestion))
     }
 
     private fun systemPrompt(

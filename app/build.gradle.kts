@@ -29,8 +29,8 @@ android {
         applicationId = "com.tianji.probabilitylab.nativev5"
         minSdk = 26
         targetSdk = 36
-        versionCode = 54
-        versionName = "5.10.2"
+        versionCode = 55
+        versionName = "5.10.3"
 
         buildConfigField("String", "TIANJI_CLOUD_BASE_URL", "\"${cloudBaseUrl.get()}\"")
         buildConfigField("String", "TIANJI_FIREBASE_PROJECT_ID", "\"${firebaseProjectId.get()}\"")
