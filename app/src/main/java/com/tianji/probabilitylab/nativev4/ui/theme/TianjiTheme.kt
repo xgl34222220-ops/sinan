@@ -1,5 +1,6 @@
 package com.tianji.probabilitylab.nativev4.ui.theme
 
+import android.annotation.SuppressLint
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -79,6 +80,12 @@ private val TianjiTypography = Typography(
 internal fun shouldUseDynamicPalette(mode: PaletteMode, supported: Boolean): Boolean =
     supported && mode == PaletteMode.MONET
 
+/**
+ * Dynamic Material colors are only called after an explicit Android 12+ runtime check.
+ * Lint cannot infer that relationship through [shouldUseDynamicPalette], so the API warning
+ * is suppressed at this boundary rather than across the whole module.
+ */
+@SuppressLint("NewApi")
 @Composable
 fun TianjiTheme(
     mode: PaletteMode,
