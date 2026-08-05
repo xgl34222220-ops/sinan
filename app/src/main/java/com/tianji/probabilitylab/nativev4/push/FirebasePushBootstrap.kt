@@ -1,6 +1,7 @@
 package com.tianji.probabilitylab.nativev4.push
 
 import android.content.Context
+import com.google.android.gms.tasks.OnCompleteListener
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
@@ -15,7 +16,7 @@ object FirebasePushBootstrap {
 
     fun initialize(context: Context, onToken: (String) -> Unit) {
         if (!isConfigured) return
-        val app = FirebaseApp.getApps(context).firstOrNull()
+        FirebaseApp.getApps(context).firstOrNull()
             ?: FirebaseApp.initializeApp(
                 context,
                 FirebaseOptions.Builder()
@@ -25,10 +26,16 @@ object FirebasePushBootstrap {
                     .setGcmSenderId(BuildConfig.TIANJI_FIREBASE_SENDER_ID)
                     .build(),
             )
-        if (app == null) return
-        FirebaseMessaging.getInstance().token
-            .addOnSuccessListener { token ->
-                if (token.isNotBlank()) onToken(token)
-            }
+            ?: return
+
+        @Suppress("DEPRECATION")
+        FirebaseMessaging.getInstance().token.addOnCompleteListener(
+            OnCompleteListener { task ->
+                if (!task.isSuccessful) return@OnCompleteListener
+                task.result
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(onToken)
+            },
+        )
     }
 }
