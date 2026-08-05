@@ -2,46 +2,20 @@ name: Tianji Android CI
 
 on:
   push:
-    branches: [main, 'feature/**', 'fix/**']
+    branches: [main, 'feature/**']
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: tianji-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-free-chat-cleanup:
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/fix/v5.10.2-free-chat' &&
-      !contains(github.event.head_commit.message, '[free-chat-cleaned]')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout patch branch
-        uses: actions/checkout@v4
-        with:
-          ref: fix/v5.10.2-free-chat
-          fetch-depth: 0
-
-      - name: Clean generated patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/fix_free_chat_patch_v5102.py
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiChatController.kt
-          git commit -m 'fix(ai): clean free chat transport arguments [free-chat-cleaned]'
-          git push origin HEAD:fix/v5.10.2-free-chat
-
   verify:
-    if: github.ref != 'refs/heads/fix/v5.10.2-free-chat'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
