@@ -6,7 +6,11 @@ import math
 from typing import Any
 
 from . import ai_ensemble
-from .adaptive_learning import UNIFORM_LOG_LOSS
+from .adaptive_learning import (
+    UNIFORM_LOG_LOSS,
+    blend_strategy_probabilities,
+    normalize_strategy_weights,
+)
 from .continual_learning import ContinualPositionProfile, build_position_profile
 
 
@@ -144,6 +148,67 @@ def _aggregate_with_position_learning(results: list[Any]) -> list[float]:
     return blend_position_scores(ai_scores, profiles)
 
 
+def position_strategy_probabilities(
+    position: int,
+    probabilities: dict[str, list[float]],
+) -> dict[str, list[float]]:
+    prefix = f"position_{position + 1}:"
+    return {
+        f"{prefix}{name}": values
+        for name, values in probabilities.items()
+    }
+
+
+def position_strategy_weights(
+    position: int,
+    probabilities: dict[str, list[float]],
+    learned: dict[str, float] | None,
+) -> dict[str, float]:
+    namespaced = position_strategy_probabilities(position, probabilities)
+    supplied = learned or {}
+    active = {
+        name: float(supplied[name])
+        for name in namespaced
+        if name in supplied
+    }
+    if not active:
+        prefix = f"position_{position + 1}:"
+        active = {
+            namespaced_name: float(supplied.get(namespaced_name.removeprefix(prefix), 0.0))
+            for namespaced_name in namespaced
+            if namespaced_name.removeprefix(prefix) in supplied
+        }
+    return normalize_strategy_weights(active, namespaced)
+
+
+def _apply_position_specific_number_learning(
+    result: Any,
+    learned: dict[str, float] | None,
+) -> Any:
+    probabilities_by_strategy = position_strategy_probabilities(
+        int(result.position),
+        result.strategy_probabilities,
+    )
+    weights = position_strategy_weights(
+        int(result.position),
+        result.strategy_probabilities,
+        learned,
+    )
+    probabilities = blend_strategy_probabilities(
+        probabilities_by_strategy,
+        weights,
+    )
+    ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
+    return replace(
+        result,
+        probabilities=probabilities,
+        top6=[index + 1 for index in ranked[:6]],
+        top7=[index + 1 for index in ranked[:7]],
+        strategy_probabilities=probabilities_by_strategy,
+        strategy_weights=weights,
+    )
+
+
 def _analyze_ensemble_with_continual_learning(
     history: list[Any],
     target_period: str,
@@ -186,6 +251,7 @@ def _analyze_ensemble_with_continual_learning(
     finally:
         _POSITION_PROFILES.reset(token)
 
+    result = _apply_position_specific_number_learning(result, strategy_weights)
     selected = profiles[int(result.position)]
     passed_count = sum(_profile_passed(profile) for profile in profiles)
     selected_passed = _profile_passed(selected)
@@ -196,6 +262,14 @@ def _analyze_ensemble_with_continual_learning(
     )[:3]
     leader_text = "、".join(
         f"{name} {weight * 100:.1f}%" for name, weight in leaders
+    )
+    reviewer_leaders = sorted(
+        result.strategy_weights.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )[:3]
+    reviewer_text = "、".join(
+        f"{name} {weight * 100:.1f}%" for name, weight in reviewer_leaders
     )
     evidence_text = (
         "通过外样本证据门槛"
@@ -208,12 +282,13 @@ def _analyze_ensemble_with_continual_learning(
         f"{selected.walk_forward_samples} 期，六码命中率约 {selected.walk_forward_hit_rate * 100:.1f}%，"
         f"相对随机基准超额 {selected.excess_hit_rate * 100:+.1f} 个百分点，"
         f"最长连续未中 {selected.max_miss_streak} 期，{evidence_text}。"
-        f"该名次当前主要学习策略：{leader_text}。AI未读取本地模型最终六码。"
-    )[:1050]
+        f"该名次当前主要结构策略：{leader_text}；AI号码评审按名次独立学习：{reviewer_text}。"
+        "AI未读取本地模型最终六码。"
+    )[:1150]
     risk_note = (
-        f"{result.risk_note} AI名次评分现由真实前向成绩校准；"
+        f"{result.risk_note} AI名次评分现由真实前向成绩校准，号码评审权重按具体名次分别结算；"
         "持续学习代表随已结算样本更新和淘汰无效策略，不代表准确率能够单调上升。"
-    )[:620]
+    )[:680]
     return replace(result, analysis=analysis, risk_note=risk_note)
 
 
