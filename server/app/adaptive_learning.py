@@ -254,3 +254,71 @@ def update_strategy_weights(
         for name in names
     }
     return _bounded_normalize(updated)
+
+
+MULTISCALE_WINDOWS = ((100, 0.50), (300, 0.30), (None, 0.20))
+
+
+def multiscale_strategy_weights(
+    events: Iterable[Mapping[str, object]],
+    fallback: Mapping[str, float] | None = None,
+) -> dict[str, float]:
+    """Build stable online weights from recent 100, recent 300 and all history.
+
+    Each window is reliability-shrunk until enough settled forecasts exist, so a
+    new installation with only a few dozen samples cannot violently overfit.
+    """
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for raw in events:
+        strategy = str(raw.get("strategy") or "").strip()
+        if not strategy:
+            continue
+        try:
+            log_loss = float(raw.get("log_loss"))
+            brier = float(raw.get("brier_score"))
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(log_loss) or not math.isfinite(brier):
+            continue
+        grouped.setdefault(strategy, []).append(
+            {
+                "log_loss": log_loss,
+                "brier_score": brier,
+                "top6_hit": bool(raw.get("top6_hit")),
+                "settled_at": int(raw.get("settled_at") or 0),
+            }
+        )
+
+    names = tuple(dict.fromkeys([*(fallback or {}).keys(), *grouped.keys()]))
+    if not names:
+        return {}
+    prior = normalize_strategy_weights(fallback, names)
+    if not grouped:
+        return prior
+
+    scores: dict[str, float] = {}
+    for strategy in names:
+        rows = sorted(
+            grouped.get(strategy, []),
+            key=lambda item: int(item["settled_at"]),
+            reverse=True,
+        )
+        evidence_log_score = 0.0
+        for limit, mix in MULTISCALE_WINDOWS:
+            subset = rows if limit is None else rows[:limit]
+            if not subset:
+                continue
+            combined_losses = [
+                0.8 * float(item["log_loss"])
+                + 0.2 * (float(item["brier_score"]) / 0.9) * UNIFORM_LOG_LOSS
+                for item in subset
+            ]
+            mean_loss = sum(combined_losses) / len(combined_losses)
+            hit_rate = sum(bool(item["top6_hit"]) for item in subset) / len(subset)
+            loss_advantage = max(-1.5, min(1.5, UNIFORM_LOG_LOSS - mean_loss))
+            hit_advantage = max(-0.6, min(0.6, (hit_rate - 0.60) * 1.5))
+            target = 500 if limit is None else limit
+            reliability = min(1.0, len(subset) / float(target))
+            evidence_log_score += mix * reliability * (loss_advantage + 0.25 * hit_advantage)
+        scores[strategy] = max(1e-12, prior[strategy]) * math.exp(evidence_log_score)
+    return _bounded_normalize(scores)

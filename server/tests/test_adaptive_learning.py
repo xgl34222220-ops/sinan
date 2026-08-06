@@ -5,6 +5,7 @@ import unittest
 
 from app.adaptive_learning import (
     blend_strategy_probabilities,
+    multiscale_strategy_weights,
     prediction_loss,
     strategy_components,
     update_strategy_weights,
@@ -97,6 +98,30 @@ class AdaptiveLearningTests(unittest.TestCase):
             summary = database.strategy_learning_summary("xyft", "native")
             self.assertEqual({item["samples"] for item in summary}, {1})
             self.assertEqual(sum(int(item["top6_hits"]) for item in summary), 1)
+
+    def test_multiscale_weights_favor_recent_recovery_without_35_sample_overfit(self) -> None:
+        events: list[dict[str, object]] = []
+        now = 10_000
+        for index in range(400):
+            recent = index < 100
+            for strategy in ("recent_winner", "old_winner"):
+                winner = (strategy == "recent_winner") if recent else (strategy == "old_winner")
+                events.append(
+                    {
+                        "strategy": strategy,
+                        "log_loss": 1.45 if winner else 3.15,
+                        "brier_score": 0.62 if winner else 1.08,
+                        "top6_hit": winner,
+                        "settled_at": now - index,
+                    }
+                )
+        weights = multiscale_strategy_weights(events)
+        self.assertGreater(weights["recent_winner"], weights["old_winner"])
+        self.assertAlmostEqual(sum(weights.values()), 1.0, places=8)
+
+        young = [item for item in events if int(item["settled_at"]) > now - 35]
+        young_weights = multiscale_strategy_weights(young)
+        self.assertLess(max(young_weights.values()), 0.65)
 
     def test_blend_follows_updated_weights(self) -> None:
         left = [0.7] + [0.3 / 9] * 9

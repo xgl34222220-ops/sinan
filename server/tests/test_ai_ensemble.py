@@ -213,7 +213,7 @@ class AiEnsembleTests(unittest.TestCase):
 
     @patch("app.ai_ensemble._number_review")
     @patch("app.ai_ensemble._position_review")
-    def test_final_prediction_blends_ai_with_forward_validation(
+    def test_final_prediction_is_independent_from_native_math(
         self,
         position_review: object,
         number_review: object,
@@ -239,8 +239,14 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertEqual(result.position, 3)
         self.assertEqual(result.top6[0], 8)
         self.assertTrue(result.collapse_reviewed)
-        self.assertIn("AI多轮", result.risk_note)
-        self.assertIn("不再机械锁死", result.analysis)
+        self.assertTrue(result.strategy_probabilities)
+        self.assertTrue(all(name.startswith("ai_") for name in result.strategy_probabilities))
+        self.assertFalse(
+            {"long_frequency", "recent_frequency", "markov_transition"}
+            & set(result.strategy_probabilities)
+        )
+        self.assertIn("独立AI", result.risk_note)
+        self.assertIn("不再混入本地", result.analysis)
 
     @patch("app.ai_ensemble._position_review", side_effect=RuntimeError("provider down"))
     def test_provider_failure_does_not_forge_a_statistical_ai_prediction(
