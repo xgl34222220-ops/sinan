@@ -5,9 +5,19 @@ INSTALL_DIR="/opt/tianji"
 REPO_URL="https://github.com/xgl34222220-ops/tianji.git"
 DOMAIN="tianji-xgl.duckdns.org"
 LOCK_FILE="/run/lock/tianji-update.lock"
+STATUS_FILE="$INSTALL_DIR/data/auto-update-status.json"
 
 log() { printf '\033[1;34m[天机]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
+write_status() {
+  local status="$1" message="$2" from_commit="${3:-}" to_commit="${4:-}"
+  local temp_file="${STATUS_FILE}.tmp"
+  mkdir -p "$(dirname "$STATUS_FILE")"
+  printf '{"status":"%s","message":"%s","from_commit":"%s","to_commit":"%s","updated_at_epoch_ms":%s}\n' \
+    "$status" "$message" "$from_commit" "$to_commit" "$(date +%s%3N)" >"$temp_file"
+  chmod 644 "$temp_file"
+  mv -f "$temp_file" "$STATUS_FILE"
+}
 
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "请使用 root 用户运行"
 command -v git >/dev/null 2>&1 || fail "服务器没有安装 git"
@@ -18,7 +28,9 @@ mkdir -p "$(dirname "$LOCK_FILE")"
 exec 9>"$LOCK_FILE"
 flock -w 300 9 || fail "另一个更新任务仍在运行，请稍后重试"
 
+old_commit=""
 if [[ -d "$INSTALL_DIR/.git" ]]; then
+  old_commit="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
   log "更新天机代码"
   git -C "$INSTALL_DIR" fetch origin main
   git -C "$INSTALL_DIR" reset --hard origin/main
@@ -26,11 +38,13 @@ else
   log "获取天机代码"
   git clone --depth 1 --branch main "$REPO_URL" "$INSTALL_DIR"
 fi
+new_commit="$(git -C "$INSTALL_DIR" rev-parse HEAD)"
 
 ENV_FILE="$INSTALL_DIR/.env"
 [[ -f "$ENV_FILE" ]] || fail "未找到 $ENV_FILE，请先执行完整安装脚本"
 DOMAIN="$(sed -n 's/^TIANJI_DOMAIN=//p' "$ENV_FILE" | tail -n1)"
 DOMAIN="${DOMAIN:-tianji-xgl.duckdns.org}"
+write_status "updating" "正在执行手动更新并等待健康检查" "$old_commit" "$new_commit"
 
 existing_password="$(sed -n 's/^TIANJI_ADMIN_PASSWORD=//p' "$ENV_FILE" | tail -n1)"
 if [[ -z "$existing_password" ]]; then
@@ -74,6 +88,7 @@ for _ in $(seq 1 45); do
 done
 
 if [[ "$healthy" == 1 ]]; then
+  write_status "updated" "手动更新已完成并通过健康检查" "$old_commit" "$new_commit"
   log "升级成功"
   cat /tmp/tianji-health.json
   printf '\n\n公开页面：\033[1;32mhttps://%s\033[0m\n' "$DOMAIN"
@@ -84,6 +99,7 @@ if [[ "$healthy" == 1 ]]; then
   fi
   "$INSTALL_DIR/deploy/install-auto-update.sh"
 else
+  write_status "check_failed" "手动更新后的健康检查未通过，请检查容器日志" "$old_commit" "$new_commit"
   log "容器已启动，但健康检查尚未通过"
   docker compose ps
   docker compose logs --tail=100 api caddy || true
