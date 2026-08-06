@@ -21,6 +21,7 @@ _POSITION_REVIEWERS = 3
 _NUMBER_REVIEWERS = 2
 _MAX_ATTEMPTS_PER_REVIEWER = 2
 _RECENT_COPY_WINDOW = 7
+_HOLDOUT_REVIEW_WEIGHT = 0.70
 
 
 @dataclass(frozen=True)
@@ -142,8 +143,6 @@ def _call_json(
             "response_format": {"type": "json_object"},
             "max_tokens": max_tokens,
         }
-        # Server prediction uses the model's normal reasoning mode first. Only the retry disables
-        # thinking when the provider returns no final JSON body.
 
     last_error: Exception | None = None
     for attempt in range(_MAX_ATTEMPTS_PER_REVIEWER):
@@ -156,7 +155,10 @@ def _call_json(
         try:
             attempt_timeout = timeout_seconds if attempt == 0 else min(30, timeout_seconds)
             with httpx.Client(
-                timeout=httpx.Timeout(attempt_timeout, connect=min(12.0, attempt_timeout)),
+                timeout=httpx.Timeout(
+                    attempt_timeout,
+                    connect=min(12.0, attempt_timeout),
+                ),
                 follow_redirects=True,
             ) as client:
                 response = client.post(
@@ -192,6 +194,19 @@ def _canonical_history(history: list[DrawModel]) -> list[DrawModel]:
         if len(draw.numbers) == 10 and len(set(draw.numbers)) == 10
     ]
     return verified[-120:]
+
+
+def _history_scope(
+    history: list[DrawModel],
+    *,
+    mask_recent: int = 0,
+) -> list[DrawModel]:
+    verified = _canonical_history(history)
+    if mask_recent <= 0:
+        return verified
+    if len(verified) - mask_recent < 30:
+        raise ValueError("隐藏近期样本后不足30期，无法进行独立复核")
+    return verified[:-mask_recent]
 
 
 def _counts(values: list[int], window: int) -> list[int]:
@@ -304,7 +319,30 @@ def _anonymized_position_history(
     ]
 
 
-def _parse_label_scores(result: dict[str, Any], mapping: dict[str, int]) -> _ReviewerResult:
+def _anonymized_number_series(
+    history: list[DrawModel],
+    position: int,
+    mapping: dict[str, int],
+    *,
+    mask_recent: int = 0,
+) -> list[dict[str, str]]:
+    scoped = _history_scope(history, mask_recent=mask_recent)
+    label_by_number = {
+        actual_index + 1: label for label, actual_index in mapping.items()
+    }
+    return [
+        {
+            "period": draw.period,
+            "candidate_id": label_by_number[draw.numbers[position]],
+        }
+        for draw in scoped
+    ]
+
+
+def _parse_label_scores(
+    result: dict[str, Any],
+    mapping: dict[str, int],
+) -> _ReviewerResult:
     raw_scores = result.get("scores")
     if not isinstance(raw_scores, dict):
         raise ValueError("AI 必须返回10个匿名候选评分")
@@ -376,12 +414,8 @@ def _number_evidence(
     *,
     mask_recent: int = 0,
 ) -> list[dict[str, Any]]:
-    verified = _canonical_history(history)
-    if mask_recent > 0:
-        if len(verified) - mask_recent < 30:
-            raise ValueError("隐藏近期样本后不足30期，无法进行独立复核")
-        verified = verified[:-mask_recent]
-    values = [draw.numbers[position] for draw in verified]
+    scoped = _history_scope(history, mask_recent=mask_recent)
+    values = [draw.numbers[position] for draw in scoped]
     count12 = _counts(values, 12)
     count30 = _counts(values, 30)
     count60 = _counts(values, 60)
@@ -423,12 +457,11 @@ def _number_evidence(
                 - count60[number - 1] / long_size,
                 6,
             ),
-            "transition_rate": round(
-                successors[number - 1] / transition_samples,
-                6,
-            )
-            if transition_samples
-            else 0.0,
+            "transition_rate": (
+                round(successors[number - 1] / transition_samples, 6)
+                if transition_samples
+                else 0.0
+            ),
         }
         for number in range(1, 11)
     ]
@@ -456,12 +489,23 @@ def _number_review(
         phase=phase,
         reviewer=reviewer,
     )
+    anonymous_history = _anonymized_number_series(
+        history,
+        position,
+        mapping,
+        mask_recent=mask_recent,
+    )
     prompt = (
-        "你是天机服务端的独立号码排序评审。候选A至J对应号码1至10，但映射已随机匿名。"
-        "你只能看到每个匿名候选的聚合统计证据，不会看到真实号码、最近开奖顺序或可反推出映射的原始序列。"
-        "请独立比较短中长期频率、遗漏、转移样本和趋势差异，对全部10个候选给出0以上相对评分。"
-        "不得把最近出现过的号码集合直接当作答案，不得偏向列表第一项，不得编造期号、次数或遗漏。"
-        "每期必须给出完整排序。只返回紧凑JSON："
+        "你是天机服务端的独立号码排序评审。候选A至J对应号码1至10，但每轮映射都会随机改变并由服务端保密。"
+        "你会看到该名次完整的匿名历史时间序列，以及使用同一匿名映射生成的短中长期频率、遗漏、转移和趋势证据。"
+        "请分析真实的先后顺序、重复间隔、冷热切换、状态转移与多窗口稳定性，而不是只抄最近出现过的候选集合。"
+        "任何输入都不会暴露A至J对应的真实号码；不得猜测真实号码身份，不得偏向列表第一项，不得编造统计。"
+        + (
+            "本轮为近期集合复刻复核，最近7期已作为留出窗口隐藏；请仅依据更早的完整匿名时序独立评分。"
+            if mask_recent
+            else "本轮使用开奖前可见的完整匿名历史时序进行首次独立评分。"
+        )
+        + "每期必须给出完整排序。只返回紧凑JSON："
         "{\"scores\":{\"A\":数值,...,\"J\":数值},"
         "\"selected\":\"A至J之一\",\"analysis\":\"不超过100字简体中文\"}。"
     )
@@ -473,12 +517,14 @@ def _number_review(
             "trained_through_period": trained_through_period,
             "selected_position": position + 1,
             "reviewer": reviewer + 1,
+            "history_order": "oldest_to_newest",
             "masked_recent_draws": mask_recent,
-            "evidence_mode": "anonymous_aggregates_only",
+            "evidence_mode": "anonymous_full_sequence_plus_aggregates",
+            "anonymous_history": anonymous_history,
             "candidates": candidates,
         },
-        max_tokens=1000,
-        timeout_seconds=45,
+        max_tokens=1400,
+        timeout_seconds=50,
     )
     return _parse_label_scores(result, mapping)
 
@@ -501,7 +547,26 @@ def _run_parallel(count: int, task: Any) -> list[_ReviewerResult]:
 def _aggregate(results: list[_ReviewerResult]) -> list[float]:
     size = len(results[0].scores)
     return _normalize(
-        [sum(result.scores[index] for result in results) / len(results) for index in range(size)]
+        [
+            sum(result.scores[index] for result in results) / len(results)
+            for index in range(size)
+        ]
+    )
+
+
+def _blend_probabilities(
+    primary: list[float],
+    holdout: list[float],
+    *,
+    holdout_weight: float = _HOLDOUT_REVIEW_WEIGHT,
+) -> list[float]:
+    safe_weight = max(0.0, min(1.0, holdout_weight))
+    return _normalize(
+        [
+            primary[index] * (1.0 - safe_weight)
+            + holdout[index] * safe_weight
+            for index in range(len(primary))
+        ]
     )
 
 
@@ -531,7 +596,7 @@ def _matches_recent_window(
 ) -> bool:
     recent = _recent_window_set(history, position, window)
     predicted = {index + 1 for index in ranked[:window]}
-    return len(recent) == window and predicted == recent
+    return len(recent) >= window - 1 and recent.issubset(predicted)
 
 
 def analyze_ensemble(
@@ -565,7 +630,10 @@ def analyze_ensemble(
     position_scores = _aggregate(position_results)
     selected_position = max(range(10), key=position_scores.__getitem__)
 
-    collapse_reviewed = needs_collapse_review(recent_positions or [], selected_position)
+    collapse_reviewed = needs_collapse_review(
+        recent_positions or [],
+        selected_position,
+    )
     if collapse_reviewed:
         challenge_results = _run_parallel(
             2,
@@ -595,8 +663,8 @@ def analyze_ensemble(
             mask_recent=0,
         ),
     )
-    final_number_results = number_results
-    probabilities = _aggregate(final_number_results)
+    primary_probabilities = _aggregate(number_results)
+    probabilities = primary_probabilities
     ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
 
     recent_copy_reviewed = _matches_recent_window(
@@ -604,8 +672,9 @@ def analyze_ensemble(
         verified,
         selected_position,
     )
+    holdout_results: list[_ReviewerResult] = []
     if recent_copy_reviewed:
-        masked_results = _run_parallel(
+        holdout_results = _run_parallel(
             _NUMBER_REVIEWERS,
             lambda reviewer: _number_review(
                 config,
@@ -617,9 +686,12 @@ def analyze_ensemble(
                 mask_recent=_RECENT_COPY_WINDOW,
             ),
         )
-        number_results.extend(masked_results)
-        final_number_results = masked_results
-        probabilities = _aggregate(final_number_results)
+        number_results.extend(holdout_results)
+        holdout_probabilities = _aggregate(holdout_results)
+        probabilities = _blend_probabilities(
+            primary_probabilities,
+            holdout_probabilities,
+        )
         ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
 
     position_margin = sorted(position_scores, reverse=True)
@@ -632,24 +704,27 @@ def analyze_ensemble(
         (item.analysis for item in position_results if item.analysis),
         "",
     )
+    number_comment_source = holdout_results or number_results
     number_comment = next(
-        (item.analysis for item in final_number_results if item.analysis),
+        (item.analysis for item in number_comment_source if item.analysis),
         "",
     )
     analysis = (
         f"{len(position_results)}轮匿名名次评审选择第{selected_position + 1}名，"
         f"前两名次汇总差约{margin:.2f}个百分点；"
-        f"{len(number_results)}轮匿名聚合号码评审完成独立排序。"
+        f"{len(number_results)}轮完整匿名时序号码评审完成独立排序。"
         + (f" {position_comment}" if position_comment else "")
         + (f" {number_comment}" if number_comment else "")
-    )[:360]
+    )[:380]
     if collapse_reviewed:
-        analysis = (analysis + " 已触发连续同名次反偏置复核，未人为强制轮换。")[:420]
+        analysis = (
+            analysis + " 已触发连续同名次反偏置复核，未人为强制轮换。"
+        )[:440]
     if recent_copy_reviewed:
         analysis = (
             analysis
-            + " 初次Top 7与该名次最近7期号码集合完全重合，已隐藏最近7期重新独立评审并以复核结果为准。"
-        )[:500]
+            + " 初次Top 7与最近7期候选集合高度重合，已增加隐藏最近7期的独立留出评审；最终结果由完整历史评审与留出评审加权汇总，并非程序换号。"
+        )[:560]
 
     return AiEnsembleResult(
         position=selected_position,
@@ -658,8 +733,9 @@ def analyze_ensemble(
         top7=[index + 1 for index in ranked[:7]],
         analysis=analysis,
         risk_note=(
-            "这是开奖前冻结的AI多轮相对排序。号码阶段只使用匿名聚合证据，不向模型暴露真实号码映射或最近开奖顺序；"
-            "检测到近期集合复刻时会隐藏最近7期重新评审。随机开奖仍可能使任何分析失效，只能用于前向验证。"
+            "这是开奖前冻结的AI多轮相对排序。号码阶段保留完整历史先后顺序，但每轮都将号码随机映射为A至J，"
+            "模型只能看到匿名时序与同映射聚合证据；检测到近期集合复刻时会增加留出窗口复核。"
+            "随机开奖仍可能使任何分析失效，只能用于前向验证。"
         ),
         latency_ms=int((time.monotonic() - started) * 1000),
         position_reviewers=len(position_results),
