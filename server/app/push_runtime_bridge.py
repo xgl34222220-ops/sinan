@@ -10,18 +10,24 @@ from . import push_alerts, push_runtime_v2
 _INSTALLED = False
 
 
-def _dynamic_settings(call: Callable[..., Any]) -> Callable[..., Any]:
-    """Keep v2 runtime aligned with the active push settings object.
+class _SettingsOverlay:
+    def __init__(self, active: Any, fallback: Any) -> None:
+        self.active = active
+        self.fallback = fallback
 
-    Production uses the same immutable Settings instance. Tests and future runtime
-    reloads may replace ``push_alerts.settings``; the bridge deliberately resolves
-    that object at call time instead of retaining a stale import reference.
-    """
+    def __getattr__(self, name: str) -> Any:
+        if hasattr(self.active, name):
+            return getattr(self.active, name)
+        return getattr(self.fallback, name)
+
+
+def _dynamic_settings(call: Callable[..., Any]) -> Callable[..., Any]:
+    """Resolve replaced settings at call time while retaining v2 defaults."""
 
     @wraps(call)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
         previous = push_runtime_v2.settings
-        push_runtime_v2.settings = push_alerts.settings
+        push_runtime_v2.settings = _SettingsOverlay(push_alerts.settings, previous)
         try:
             return call(*args, **kwargs)
         finally:
