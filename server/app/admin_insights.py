@@ -603,6 +603,7 @@ def operations_overview() -> dict[str, Any]:
         },
         "integrity": _data_integrity(),
         "miss_watch": prediction_miss_watch(threshold=3),
+        "ai_cache": database.ai_usage_summary(hours=24),
         "timeline": _timeline(),
         "generated_at_epoch_ms": int(
             datetime.now(tz=timezone.utc).timestamp() * 1000

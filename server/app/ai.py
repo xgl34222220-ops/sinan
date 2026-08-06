@@ -22,6 +22,13 @@ class AiPrediction:
     risk_note: str
     model: str
     latency_ms: int
+    request_count: int = 0
+    prompt_tokens: int = 0
+    prompt_cache_hit_tokens: int = 0
+    prompt_cache_miss_tokens: int = 0
+    completion_tokens: int = 0
+    reasoning_tokens: int = 0
+    cache_hit_rate: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -270,4 +277,11 @@ def analyze(
         risk_note=result.risk_note,
         model=active.model,
         latency_ms=result.latency_ms,
+        request_count=result.request_count,
+        prompt_tokens=result.prompt_tokens,
+        prompt_cache_hit_tokens=result.prompt_cache_hit_tokens,
+        prompt_cache_miss_tokens=result.prompt_cache_miss_tokens,
+        completion_tokens=result.completion_tokens,
+        reasoning_tokens=result.reasoning_tokens,
+        cache_hit_rate=result.cache_hit_rate,
     )

@@ -122,6 +122,33 @@ def _run_ai_prediction(
             ai_config,
             recent_positions=recent_ai_positions,
         )
+        database.save_ai_usage(
+            lottery=spec.key,
+            target_period=target_period,
+            model=ai_config.model,
+            request_count=result.request_count,
+            prompt_tokens=result.prompt_tokens,
+            prompt_cache_hit_tokens=result.prompt_cache_hit_tokens,
+            prompt_cache_miss_tokens=result.prompt_cache_miss_tokens,
+            completion_tokens=result.completion_tokens,
+            reasoning_tokens=result.reasoning_tokens,
+            cache_hit_rate=result.cache_hit_rate,
+        )
+        _state(
+            f"ai_usage:{spec.key}",
+            {
+                "target_period": target_period,
+                "model": ai_config.model,
+                "request_count": result.request_count,
+                "prompt_tokens": result.prompt_tokens,
+                "prompt_cache_hit_tokens": result.prompt_cache_hit_tokens,
+                "prompt_cache_miss_tokens": result.prompt_cache_miss_tokens,
+                "completion_tokens": result.completion_tokens,
+                "reasoning_tokens": result.reasoning_tokens,
+                "cache_hit_rate": result.cache_hit_rate,
+                "updated_at_epoch_ms": int(time.time() * 1000),
+            },
+        )
         if not _target_is_open(spec, trained_through_period, target_period):
             message = "AI 完成时目标期已经封盘，结果未写入前向档案"
             database.finish_forecast_job(

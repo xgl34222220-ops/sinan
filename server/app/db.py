@@ -87,6 +87,25 @@ class Database:
                 CREATE INDEX IF NOT EXISTS forecast_jobs_updated
                     ON forecast_jobs(updated_at DESC);
 
+      CREATE TABLE IF NOT EXISTS ai_usage_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          lottery TEXT NOT NULL,
+          target_period TEXT NOT NULL,
+          model TEXT NOT NULL,
+          request_count INTEGER NOT NULL DEFAULT 0,
+          prompt_tokens INTEGER NOT NULL DEFAULT 0,
+          prompt_cache_hit_tokens INTEGER NOT NULL DEFAULT 0,
+          prompt_cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
+          completion_tokens INTEGER NOT NULL DEFAULT 0,
+          reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_hit_rate REAL NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          UNIQUE(lottery, target_period, model)
+      );
+      CREATE INDEX IF NOT EXISTS ai_usage_created
+          ON ai_usage_events(created_at DESC);
+
+      
                 CREATE TABLE IF NOT EXISTS service_state (
                     state_key TEXT PRIMARY KEY,
                     state_value TEXT NOT NULL,
@@ -433,6 +452,88 @@ class Database:
                 (lottery, row["target_period"]),
             ).fetchall()
         return [self._row_to_forecast(item) for item in rows]
+
+    def save_ai_usage(
+        self,
+        *,
+        lottery: str,
+        target_period: str,
+        model: str,
+        request_count: int,
+        prompt_tokens: int,
+        prompt_cache_hit_tokens: int,
+        prompt_cache_miss_tokens: int,
+        completion_tokens: int,
+        reasoning_tokens: int,
+        cache_hit_rate: float,
+    ) -> None:
+        now = int(time.time() * 1000)
+        with self.connection() as db:
+            db.execute(
+                """
+                INSERT INTO ai_usage_events(
+                    lottery, target_period, model, request_count,
+                    prompt_tokens, prompt_cache_hit_tokens,
+                    prompt_cache_miss_tokens, completion_tokens,
+                    reasoning_tokens, cache_hit_rate, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(lottery, target_period, model) DO UPDATE SET
+                    request_count = excluded.request_count,
+                    prompt_tokens = excluded.prompt_tokens,
+                    prompt_cache_hit_tokens = excluded.prompt_cache_hit_tokens,
+                    prompt_cache_miss_tokens = excluded.prompt_cache_miss_tokens,
+                    completion_tokens = excluded.completion_tokens,
+                    reasoning_tokens = excluded.reasoning_tokens,
+                    cache_hit_rate = excluded.cache_hit_rate,
+                    created_at = excluded.created_at
+                """,
+                (
+                    lottery,
+                    target_period,
+                    model,
+                    max(0, int(request_count)),
+                    max(0, int(prompt_tokens)),
+                    max(0, int(prompt_cache_hit_tokens)),
+                    max(0, int(prompt_cache_miss_tokens)),
+                    max(0, int(completion_tokens)),
+                    max(0, int(reasoning_tokens)),
+                    max(0.0, min(1.0, float(cache_hit_rate))),
+                    now,
+                ),
+            )
+
+    def ai_usage_summary(self, hours: int = 24) -> dict[str, Any]:
+        since = int(time.time() * 1000) - max(1, int(hours)) * 3_600_000
+        with self.connection() as db:
+            row = db.execute(
+                """
+                SELECT
+                    COUNT(*) AS forecasts,
+                    COALESCE(SUM(request_count), 0) AS request_count,
+                    COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+                    COALESCE(SUM(prompt_cache_hit_tokens), 0) AS cache_hit,
+                    COALESCE(SUM(prompt_cache_miss_tokens), 0) AS cache_miss,
+                    COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+                    COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens
+                FROM ai_usage_events
+                WHERE created_at >= ?
+                """,
+                (since,),
+            ).fetchone()
+        hit = int(row["cache_hit"])
+        miss = int(row["cache_miss"])
+        cache_total = hit + miss
+        return {
+            "hours": max(1, int(hours)),
+            "forecasts": int(row["forecasts"]),
+            "request_count": int(row["request_count"]),
+            "prompt_tokens": int(row["prompt_tokens"]),
+            "prompt_cache_hit_tokens": hit,
+            "prompt_cache_miss_tokens": miss,
+            "completion_tokens": int(row["completion_tokens"]),
+            "reasoning_tokens": int(row["reasoning_tokens"]),
+            "cache_hit_rate": round(hit / cache_total, 6) if cache_total else 0.0,
+        }
 
     def set_state(self, key: str, value: str) -> None:
         with self.connection() as db:
