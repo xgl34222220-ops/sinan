@@ -1,0 +1,108 @@
+name: Tianji v6.1.1 Repository Cleanup
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/post-v611-cleanup.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tianji-v611-repository-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep main and latest three stable releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api --paginate "repos/${REPOSITORY}/releases?per_page=100" > /tmp/releases.json
+          jq -r '
+            map(select(.draft == false and .prerelease == false))
+            | sort_by(.published_at // .created_at)
+            | reverse
+            | .[:3]
+            | .[].tag_name
+          ' /tmp/releases.json > /tmp/keep-tags.txt
+
+          keep_count="$(grep -cve '^$' /tmp/keep-tags.txt || true)"
+          if [ "$keep_count" -ne 3 ]; then
+            echo "Expected exactly three stable releases, found ${keep_count}; refusing cleanup."
+            exit 1
+          fi
+
+          printf 'Keeping releases:\n'
+          cat /tmp/keep-tags.txt
+
+          jq -r '.[] | [.id, .tag_name] | @tsv' /tmp/releases.json |
+          while IFS=$'\t' read -r release_id tag_name; do
+            if grep -Fxq "$tag_name" /tmp/keep-tags.txt; then
+              echo "KEEP release ${tag_name}"
+            else
+              echo "DELETE release ${tag_name}"
+              gh api --method DELETE "repos/${REPOSITORY}/releases/${release_id}"
+            fi
+          done
+
+          gh api --paginate "repos/${REPOSITORY}/git/matching-refs/tags/" --jq '.[].ref' |
+          sed 's#^refs/tags/##' |
+          while IFS= read -r tag_name; do
+            [ -n "$tag_name" ] || continue
+            if grep -Fxq "$tag_name" /tmp/keep-tags.txt; then
+              echo "KEEP tag ${tag_name}"
+            else
+              echo "DELETE tag ${tag_name}"
+              gh api --method DELETE "repos/${REPOSITORY}/git/refs/tags/${tag_name}"
+            fi
+          done
+
+          gh api --paginate "repos/${REPOSITORY}/branches?per_page=100" --jq '.[].name' |
+          while IFS= read -r branch_name; do
+            [ -n "$branch_name" ] || continue
+            if [ "$branch_name" = "main" ]; then
+              echo "KEEP branch main"
+            else
+              echo "DELETE branch ${branch_name}"
+              gh api --method DELETE "repos/${REPOSITORY}/git/refs/heads/${branch_name}"
+            fi
+          done
+
+          remaining_branches="$(gh api --paginate "repos/${REPOSITORY}/branches?per_page=100" --jq '.[].name')"
+          remaining_releases="$(gh api --paginate "repos/${REPOSITORY}/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')"
+          remaining_tags="$(gh api --paginate "repos/${REPOSITORY}/git/matching-refs/tags/" --jq '.[].ref' | sed 's#^refs/tags/##')"
+
+          test "$remaining_branches" = "main"
+          test "$(printf '%s\n' "$remaining_releases" | grep -cve '^$')" -eq 3
+          test "$(printf '%s\n' "$remaining_tags" | grep -cve '^$')" -eq 3
+          for tag in v6.1.1 v6.1.0 v6.0.0; do
+            grep -Fxq "$tag" <<< "$remaining_releases"
+            grep -Fxq "$tag" <<< "$remaining_tags"
+          done
+
+          {
+            echo '## Cleanup complete'
+            echo
+            echo '### Branches'
+            echo '```'
+            printf '%s\n' "$remaining_branches"
+            echo '```'
+            echo '### Releases'
+            echo '```'
+            printf '%s\n' "$remaining_releases"
+            echo '```'
+            echo '### Tags'
+            echo '```'
+            printf '%s\n' "$remaining_tags"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
