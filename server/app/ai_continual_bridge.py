@@ -152,9 +152,9 @@ def position_strategy_probabilities(
     position: int,
     probabilities: dict[str, list[float]],
 ) -> dict[str, list[float]]:
-    prefix = f"position_{position + 1}:"
+    prefix = f"ai_position_{position + 1}:"
     return {
-        f"{prefix}{name}": values
+        f"{prefix}{name.removeprefix('ai_')}": values
         for name, values in probabilities.items()
     }
 
@@ -172,11 +172,13 @@ def position_strategy_weights(
         if name in supplied
     }
     if not active:
-        prefix = f"position_{position + 1}:"
+        prefix = f"ai_position_{position + 1}:"
         active = {
-            namespaced_name: float(supplied.get(namespaced_name.removeprefix(prefix), 0.0))
+            namespaced_name: float(
+                supplied.get("ai_" + namespaced_name.removeprefix(prefix), 0.0)
+            )
             for namespaced_name in namespaced
-            if namespaced_name.removeprefix(prefix) in supplied
+            if "ai_" + namespaced_name.removeprefix(prefix) in supplied
         }
     return normalize_strategy_weights(active, namespaced)
 
