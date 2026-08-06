@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -16,12 +18,13 @@ import androidx.compose.ui.graphics.Color
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 
 /**
- * Single system-inset owner for normal App pages.
- * Full-screen overlays such as chat and the alert center stay outside this container
- * and are responsible for IME handling only once.
+ * Single system-inset and bottom-navigation owner for normal App pages.
+ * Page lists only keep ordinary visual spacing instead of reserving a guessed
+ * 88–124 dp area for a navigation bar drawn on top of their content.
  */
 @Composable
 internal fun TianjiRootScaffold(
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
     val colors = LocalTianjiColors.current
@@ -41,12 +44,21 @@ internal fun TianjiRootScaffold(
         ) {
             TianjiBackdrop()
         }
-        Box(
+        Scaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing),
-            content = content,
-        )
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            bottomBar = bottomBar,
+        ) { scaffoldPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(scaffoldPadding),
+                content = content,
+            )
+        }
     }
 }
 

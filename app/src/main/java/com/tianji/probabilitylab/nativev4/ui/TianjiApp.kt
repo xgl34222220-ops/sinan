@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -143,7 +142,23 @@ fun TianjiApp() {
         Box(
             modifier = Modifier.fillMaxSize().background(colors.page),
         ) {
-            TianjiRootScaffold {
+            TianjiRootScaffold(
+                bottomBar = {
+                    Column {
+                        AiReviewProgressDock(
+                            state = state,
+                            modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
+                        )
+                        MainBottomBar(
+                            selected = destination,
+                            onSelected = { destination = it },
+                            onChat = { showChat = true },
+                            isAiRunning = state.isAiAnalyzing || chatRunning,
+                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 9.dp),
+                        )
+                    }
+                },
+            ) {
                 Column(Modifier.fillMaxSize()) {
                     CompactAppHeader(
                         destination = destination,
@@ -155,6 +170,12 @@ fun TianjiApp() {
                             showAlertCenter = true
                         },
                     )
+                    if (destination == MainDestination.HOME && state.report != null) {
+                        HomePredictionFocusStrip(
+                            state = state,
+                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 9.dp),
+                        )
+                    }
                     Box(Modifier.weight(1f)) {
                         AnimatedContent(
                             targetState = destination,
@@ -214,15 +235,6 @@ fun TianjiApp() {
                                 )
                             }
                         }
-
-                        MainBottomBar(
-                            selected = destination,
-                            onSelected = { destination = it },
-                            onChat = { showChat = true },
-                            isAiRunning = state.isAiAnalyzing || chatRunning,
-                            modifier = Modifier.align(Alignment.BottomCenter)
-                                .padding(start = 12.dp, end = 12.dp, bottom = 9.dp),
-                        )
                     }
                 }
             }
@@ -240,7 +252,7 @@ fun TianjiApp() {
             }
 
             if (showAlertCenter) {
-                PushAlertCenterScreen(
+                RefinedPushAlertCenterScreen(
                     alerts = pushAlerts,
                     preferences = pushPreferences,
                     status = pushStatus,

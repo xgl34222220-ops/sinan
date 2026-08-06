@@ -169,7 +169,7 @@ fun RefinedArchiveScreen(
 
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 10.dp, 12.dp, 88.dp),
+        contentPadding = PaddingValues(12.dp, 10.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         item { CompactLotterySwitcher(state.lottery, onSelectLottery) }

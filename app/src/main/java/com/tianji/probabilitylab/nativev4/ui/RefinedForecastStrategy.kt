@@ -76,7 +76,7 @@ fun RefinedForecastScreen(
 
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         item("lottery-switch") { CompactLotterySwitcher(state.lottery, onSelectLottery) }
@@ -572,7 +572,7 @@ fun StrategyAndEvidenceScreen(
     val report = state.report
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
+        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         item { CompactLotterySwitcher(state.lottery, onSelectLottery) }

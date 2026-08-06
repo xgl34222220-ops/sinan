@@ -13,13 +13,18 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .db import database
+from .deployment_status import deployment_status
 from .runtime_optimizations import cleanup_runtime_state, install as install_runtime_optimizations
 
 install_runtime_optimizations()
 
+from . import push_alerts  # noqa: E402
 from .main import app, require_admin_session  # noqa: E402
 from .models import LOTTERIES  # noqa: E402
+from .push_delivery_v3 import install as install_push_delivery  # noqa: E402
 from .service import SERVICE_VERSION  # noqa: E402
+
+install_push_delivery(push_alerts)
 
 
 logger = logging.getLogger("tianji.http")
@@ -281,6 +286,7 @@ def health_detail() -> dict[str, object]:
         "cycles": cycles,
         "backup": _decode_state("backup_status"),
         "maintenance": cleanup_runtime_state(),
+        "deployment": deployment_status(SERVICE_VERSION),
         "version": SERVICE_VERSION,
     }
 
