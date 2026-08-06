@@ -703,38 +703,53 @@ class Database:
         with self.connection() as db:
             pending = db.execute(
                 """
-                SELECT id, target_period, position_index, top6_json, top7_json,
-                       source, model
-                FROM forecasts
-                WHERE lottery = ? AND settled_at IS NULL
-                ORDER BY id ASC
+                SELECT f.id, f.target_period, f.position_index, f.top6_json,
+                       f.top7_json, f.source, f.model, f.actual_number, f.settled_at
+                FROM forecasts f
+                WHERE f.lottery = ?
+                  AND (
+                      f.settled_at IS NULL
+                      OR EXISTS (
+                          SELECT 1
+                          FROM forecast_strategy_predictions s
+                          WHERE s.forecast_id = f.id AND s.settled_at IS NULL
+                      )
+                  )
+                ORDER BY f.id ASC
                 """,
                 (lottery,),
             ).fetchall()
             settled = 0
             now = int(time.time() * 1000)
             for row in pending:
-                draw = db.execute(
-                    "SELECT numbers_json FROM draws WHERE lottery = ? AND period = ?",
-                    (lottery, row["target_period"]),
-                ).fetchone()
-                if draw is None:
-                    continue
-                numbers = json.loads(draw["numbers_json"])
-                position = int(row["position_index"])
-                if position < 0 or position >= len(numbers):
-                    continue
-                actual = int(numbers[position])
-                top6 = set(json.loads(row["top6_json"]))
-                top7 = set(json.loads(row["top7_json"]))
-                db.execute(
-                    """
-                    UPDATE forecasts SET
-                        actual_number = ?, top6_hit = ?, top7_hit = ?, settled_at = ?
-                    WHERE id = ?
-                    """,
-                    (actual, int(actual in top6), int(actual in top7), now, row["id"]),
-                )
+                actual_value = row["actual_number"]
+                if actual_value is None:
+                    draw = db.execute(
+                        "SELECT numbers_json FROM draws WHERE lottery = ? AND period = ?",
+                        (lottery, row["target_period"]),
+                    ).fetchone()
+                    if draw is None:
+                        continue
+                    numbers = json.loads(draw["numbers_json"])
+                    position = int(row["position_index"])
+                    if position < 0 or position >= len(numbers):
+                        continue
+                    actual = int(numbers[position])
+                    top6 = set(json.loads(row["top6_json"]))
+                    top7 = set(json.loads(row["top7_json"]))
+                    db.execute(
+                        """
+                        UPDATE forecasts SET
+                            actual_number = ?, top6_hit = ?, top7_hit = ?, settled_at = ?
+                        WHERE id = ?
+                        """,
+                        (actual, int(actual in top6), int(actual in top7), now, row["id"]),
+                    )
+                else:
+                    # 兼容旧 Worker 已经结算主预测、但没有结算策略快照的残缺记录。
+                    # 只要仍存在未结算快照，就用已冻结的 actual_number 补算损失和权重。
+                    actual = int(actual_value)
+
                 self._settle_strategy_learning(
                     db,
                     forecast_id=int(row["id"]),
