@@ -47,10 +47,10 @@ def _is_native_message(text: str) -> bool:
 
 def _event_visual(streak: int, threshold: int) -> tuple[str, str]:
     if streak <= 2:
-        return "⚠️ <b>连续两期不中</b>", "提前预警"
+        return "⚠️ <b>连续两期不中 · 提前预警</b>", "提前预警"
     if streak == threshold:
-        return "🚨 <b>连续三期不中</b>", "加强提醒"
-    return f"🔴 <b>连续 {streak} 期不中</b>", "升级提醒"
+        return "🚨🚨 <b>连续三期不中 · 加强提醒</b>", "加强提醒"
+    return f"🔴🔴 <b>连续 {streak} 期不中 · 升级提醒</b>", "升级提醒"
 
 
 def format_alert_message(alert: Any) -> str:
