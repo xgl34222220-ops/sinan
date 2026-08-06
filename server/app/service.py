@@ -15,7 +15,7 @@ from .predictor import predict
 from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
-SERVICE_VERSION = "1.7.1"
+SERVICE_VERSION = "1.7.2"
 SAFETY_WINDOW_MS = 5_000
 AI_RETRY_AFTER_MS = 30_000
 _AI_EXECUTOR = ThreadPoolExecutor(
@@ -381,7 +381,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
     _state(f"cycle:{lottery_key}", base_result)
 
     if target_candidate:
-        native_model = "tianji-native-cloud-v3"
+        native_model = "tianji-native-cloud-v4"
         if not database.has_forecast(lottery_key, next_period, "native", native_model):
             try:
                 with _record_stage(stages, "generate_native"):
@@ -491,6 +491,7 @@ def run_all_cycles(allow_ai: bool = True) -> dict[str, Any]:
 
     completed = int(time.time() * 1000)
     heartbeat = {
+        "service_version": SERVICE_VERSION,
         "started_at_epoch_ms": started,
         "completed_at_epoch_ms": completed,
         "duration_ms": max(0, completed - started),

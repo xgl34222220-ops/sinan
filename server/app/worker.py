@@ -19,7 +19,7 @@ install_runtime_optimizations()
 from . import push_alerts  # noqa: E402
 from .push_delivery_v3 import install as install_push_delivery  # noqa: E402
 from .runtime_config import load_ai_config  # noqa: E402
-from .service import run_all_cycles  # noqa: E402
+from .service import SERVICE_VERSION, run_all_cycles  # noqa: E402
 
 install_push_delivery(push_alerts)
 
@@ -83,6 +83,8 @@ def main() -> None:
     _log(
         logging.INFO,
         "worker_started",
+        service_version=SERVICE_VERSION,
+        runtime_revision=os.getenv("TIANJI_RUNTIME_REVISION", ""),
         poll_seconds=settings.poll_seconds,
         cycle_timeout_seconds=settings.worker_cycle_timeout_seconds,
         ai_model=active.model if active.complete else None,
