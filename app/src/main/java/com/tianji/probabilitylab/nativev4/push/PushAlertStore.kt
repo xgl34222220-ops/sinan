@@ -34,7 +34,7 @@ class PushAlertStore(context: Context) {
         set(value) { preferences.edit().putBoolean(KEY_INITIAL_SYNC, value).apply() }
     var lastServerAlertId: Long
         get() = preferences.getLong(KEY_LAST_SERVER_ALERT_ID, 0L)
-        set(value) {
+        private set(value) {
             preferences.edit().putLong(KEY_LAST_SERVER_ALERT_ID, value.coerceAtLeast(0L)).apply()
         }
 
@@ -65,10 +65,13 @@ class PushAlertStore(context: Context) {
             .take(MAX_ALERTS)
         _alerts.value = merged
         saveAlerts(merged)
+        return values.filter { it.id !in previous }
+    }
+
+    fun advanceServerCursor(values: List<PushAlert>) {
         values.maxOfOrNull(PushAlert::id)?.let { latest ->
             if (latest > lastServerAlertId) lastServerAlertId = latest
         }
-        return values.filter { it.id !in previous }
     }
 
     fun markRead(alertId: Long) {
