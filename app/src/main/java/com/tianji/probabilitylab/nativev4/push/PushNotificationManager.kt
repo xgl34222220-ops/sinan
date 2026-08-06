@@ -1,6 +1,7 @@
 package com.tianji.probabilitylab.nativev4.push
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -59,7 +60,9 @@ object PushNotificationManager {
         )
     }
 
+    @SuppressLint("MissingPermission")
     fun show(context: Context, alert: PushAlert) {
+        // Lint cannot follow the runtime permission guard through this helper.
         if (alert.isExpired || !canPostNotifications(context)) return
         val notificationId = alert.stableNotificationKey.hashCode()
         val intent = Intent(context, MainActivity::class.java).apply {
