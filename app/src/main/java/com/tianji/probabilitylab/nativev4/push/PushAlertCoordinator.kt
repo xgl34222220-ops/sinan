@@ -81,6 +81,7 @@ object PushAlertCoordinator {
         if (!initialized) return
         val alert = PushPayloadParser.fromRemoteData(data) ?: return
         val new = store.mergeAlerts(listOf(alert))
+        // FCM may arrive before an older API event. It must never advance the API cursor.
         if (new.isNotEmpty() && store.settings.value.accepts(alert) && !alert.isExpired) {
             PushNotificationManager.show(appContext, alert)
         }
@@ -88,8 +89,9 @@ object PushAlertCoordinator {
 
     private fun syncNow(notifyNew: Boolean): Boolean = runCatching {
         val connection = api.register(store, store.settings.value)
-        val values = api.fetchAlerts(store, afterId = store.lastServerAlertId)
+        val values = fetchIncrementalBatches()
         val newAlerts = store.mergeAlerts(values)
+        store.advanceServerCursor(values)
         if (notifyNew && store.initialSyncComplete) {
             newAlerts.filter(store.settings.value::accepts)
                 .filterNot(PushAlert::isExpired)
@@ -123,6 +125,23 @@ object PushAlertCoordinator {
         false
     }
 
+    private fun fetchIncrementalBatches(): List<PushAlert> {
+        val collected = mutableListOf<PushAlert>()
+        var cursor = store.lastServerAlertId
+        repeat(MAX_SYNC_BATCHES) {
+            val batch = api.fetchAlerts(store, afterId = cursor)
+            if (batch.isEmpty()) return@repeat
+            collected += batch
+            val next = batch.maxOf(PushAlert::id)
+            if (next <= cursor || batch.size < ALERT_BATCH_SIZE) {
+                cursor = next
+                return collected.distinctBy(PushAlert::id)
+            }
+            cursor = next
+        }
+        return collected.distinctBy(PushAlert::id)
+    }
+
     private fun scheduleFallback(context: Context) {
         val request = PeriodicWorkRequestBuilder<PushAlertWorker>(
             15, TimeUnit.MINUTES, 5, TimeUnit.MINUTES,
@@ -135,4 +154,7 @@ object PushAlertCoordinator {
             request,
         )
     }
+
+    private const val ALERT_BATCH_SIZE = 120
+    private const val MAX_SYNC_BATCHES = 5
 }
