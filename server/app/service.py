@@ -371,7 +371,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
     _state(f"cycle:{lottery_key}", base_result)
 
     if target_candidate:
-        native_model = "tianji-native-cloud-v1"
+        native_model = "tianji-native-cloud-v2"
         if not database.has_forecast(lottery_key, next_period, "native", native_model):
             try:
                 with _record_stage(stages, "generate_native"):
