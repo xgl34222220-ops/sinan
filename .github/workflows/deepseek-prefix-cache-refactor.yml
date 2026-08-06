@@ -1,0 +1,820 @@
+name: DeepSeek Prefix Cache Refactor
+
+on:
+  push:
+    branches:
+      - optimize/deepseek-prefix-cache
+    paths:
+      - .github/workflows/deepseek-prefix-cache-refactor.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: optimize/deepseek-prefix-cache
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply prefix-cache refactor
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f'missing replacement target: {label}')
+              return text.replace(old, new, 1)
+
+          ensemble_path = Path('server/app/ai_ensemble.py')
+          text = ensemble_path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              'from dataclasses import dataclass',
+              'from dataclasses import dataclass, field',
+              'dataclasses field import',
+          )
+          text = replace_once(
+              text,
+              '''@dataclass(frozen=True)
+          class AiEnsembleResult:
+              position: int
+              probabilities: list[float]
+              top6: list[int]
+              top7: list[int]
+              analysis: str
+              risk_note: str
+              latency_ms: int
+              position_reviewers: int
+              number_reviewers: int
+              collapse_reviewed: bool
+              recent_copy_reviewed: bool
+          
+          
+          @dataclass(frozen=True)
+          class _ReviewerResult:
+              scores: list[float]
+              analysis: str
+          ''',
+              '''@dataclass(frozen=True)
+          class AiEnsembleResult:
+              position: int
+              probabilities: list[float]
+              top6: list[int]
+              top7: list[int]
+              analysis: str
+              risk_note: str
+              latency_ms: int
+              position_reviewers: int
+              number_reviewers: int
+              collapse_reviewed: bool
+              recent_copy_reviewed: bool
+              request_count: int
+              prompt_tokens: int
+              prompt_cache_hit_tokens: int
+              prompt_cache_miss_tokens: int
+              completion_tokens: int
+              reasoning_tokens: int
+              cache_hit_rate: float
+          
+          
+          @dataclass(frozen=True)
+          class _ReviewerResult:
+              scores: list[float]
+              analysis: str
+              usage: dict[str, int] = field(default_factory=dict)
+          
+          
+          def _usage_from_response(payload: dict[str, Any]) -> dict[str, int]:
+              raw = payload.get("usage")
+              usage = raw if isinstance(raw, dict) else {}
+              details = usage.get("completion_tokens_details")
+              completion_details = details if isinstance(details, dict) else {}
+              hit = max(0, int(usage.get("prompt_cache_hit_tokens") or 0))
+              miss = max(0, int(usage.get("prompt_cache_miss_tokens") or 0))
+              prompt = max(0, int(usage.get("prompt_tokens") or hit + miss))
+              completion = max(0, int(usage.get("completion_tokens") or 0))
+              total = max(0, int(usage.get("total_tokens") or prompt + completion))
+              reasoning = max(0, int(completion_details.get("reasoning_tokens") or 0))
+              return {
+                  "request_count": 1,
+                  "prompt_tokens": prompt,
+                  "prompt_cache_hit_tokens": hit,
+                  "prompt_cache_miss_tokens": miss,
+                  "completion_tokens": completion,
+                  "reasoning_tokens": reasoning,
+                  "total_tokens": total,
+              }
+          
+          
+          def _merge_usage(results: list[_ReviewerResult]) -> dict[str, int]:
+              keys = (
+                  "request_count",
+                  "prompt_tokens",
+                  "prompt_cache_hit_tokens",
+                  "prompt_cache_miss_tokens",
+                  "completion_tokens",
+                  "reasoning_tokens",
+                  "total_tokens",
+              )
+              return {
+                  key: sum(max(0, int(result.usage.get(key, 0))) for result in results)
+                  for key in keys
+              }
+          ''',
+              'usage dataclasses',
+          )
+
+          call_pattern = re.compile(r'def _call_json\([\s\S]+?\n\ndef _canonical_history', re.MULTILINE)
+          call_replacement = '''def _call_json(
+              config: RuntimeAiConfig,
+              *,
+              system_prompt: str,
+              user_payload: dict[str, Any] | None = None,
+              shared_payload: dict[str, Any] | None = None,
+              reviewer_payload: dict[str, Any] | None = None,
+              max_tokens: int,
+              timeout_seconds: int,
+          ) -> dict[str, Any]:
+              endpoint = config.endpoint.rstrip("/")
+              is_responses = endpoint.endswith("/responses")
+              if shared_payload is not None:
+                  user_content = (
+                      "共享预测证据（同一批次各路评审完全一致）：\\n"
+                      + compact_json(shared_payload)
+                      + "\\n\\n本路独立评审参数：\\n"
+                      + compact_json(reviewer_payload or {})
+                  )
+              else:
+                  user_content = compact_json(user_payload or {})
+              if is_responses:
+                  body: dict[str, Any] = {
+                      "model": config.model,
+                      "input": [
+                          {"role": "system", "content": system_prompt},
+                          {"role": "user", "content": user_content},
+                      ],
+                      "max_output_tokens": max_tokens,
+                  }
+              else:
+                  body = {
+                      "model": config.model,
+                      "messages": [
+                          {"role": "system", "content": system_prompt},
+                          {"role": "user", "content": user_content},
+                      ],
+                      "temperature": 0.2,
+                      "stream": False,
+                      "response_format": {"type": "json_object"},
+                      "max_tokens": max_tokens,
+                  }
+          
+              last_error: Exception | None = None
+              for attempt in range(_MAX_ATTEMPTS_PER_REVIEWER):
+                  request_body = dict(body)
+                  if attempt > 0 and not is_responses:
+                      request_body.pop("response_format", None)
+                      request_body["max_tokens"] = max_tokens + 400
+                      if _is_official_deepseek(config):
+                          request_body["thinking"] = {"type": "disabled"}
+                  try:
+                      attempt_timeout = timeout_seconds if attempt == 0 else min(30, timeout_seconds)
+                      with httpx.Client(
+                          timeout=httpx.Timeout(
+                              attempt_timeout,
+                              connect=min(12.0, attempt_timeout),
+                          ),
+                          follow_redirects=True,
+                      ) as client:
+                          response = client.post(
+                              endpoint,
+                              headers=_headers(config),
+                              json=request_body,
+                          )
+                          if (
+                              response.status_code >= 400
+                              and not is_responses
+                              and "response_format" in request_body
+                          ):
+                              retry = dict(request_body)
+                              retry.pop("response_format", None)
+                              response = client.post(endpoint, headers=_headers(config), json=retry)
+                          response.raise_for_status()
+                          payload = response.json()
+                      if not isinstance(payload, dict):
+                          raise ValueError("AI 接口返回格式异常")
+                      response_text = _response_text(payload).strip()
+                      if not response_text:
+                          raise ValueError("AI 最终正文为空")
+                      parsed = _extract_json(response_text)
+                      parsed["_tianji_usage"] = _usage_from_response(payload)
+                      return parsed
+                  except Exception as exc:  # noqa: BLE001 - provider failures must be retried
+                      last_error = exc
+              raise RuntimeError(f"AI 独立评审失败：{str(last_error)[:240]}")
+          
+          
+          def _canonical_history'''
+          text, count = call_pattern.subn(call_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'_call_json replacement count={count}')
+
+          text = replace_once(
+              text,
+              '''    return _ReviewerResult(
+                  scores=_normalize(scores),
+                  analysis=str(result.get("analysis") or "").strip()[:300],
+              )
+          ''',
+              '''    raw_usage = result.get("_tianji_usage")
+              usage = raw_usage if isinstance(raw_usage, dict) else {}
+              return _ReviewerResult(
+                  scores=_normalize(scores),
+                  analysis=str(result.get("analysis") or "").strip()[:300],
+                  usage={str(key): max(0, int(value)) for key, value in usage.items()},
+              )
+          ''',
+              'reviewer usage parse',
+          )
+
+          text = replace_once(
+              text,
+              '''    candidates, mapping = _anonymized_items(
+                  evidence,
+                  target_period=target_period,
+                  phase="position-challenge" if challenge else "position",
+                  reviewer=reviewer,
+              )
+          ''',
+              '''    # 同一期名次评审共享同一套匿名映射和证据前缀；真实名次仍不会暴露。
+              # 每一路的评审编号和反偏置要求放在长前缀之后，供 DeepSeek 复用缓存。
+              candidates, mapping = _anonymized_items(
+                  evidence,
+                  target_period=target_period,
+                  phase="position",
+                  reviewer=0,
+              )
+          ''',
+              'shared position mapping',
+          )
+
+          old_prompt = '''    prompt = (
+                  "你是天机服务端的独立前向预测评审。候选A至J对应十个真实名次，但映射已随机匿名，"
+                  "不得猜测字母对应哪个名次，也不得偏向列表第一项。你会同时看到匿名后的原始开奖序列和程序逐期核验的统计证据，"
+                  "对全部10个候选给出0以上评分。评分代表相对预测证据，不是真实中奖概率。"
+                  "必须明确选出证据最高的一个候选，每期必须形成预测，不得回答无法预测。"
+                  + (
+                      "最近正式结果出现同一名次连续入选，本轮是反偏置复核。请主动寻找首位偏置、惯性选择和弱证据，"
+                      "但如果匿名证据仍支持同一候选，也可以继续选择，禁止为了轮换而故意换名次。"
+                      if challenge
+                      else ""
+                  )
+                  + "只返回紧凑JSON：{\\"scores\\":{\\"A\\":数值,...,\\"J\\":数值},"
+                  "\\"selected\\":\\"A至J之一\\",\\"analysis\\":\\"不超过120字简体中文\\"}。"
+              )
+          '''
+          new_prompt = '''    prompt = (
+                  "你是天机服务端的独立前向预测评审。候选A至J对应十个真实名次，但映射已随机匿名，"
+                  "不得猜测字母对应哪个名次，也不得偏向列表第一项。你会同时看到匿名后的原始开奖序列和程序逐期核验的统计证据，"
+                  "对全部10个候选给出0以上评分。评分代表相对预测证据，不是真实中奖概率。"
+                  "必须明确选出证据最高的一个候选，每期必须形成预测，不得回答无法预测。"
+                  "只返回紧凑JSON：{\\"scores\\":{\\"A\\":数值,...,\\"J\\":数值},"
+                  "\\"selected\\":\\"A至J之一\\",\\"analysis\\":\\"不超过120字简体中文\\"}。"
+              )
+          '''
+          text = replace_once(text, old_prompt, new_prompt, 'stable position system prompt')
+
+          old_position_call = '''    result = _call_json(
+                  config,
+                  system_prompt=prompt,
+                  user_payload={
+                      "target_period": target_period,
+                      "trained_through_period": trained_through_period,
+                      "reviewer": reviewer + 1,
+                      "history_order": "oldest_to_newest",
+                      "anonymous_raw_draws": _anonymized_position_history(history, mapping),
+                      "candidates": candidates,
+                  },
+                  max_tokens=1200,
+                  timeout_seconds=55,
+              )
+          '''
+          new_position_call = '''    result = _call_json(
+                  config,
+                  system_prompt=prompt,
+                  shared_payload={
+                      "target_period": target_period,
+                      "trained_through_period": trained_through_period,
+                      "history_order": "oldest_to_newest",
+                      "evidence_mode": "shared_anonymous_full_sequence_plus_aggregates",
+                      "anonymous_raw_draws": _anonymized_position_history(history, mapping),
+                      "candidates": candidates,
+                  },
+                  reviewer_payload={
+                      "reviewer": reviewer + 1,
+                      "independent_review": True,
+                      "challenge": challenge,
+                      "review_instruction": (
+                          "最近正式结果出现同一名次连续入选。本轮主动复核首位偏置、惯性选择和弱证据；"
+                          "若匿名证据仍支持同一候选可以继续选择，禁止为了轮换故意换名次。"
+                          if challenge
+                          else "基于共享匿名证据独立评分，不参考其他评审结果。"
+                      ),
+                  },
+                  max_tokens=1200,
+                  timeout_seconds=55,
+              )
+          '''
+          text = replace_once(text, old_position_call, new_position_call, 'position shared prefix call')
+
+          parallel_block = '''def _run_parallel(count: int, task: Any) -> list[_ReviewerResult]:
+              results: list[_ReviewerResult] = []
+              errors: list[str] = []
+              with ThreadPoolExecutor(max_workers=count, thread_name_prefix="tianji-ai-review") as pool:
+                  futures = [pool.submit(task, reviewer) for reviewer in range(count)]
+                  for future in as_completed(futures):
+                      try:
+                          results.append(future.result())
+                      except Exception as exc:  # noqa: BLE001
+                          errors.append(str(exc)[:180])
+              if not results:
+                  raise RuntimeError("全部AI评审失败：" + "；".join(errors[:3]))
+              return results
+          '''
+          parallel_replacement = parallel_block + '''
+          
+          def _run_prefix_cached(count: int, task: Any) -> list[_ReviewerResult]:
+              """先完成两路真实评审以建立公共前缀，之后的评审才有机会命中缓存。"""
+              results: list[_ReviewerResult] = []
+              errors: list[str] = []
+              warm_count = min(2, max(0, count))
+              for reviewer in range(warm_count):
+                  try:
+                      results.append(task(reviewer))
+                  except Exception as exc:  # noqa: BLE001
+                      errors.append(str(exc)[:180])
+              remaining = list(range(warm_count, count))
+              if remaining:
+                  with ThreadPoolExecutor(
+                      max_workers=len(remaining),
+                      thread_name_prefix="tianji-ai-cache-hit",
+                  ) as pool:
+                      futures = [pool.submit(task, reviewer) for reviewer in remaining]
+                      for future in as_completed(futures):
+                          try:
+                              results.append(future.result())
+                          except Exception as exc:  # noqa: BLE001
+                              errors.append(str(exc)[:180])
+              if not results:
+                  raise RuntimeError("全部AI评审失败：" + "；".join(errors[:3]))
+              return results
+          '''
+          text = replace_once(text, parallel_block, parallel_replacement, 'prefix cached runner')
+          text = replace_once(
+              text,
+              '    position_results = _run_parallel(\n',
+              '    position_results = _run_prefix_cached(\n',
+              'position cache runner',
+          )
+
+          text = replace_once(
+              text,
+              '''    return AiEnsembleResult(
+          ''',
+              '''    usage = _merge_usage([*position_results, *number_results])
+              cache_input_tokens = (
+                  usage["prompt_cache_hit_tokens"]
+                  + usage["prompt_cache_miss_tokens"]
+              )
+              cache_hit_rate = (
+                  usage["prompt_cache_hit_tokens"] / cache_input_tokens
+                  if cache_input_tokens
+                  else 0.0
+              )
+          
+              return AiEnsembleResult(
+          ''',
+              'aggregate usage',
+          )
+          text = replace_once(
+              text,
+              '''        recent_copy_reviewed=recent_copy_reviewed,
+              )
+          ''',
+              '''        recent_copy_reviewed=recent_copy_reviewed,
+                  request_count=usage["request_count"],
+                  prompt_tokens=usage["prompt_tokens"],
+                  prompt_cache_hit_tokens=usage["prompt_cache_hit_tokens"],
+                  prompt_cache_miss_tokens=usage["prompt_cache_miss_tokens"],
+                  completion_tokens=usage["completion_tokens"],
+                  reasoning_tokens=usage["reasoning_tokens"],
+                  cache_hit_rate=round(cache_hit_rate, 6),
+              )
+          ''',
+              'result usage fields',
+          )
+          ensemble_path.write_text(text, encoding='utf-8')
+
+          ai_path = Path('server/app/ai.py')
+          text = ai_path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '''    model: str
+              latency_ms: int
+          ''',
+              '''    model: str
+              latency_ms: int
+              request_count: int = 0
+              prompt_tokens: int = 0
+              prompt_cache_hit_tokens: int = 0
+              prompt_cache_miss_tokens: int = 0
+              completion_tokens: int = 0
+              reasoning_tokens: int = 0
+              cache_hit_rate: float = 0.0
+          ''',
+              'AiPrediction usage fields',
+          )
+          text = replace_once(
+              text,
+              '''        model=active.model,
+                  latency_ms=result.latency_ms,
+              )
+          ''',
+              '''        model=active.model,
+                  latency_ms=result.latency_ms,
+                  request_count=result.request_count,
+                  prompt_tokens=result.prompt_tokens,
+                  prompt_cache_hit_tokens=result.prompt_cache_hit_tokens,
+                  prompt_cache_miss_tokens=result.prompt_cache_miss_tokens,
+                  completion_tokens=result.completion_tokens,
+                  reasoning_tokens=result.reasoning_tokens,
+                  cache_hit_rate=result.cache_hit_rate,
+              )
+          ''',
+              'AiPrediction usage mapping',
+          )
+          ai_path.write_text(text, encoding='utf-8')
+
+          db_path = Path('server/app/db.py')
+          text = db_path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '''                CREATE INDEX IF NOT EXISTS forecast_jobs_updated
+                          ON forecast_jobs(updated_at DESC);
+          
+                      CREATE TABLE IF NOT EXISTS service_state (
+          ''',
+              '''                CREATE INDEX IF NOT EXISTS forecast_jobs_updated
+                          ON forecast_jobs(updated_at DESC);
+          
+                      CREATE TABLE IF NOT EXISTS ai_usage_events (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          lottery TEXT NOT NULL,
+                          target_period TEXT NOT NULL,
+                          model TEXT NOT NULL,
+                          request_count INTEGER NOT NULL DEFAULT 0,
+                          prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                          prompt_cache_hit_tokens INTEGER NOT NULL DEFAULT 0,
+                          prompt_cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
+                          completion_tokens INTEGER NOT NULL DEFAULT 0,
+                          reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+                          cache_hit_rate REAL NOT NULL DEFAULT 0,
+                          created_at INTEGER NOT NULL,
+                          UNIQUE(lottery, target_period, model)
+                      );
+                      CREATE INDEX IF NOT EXISTS ai_usage_created
+                          ON ai_usage_events(created_at DESC);
+          
+                      CREATE TABLE IF NOT EXISTS service_state (
+          ''',
+              'ai usage table',
+          )
+          method = '''    def save_ai_usage(
+                  self,
+                  *,
+                  lottery: str,
+                  target_period: str,
+                  model: str,
+                  request_count: int,
+                  prompt_tokens: int,
+                  prompt_cache_hit_tokens: int,
+                  prompt_cache_miss_tokens: int,
+                  completion_tokens: int,
+                  reasoning_tokens: int,
+                  cache_hit_rate: float,
+              ) -> None:
+                  now = int(time.time() * 1000)
+                  with self.connection() as db:
+                      db.execute(
+                          """
+                          INSERT INTO ai_usage_events(
+                              lottery, target_period, model, request_count,
+                              prompt_tokens, prompt_cache_hit_tokens,
+                              prompt_cache_miss_tokens, completion_tokens,
+                              reasoning_tokens, cache_hit_rate, created_at
+                          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          ON CONFLICT(lottery, target_period, model) DO UPDATE SET
+                              request_count = excluded.request_count,
+                              prompt_tokens = excluded.prompt_tokens,
+                              prompt_cache_hit_tokens = excluded.prompt_cache_hit_tokens,
+                              prompt_cache_miss_tokens = excluded.prompt_cache_miss_tokens,
+                              completion_tokens = excluded.completion_tokens,
+                              reasoning_tokens = excluded.reasoning_tokens,
+                              cache_hit_rate = excluded.cache_hit_rate,
+                              created_at = excluded.created_at
+                          """,
+                          (
+                              lottery,
+                              target_period,
+                              model,
+                              max(0, int(request_count)),
+                              max(0, int(prompt_tokens)),
+                              max(0, int(prompt_cache_hit_tokens)),
+                              max(0, int(prompt_cache_miss_tokens)),
+                              max(0, int(completion_tokens)),
+                              max(0, int(reasoning_tokens)),
+                              max(0.0, min(1.0, float(cache_hit_rate))),
+                              now,
+                          ),
+                      )
+          
+              def ai_usage_summary(self, hours: int = 24) -> dict[str, Any]:
+                  since = int(time.time() * 1000) - max(1, int(hours)) * 3_600_000
+                  with self.connection() as db:
+                      row = db.execute(
+                          """
+                          SELECT
+                              COUNT(*) AS forecasts,
+                              COALESCE(SUM(request_count), 0) AS request_count,
+                              COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+                              COALESCE(SUM(prompt_cache_hit_tokens), 0) AS cache_hit,
+                              COALESCE(SUM(prompt_cache_miss_tokens), 0) AS cache_miss,
+                              COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+                              COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens
+                          FROM ai_usage_events
+                          WHERE created_at >= ?
+                          """,
+                          (since,),
+                      ).fetchone()
+                  hit = int(row["cache_hit"])
+                  miss = int(row["cache_miss"])
+                  cache_total = hit + miss
+                  return {
+                      "hours": max(1, int(hours)),
+                      "forecasts": int(row["forecasts"]),
+                      "request_count": int(row["request_count"]),
+                      "prompt_tokens": int(row["prompt_tokens"]),
+                      "prompt_cache_hit_tokens": hit,
+                      "prompt_cache_miss_tokens": miss,
+                      "completion_tokens": int(row["completion_tokens"]),
+                      "reasoning_tokens": int(row["reasoning_tokens"]),
+                      "cache_hit_rate": round(hit / cache_total, 6) if cache_total else 0.0,
+                  }
+          
+          '''
+          text = replace_once(
+              text,
+              '    def set_state(self, key: str, value: str) -> None:\n',
+              method + '    def set_state(self, key: str, value: str) -> None:\n',
+              'ai usage database methods',
+          )
+          db_path.write_text(text, encoding='utf-8')
+
+          service_path = Path('server/app/service.py')
+          text = service_path.read_text(encoding='utf-8')
+          target = '''        result = ai.analyze(
+                      history,
+                      target_period,
+                      ai_config,
+                      recent_positions=recent_ai_positions,
+                  )
+          '''
+          replacement = target + '''        database.save_ai_usage(
+                      lottery=spec.key,
+                      target_period=target_period,
+                      model=ai_config.model,
+                      request_count=result.request_count,
+                      prompt_tokens=result.prompt_tokens,
+                      prompt_cache_hit_tokens=result.prompt_cache_hit_tokens,
+                      prompt_cache_miss_tokens=result.prompt_cache_miss_tokens,
+                      completion_tokens=result.completion_tokens,
+                      reasoning_tokens=result.reasoning_tokens,
+                      cache_hit_rate=result.cache_hit_rate,
+                  )
+                  _state(
+                      f"ai_usage:{spec.key}",
+                      {
+                          "target_period": target_period,
+                          "model": ai_config.model,
+                          "request_count": result.request_count,
+                          "prompt_tokens": result.prompt_tokens,
+                          "prompt_cache_hit_tokens": result.prompt_cache_hit_tokens,
+                          "prompt_cache_miss_tokens": result.prompt_cache_miss_tokens,
+                          "completion_tokens": result.completion_tokens,
+                          "reasoning_tokens": result.reasoning_tokens,
+                          "cache_hit_rate": result.cache_hit_rate,
+                          "updated_at_epoch_ms": int(time.time() * 1000),
+                      },
+                  )
+          '''
+          text = replace_once(text, target, replacement, 'record AI cache usage')
+          service_path.write_text(text, encoding='utf-8')
+
+          insights_path = Path('server/app/admin_insights.py')
+          text = insights_path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '''        "miss_watch": prediction_miss_watch(threshold=3),
+                  "timeline": _timeline(),
+          ''',
+              '''        "miss_watch": prediction_miss_watch(threshold=3),
+                  "ai_cache": database.ai_usage_summary(hours=24),
+                  "timeline": _timeline(),
+          ''',
+              'operations cache summary',
+          )
+          insights_path.write_text(text, encoding='utf-8')
+
+          test_path = Path('server/tests/test_ai_prefix_cache.py')
+          test_path.write_text('''from __future__ import annotations
+          
+          import unittest
+          from unittest.mock import patch
+          
+          from app.ai_ensemble import (
+              _ReviewerResult,
+              _position_review,
+              _run_prefix_cached,
+              _usage_from_response,
+              analyze_ensemble,
+              build_position_evidence,
+          )
+          from app.models import DrawModel
+          from app.runtime_config import RuntimeAiConfig
+          
+          
+          def history(count: int = 120) -> list[DrawModel]:
+              values: list[DrawModel] = []
+              for index in range(count):
+                  numbers = list(range(1, 11))
+                  shift = index % 10
+                  numbers = numbers[shift:] + numbers[:shift]
+                  values.append(
+                      DrawModel(
+                          lottery="azxy10",
+                          period=str(21348000 + index),
+                          numbers=numbers,
+                      )
+                  )
+              return values
+          
+          
+          def config() -> RuntimeAiConfig:
+              return RuntimeAiConfig(
+                  enabled=True,
+                  endpoint="https://api.deepseek.com/chat/completions",
+                  model="deepseek-v4-pro",
+                  api_key="secret",
+                  timeout_seconds=60,
+              )
+          
+          
+          class PrefixCacheTests(unittest.TestCase):
+              @patch("app.ai_ensemble._call_json")
+              def test_position_reviewers_share_large_prefix_but_keep_independent_tail(self, call_json: object) -> None:
+                  calls: list[dict[str, object]] = []
+          
+                  def fake_call(*args: object, **kwargs: object) -> dict[str, object]:
+                      calls.append(dict(kwargs))
+                      return {
+                          "scores": {label: 1 for label in "ABCDEFGHIJ"},
+                          "analysis": "独立评审",
+                          "_tianji_usage": {"request_count": 1},
+                      }
+          
+                  call_json.side_effect = fake_call
+                  evidence = build_position_evidence(history())
+                  for reviewer in (0, 1):
+                      _position_review(
+                          config(),
+                          history=history(),
+                          evidence=evidence,
+                          target_period="21348120",
+                          trained_through_period="21348119",
+                          reviewer=reviewer,
+                          challenge=False,
+                      )
+                  self.assertEqual(calls[0]["system_prompt"], calls[1]["system_prompt"])
+                  self.assertEqual(calls[0]["shared_payload"], calls[1]["shared_payload"])
+                  self.assertNotEqual(calls[0]["reviewer_payload"], calls[1]["reviewer_payload"])
+                  shared = calls[0]["shared_payload"]
+                  self.assertIsInstance(shared, dict)
+                  assert isinstance(shared, dict)
+                  self.assertNotIn("reviewer", shared)
+                  self.assertEqual(len(shared["anonymous_raw_draws"]), 120)
+          
+              def test_first_two_reviewers_finish_before_cache_candidate(self) -> None:
+                  order: list[int] = []
+          
+                  def task(reviewer: int) -> _ReviewerResult:
+                      order.append(reviewer)
+                      return _ReviewerResult(scores=[0.1] * 10, analysis="")
+          
+                  results = _run_prefix_cached(3, task)
+                  self.assertEqual(len(results), 3)
+                  self.assertEqual(order[:2], [0, 1])
+                  self.assertEqual(order[2], 2)
+          
+              def test_deepseek_usage_fields_are_preserved(self) -> None:
+                  usage = _usage_from_response(
+                      {
+                          "usage": {
+                              "prompt_tokens": 1000,
+                              "prompt_cache_hit_tokens": 800,
+                              "prompt_cache_miss_tokens": 200,
+                              "completion_tokens": 50,
+                              "total_tokens": 1050,
+                              "completion_tokens_details": {"reasoning_tokens": 20},
+                          }
+                      }
+                  )
+                  self.assertEqual(usage["prompt_cache_hit_tokens"], 800)
+                  self.assertEqual(usage["prompt_cache_miss_tokens"], 200)
+                  self.assertEqual(usage["reasoning_tokens"], 20)
+          
+              @patch("app.ai_ensemble._number_review")
+              @patch("app.ai_ensemble._position_review")
+              def test_ensemble_aggregates_usage_without_changing_reviewer_count(
+                  self,
+                  position_review: object,
+                  number_review: object,
+              ) -> None:
+                  position_scores = [0.1] * 10
+                  number_scores = [0.1] * 10
+                  position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+                      scores=position_scores,
+                      analysis="名次",
+                      usage={
+                          "request_count": 1,
+                          "prompt_tokens": 100,
+                          "prompt_cache_hit_tokens": 60,
+                          "prompt_cache_miss_tokens": 40,
+                          "completion_tokens": 10,
+                          "reasoning_tokens": 2,
+                      },
+                  )
+                  number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+                      scores=number_scores,
+                      analysis="号码",
+                      usage={
+                          "request_count": 1,
+                          "prompt_tokens": 50,
+                          "prompt_cache_hit_tokens": 0,
+                          "prompt_cache_miss_tokens": 50,
+                          "completion_tokens": 5,
+                          "reasoning_tokens": 1,
+                      },
+                  )
+                  result = analyze_ensemble(history(), "21348120", config())
+                  self.assertEqual(result.position_reviewers, 3)
+                  self.assertEqual(result.number_reviewers, 2)
+                  self.assertEqual(result.request_count, 5)
+                  self.assertEqual(result.prompt_cache_hit_tokens, 180)
+                  self.assertEqual(result.prompt_cache_miss_tokens, 220)
+                  self.assertAlmostEqual(result.cache_hit_rate, 0.45)
+          
+          
+          if __name__ == "__main__":
+              unittest.main()
+          ''', encoding='utf-8')
+
+          for path in (
+              ensemble_path,
+              ai_path,
+              db_path,
+              service_path,
+              insights_path,
+              test_path,
+          ):
+              compile(path.read_text(encoding='utf-8'), str(path), 'exec')
+          PY
+      - name: Install backend dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Run backend tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+      - name: Commit refactor
+        shell: bash
+        run: |
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app/ai_ensemble.py server/app/ai.py server/app/db.py server/app/service.py server/app/admin_insights.py server/tests/test_ai_prefix_cache.py
+          git commit -m "perf(server): improve DeepSeek prefix cache reuse"
+          git push origin optimize/deepseek-prefix-cache
