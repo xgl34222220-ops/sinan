@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from . import push_alerts, push_runtime_v2
+from . import push_alerts, push_runtime_bridge, push_runtime_v2
 from .db import database
 from .lottery import parse_epoch_ms
 
@@ -13,7 +13,6 @@ _SETTLEMENT_FRESH_MS = 20 * 60 * 1000
 _ALERT_FRESH_MS = 30 * 60 * 1000
 _DRAW_FRESH_MS = 60 * 60 * 1000
 _INSTALLED = False
-_ORIGINAL_MATERIALIZE = None
 _ORIGINAL_DELIVERY_CANDIDATES = None
 
 
@@ -53,6 +52,30 @@ def _prediction_target_period(prediction: dict[str, Any]) -> str:
         if value:
             return value
     return str(prediction.get("latest_target_period") or "")
+
+
+def _latest_period_map() -> dict[str, str]:
+    with database.connection() as db:
+        rows = db.execute(
+            """
+            SELECT d.lottery,d.period
+            FROM draws AS d
+            INNER JOIN (
+                SELECT lottery,MAX(LENGTH(period)) AS max_length
+                FROM draws
+                GROUP BY lottery
+            ) AS lengths
+              ON lengths.lottery=d.lottery
+             AND lengths.max_length=LENGTH(d.period)
+            WHERE d.period=(
+                SELECT MAX(d2.period)
+                FROM draws AS d2
+                WHERE d2.lottery=d.lottery
+                  AND LENGTH(d2.period)=lengths.max_length
+            )
+            """
+        ).fetchall()
+    return {str(row["lottery"]): str(row["period"]) for row in rows}
 
 
 def _fresh_prediction_warning(
@@ -98,32 +121,9 @@ def _filter_watch_for_fresh_settlements(
     now_ms: int | None = None,
 ) -> dict[str, Any]:
     now = _now_ms() if now_ms is None else int(now_ms)
+    latest_periods = _latest_period_map()
     lotteries_out: list[dict[str, Any]] = []
     warning_count = 0
-
-    with database.connection() as db:
-        latest_periods = {
-            str(row["lottery"]): str(row["period"])
-            for row in db.execute(
-                """
-                SELECT d.lottery,d.period
-                FROM draws AS d
-                INNER JOIN (
-                    SELECT lottery,MAX(LENGTH(period)) AS max_length
-                    FROM draws
-                    GROUP BY lottery
-                ) AS lengths
-                  ON lengths.lottery=d.lottery
-                 AND lengths.max_length=LENGTH(d.period)
-                WHERE d.period=(
-                    SELECT MAX(d2.period)
-                    FROM draws AS d2
-                    WHERE d2.lottery=d.lottery
-                      AND LENGTH(d2.period)=lengths.max_length
-                )
-                """
-            ).fetchall()
-        }
 
     for lottery_value in list(watch.get("lotteries") or []):
         lottery = dict(lottery_value)
@@ -156,39 +156,33 @@ def _filter_watch_for_fresh_settlements(
     return result
 
 
-def _materialize_fresh_warning_alerts(
-    watch: dict[str, Any],
-    *,
-    lottery_filter: str | None = None,
-) -> list[int]:
-    if _ORIGINAL_MATERIALIZE is None:
-        return []
+def _process_prediction_alerts_with_freshness(
+    lottery_key: str | None = None,
+) -> dict[str, Any]:
+    watch = push_alerts.prediction_miss_watch(
+        threshold=push_alerts.PREALERT_THRESHOLD
+    )
     filtered = _filter_watch_for_fresh_settlements(watch)
-    return _ORIGINAL_MATERIALIZE(filtered, lottery_filter=lottery_filter)
-
-
-def _latest_period_map() -> dict[str, str]:
-    with database.connection() as db:
-        rows = db.execute(
-            """
-            SELECT d.lottery,d.period
-            FROM draws AS d
-            INNER JOIN (
-                SELECT lottery,MAX(LENGTH(period)) AS max_length
-                FROM draws
-                GROUP BY lottery
-            ) AS lengths
-              ON lengths.lottery=d.lottery
-             AND lengths.max_length=LENGTH(d.period)
-            WHERE d.period=(
-                SELECT MAX(d2.period)
-                FROM draws AS d2
-                WHERE d2.lottery=d.lottery
-                  AND LENGTH(d2.period)=lengths.max_length
-            )
-            """
-        ).fetchall()
-    return {str(row["lottery"]): str(row["period"]) for row in rows}
+    warning_ids = push_alerts.materialize_warning_alerts(
+        filtered,
+        lottery_filter=lottery_key,
+    )
+    push_runtime_v2._normalize_warning_rows(warning_ids)
+    mirrored_ids = push_runtime_v2._mirror_telegram_events(lottery_key)
+    delivery = push_runtime_v2._deliver_pending_alerts_v2()
+    return {
+        "created_alert_ids": warning_ids + mirrored_ids,
+        "delivery": delivery,
+        "protocol_version": push_runtime_v2._PROTOCOL_VERSION,
+        "push_configured": (
+            push_runtime_v2.settings.fcm_enabled
+            or push_runtime_v2.settings.telegram_enabled
+        ),
+        "channels": {
+            "fcm": push_runtime_v2.settings.fcm_enabled,
+            "telegram": push_runtime_v2.settings.telegram_enabled,
+        },
+    }
 
 
 def _expire_invalid_warning_alerts(now_ms: int | None = None) -> set[int]:
@@ -274,12 +268,16 @@ def _delivery_candidates_with_freshness() -> tuple[list[Any], list[Any]]:
 
 
 def install() -> None:
-    global _INSTALLED, _ORIGINAL_MATERIALIZE, _ORIGINAL_DELIVERY_CANDIDATES
+    global _INSTALLED, _ORIGINAL_DELIVERY_CANDIDATES
     if _INSTALLED:
         return
-    _ORIGINAL_MATERIALIZE = push_alerts.materialize_warning_alerts
     _ORIGINAL_DELIVERY_CANDIDATES = push_runtime_v2._delivery_candidates
-    push_alerts.materialize_warning_alerts = _materialize_fresh_warning_alerts
     push_runtime_v2._delivery_candidates = _delivery_candidates_with_freshness
+    push_runtime_v2._process_prediction_alerts_v2 = (
+        _process_prediction_alerts_with_freshness
+    )
+    push_alerts.process_prediction_alerts = push_runtime_bridge._dynamic_settings(
+        _process_prediction_alerts_with_freshness
+    )
     _expire_invalid_warning_alerts()
     _INSTALLED = True
