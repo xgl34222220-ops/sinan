@@ -1,0 +1,511 @@
+name: DeepSeek Neutral Prefix Refine
+
+on:
+  push:
+    branches:
+      - optimize/deepseek-prefix-cache
+    paths:
+      - .github/workflows/deepseek-neutral-prefix-refine.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: optimize/deepseek-prefix-cache
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Preserve independent mappings behind neutral shared prefix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('server/app/ai_ensemble.py')
+          text = path.read_text(encoding='utf-8')
+
+          helper_anchor = '''def _anonymized_position_history(
+          '''
+          helpers = '''_NEUTRAL_IDS = tuple(f"N{index:02d}" for index in range(1, 11))
+          
+          
+          def _shared_anonymized_items(
+              items: list[dict[str, Any]],
+              *,
+              target_period: str,
+              phase: str,
+          ) -> tuple[list[dict[str, Any]], dict[str, int], dict[int, str]]:
+              """Build one neutral evidence namespace shared by all reviewers in a phase."""
+              _, shared_order = _anonymized_items(
+                  items,
+                  target_period=target_period,
+                  phase=phase,
+                  reviewer=0,
+              )
+              neutral_mapping: dict[str, int] = {}
+              payload: list[dict[str, Any]] = []
+              for neutral_id, actual_index in zip(
+                  _NEUTRAL_IDS,
+                  shared_order.values(),
+                  strict=True,
+              ):
+                  neutral_mapping[neutral_id] = actual_index
+                  value = dict(items[actual_index])
+                  value.pop("position", None)
+                  value.pop("number", None)
+                  payload.append({"evidence_id": neutral_id, "evidence": value})
+              neutral_by_actual = {
+                  actual_index: neutral_id
+                  for neutral_id, actual_index in neutral_mapping.items()
+              }
+              return payload, neutral_mapping, neutral_by_actual
+          
+          
+          def _reviewer_aliases(
+              reviewer_mapping: dict[str, int],
+              neutral_by_actual: dict[int, str],
+          ) -> dict[str, str]:
+              return {
+                  label: neutral_by_actual[actual_index]
+                  for label, actual_index in reviewer_mapping.items()
+              }
+          
+          
+          '''
+          if helper_anchor not in text:
+              raise SystemExit('missing helper anchor')
+          text = text.replace(helper_anchor, helpers + helper_anchor, 1)
+
+          position_pattern = re.compile(
+              r'def _position_review\([\s\S]+?\n\ndef _number_evidence',
+              re.MULTILINE,
+          )
+          position_replacement = '''def _position_review(
+              config: RuntimeAiConfig,
+              *,
+              history: list[DrawModel],
+              evidence: list[dict[str, Any]],
+              target_period: str,
+              trained_through_period: str,
+              reviewer: int,
+              challenge: bool,
+          ) -> _ReviewerResult:
+              shared_candidates, neutral_mapping, neutral_by_actual = _shared_anonymized_items(
+                  evidence,
+                  target_period=target_period,
+                  phase="position-shared",
+              )
+              # Preserve the exact reviewer-specific permutation seed used before caching.
+              _, reviewer_mapping = _anonymized_items(
+                  evidence,
+                  target_period=target_period,
+                  phase="position-challenge" if challenge else "position",
+                  reviewer=reviewer,
+              )
+              prompt = (
+                  "你是天机服务端的独立前向预测评审。共享证据中的N01至N10是服务器随机生成的中性编号，"
+                  "不会暴露真实名次；本路参数会单独给出A至J到这些中性编号的一次性映射。"
+                  "必须按照本路映射独立分析，不得猜测真实名次，也不得参考其他评审。"
+                  "你会看到完整匿名开奖序列和程序逐期核验的统计证据，需对A至J全部给出0以上评分。"
+                  "评分代表相对预测证据，不是真实中奖概率；必须明确选出证据最高的一个候选。"
+                  "只返回紧凑JSON：{\\"scores\\":{\\"A\\":数值,...,\\"J\\":数值},"
+                  "\\"selected\\":\\"A至J之一\\",\\"analysis\\":\\"不超过120字简体中文\\"}。"
+              )
+              result = _call_json(
+                  config,
+                  system_prompt=prompt,
+                  shared_payload={
+                      "target_period": target_period,
+                      "trained_through_period": trained_through_period,
+                      "history_order": "oldest_to_newest",
+                      "evidence_mode": "neutral_anonymous_full_sequence_plus_aggregates",
+                      "neutral_raw_draws": _anonymized_position_history(
+                          history,
+                          neutral_mapping,
+                      ),
+                      "neutral_candidates": shared_candidates,
+                  },
+                  reviewer_payload={
+                      "reviewer": reviewer + 1,
+                      "independent_review": True,
+                      "candidate_aliases_A_to_J": _reviewer_aliases(
+                          reviewer_mapping,
+                          neutral_by_actual,
+                      ),
+                      "challenge": challenge,
+                      "review_instruction": (
+                          "最近正式结果出现同一名次连续入选。本轮主动复核首位偏置、惯性选择和弱证据；"
+                          "若匿名证据仍支持同一候选可以继续选择，禁止为了轮换故意换名次。"
+                          if challenge
+                          else "基于共享中性匿名证据独立评分，不参考其他评审结果。"
+                      ),
+                  },
+                  max_tokens=1200,
+                  timeout_seconds=55,
+              )
+              return _parse_label_scores(result, reviewer_mapping)
+          
+          
+          def _number_evidence'''
+          text, count = position_pattern.subn(lambda _: position_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'position replacement count={count}')
+
+          number_pattern = re.compile(
+              r'def _number_review\([\s\S]+?\n\ndef _run_parallel',
+              re.MULTILINE,
+          )
+          number_replacement = '''def _number_review(
+              config: RuntimeAiConfig,
+              *,
+              history: list[DrawModel],
+              position: int,
+              target_period: str,
+              trained_through_period: str,
+              reviewer: int,
+              mask_recent: int = 0,
+          ) -> _ReviewerResult:
+              evidence = _number_evidence(
+                  history,
+                  position,
+                  mask_recent=mask_recent,
+              )
+              phase = f"number-{position}-masked-{mask_recent}"
+              shared_candidates, neutral_mapping, neutral_by_actual = _shared_anonymized_items(
+                  evidence,
+                  target_period=target_period,
+                  phase=f"{phase}-shared",
+              )
+              # Preserve the exact per-reviewer A-J permutation from the original algorithm.
+              _, reviewer_mapping = _anonymized_items(
+                  evidence,
+                  target_period=target_period,
+                  phase=phase,
+                  reviewer=reviewer,
+              )
+              neutral_history = _anonymized_number_series(
+                  history,
+                  position,
+                  neutral_mapping,
+                  mask_recent=mask_recent,
+              )
+              prompt = (
+                  "你是天机服务端的独立号码排序评审。共享证据中的N01至N10是服务器随机生成的中性编号，"
+                  "不会暴露真实号码；本路参数会给出A至J到这些中性编号的一次性随机映射。"
+                  "必须按照本路映射独立评分，不得猜测真实号码身份，不得参考其他评审。"
+                  "请依据完整匿名历史时序、短中长期频率、遗漏、转移和趋势证据，分析先后顺序、"
+                  "重复间隔、冷热切换、状态转移与多窗口稳定性，而不是只抄最近出现过的集合。"
+                  + (
+                      "本轮为近期集合复刻复核，最近7期已作为留出窗口隐藏；仅依据更早时序评分。"
+                      if mask_recent
+                      else "本轮使用开奖前可见的完整匿名历史时序进行首次独立评分。"
+                  )
+                  + "每期必须给出完整排序。只返回紧凑JSON："
+                  "{\\"scores\\":{\\"A\\":数值,...,\\"J\\":数值},"
+                  "\\"selected\\":\\"A至J之一\\",\\"analysis\\":\\"不超过100字简体中文\\"}。"
+              )
+              result = _call_json(
+                  config,
+                  system_prompt=prompt,
+                  shared_payload={
+                      "target_period": target_period,
+                      "trained_through_period": trained_through_period,
+                      "selected_position": position + 1,
+                      "history_order": "oldest_to_newest",
+                      "masked_recent_draws": mask_recent,
+                      "evidence_mode": "neutral_anonymous_full_sequence_plus_aggregates",
+                      "neutral_history": neutral_history,
+                      "neutral_candidates": shared_candidates,
+                  },
+                  reviewer_payload={
+                      "reviewer": reviewer + 1,
+                      "independent_review": True,
+                      "candidate_aliases_A_to_J": _reviewer_aliases(
+                          reviewer_mapping,
+                          neutral_by_actual,
+                      ),
+                      "review_instruction": "仅依据共享中性匿名证据独立评分，不参考其他评审结果。",
+                  },
+                  max_tokens=1400,
+                  timeout_seconds=50,
+              )
+              return _parse_label_scores(result, reviewer_mapping)
+          
+          
+          def _run_parallel'''
+          text, count = number_pattern.subn(lambda _: number_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'number replacement count={count}')
+
+          old_runner = '''def _run_prefix_cached(count: int, task: Any) -> list[_ReviewerResult]:
+              """先完成两路真实评审以建立公共前缀，之后的评审才有机会命中缓存。"""
+              results: list[_ReviewerResult] = []
+              errors: list[str] = []
+              warm_count = min(2, max(0, count))
+          '''
+          new_runner = '''def _run_prefix_cached(count: int, task: Any) -> list[_ReviewerResult]:
+              """Complete one real review first, then run the remaining independent reviews."""
+              results: list[_ReviewerResult] = []
+              errors: list[str] = []
+              warm_count = min(1, max(0, count))
+          '''
+          if old_runner not in text:
+              raise SystemExit('missing prefix runner block')
+          text = text.replace(old_runner, new_runner, 1)
+
+          text = text.replace(
+              '''        challenge_results = _run_parallel(
+          ''',
+              '''        challenge_results = _run_prefix_cached(
+          ''',
+              1,
+          )
+          text = text.replace(
+              '''    number_results = _run_parallel(
+          ''',
+              '''    number_results = _run_prefix_cached(
+          ''',
+              1,
+          )
+          text = text.replace(
+              '''        holdout_results = _run_parallel(
+          ''',
+              '''        holdout_results = _run_prefix_cached(
+          ''',
+              1,
+          )
+          path.write_text(text, encoding='utf-8')
+
+          test_path = Path('server/tests/test_ai_prefix_cache.py')
+          test_path.write_text('''from __future__ import annotations
+          
+          import unittest
+          from unittest.mock import patch
+          
+          from app.ai_ensemble import (
+              _ReviewerResult,
+              _anonymized_items,
+              _number_review,
+              _position_review,
+              _run_prefix_cached,
+              _usage_from_response,
+              analyze_ensemble,
+              build_position_evidence,
+          )
+          from app.models import DrawModel
+          from app.runtime_config import RuntimeAiConfig
+          
+          
+          def history(count: int = 120) -> list[DrawModel]:
+              values: list[DrawModel] = []
+              for index in range(count):
+                  numbers = list(range(1, 11))
+                  shift = index % 10
+                  numbers = numbers[shift:] + numbers[:shift]
+                  values.append(
+                      DrawModel(
+                          lottery="azxy10",
+                          period=str(21348000 + index),
+                          numbers=numbers,
+                      )
+                  )
+              return values
+          
+          
+          def config() -> RuntimeAiConfig:
+              return RuntimeAiConfig(
+                  enabled=True,
+                  endpoint="https://api.deepseek.com/chat/completions",
+                  model="deepseek-v4-pro",
+                  api_key="secret",
+                  timeout_seconds=60,
+              )
+          
+          
+          def labeled_scores() -> dict[str, int]:
+              return {label: index for index, label in enumerate("ABCDEFGHIJ", start=1)}
+          
+          
+          class PrefixCacheTests(unittest.TestCase):
+              @patch("app.ai_ensemble._call_json")
+              def test_position_reviewers_share_neutral_prefix_and_preserve_original_mapping(self, call_json: object) -> None:
+                  calls: list[dict[str, object]] = []
+          
+                  def fake_call(*args: object, **kwargs: object) -> dict[str, object]:
+                      calls.append(dict(kwargs))
+                      return {
+                          "scores": labeled_scores(),
+                          "analysis": "独立评审",
+                          "_tianji_usage": {"request_count": 1},
+                      }
+          
+                  call_json.side_effect = fake_call
+                  draws = history()
+                  evidence = build_position_evidence(draws)
+                  results = []
+                  for reviewer in (0, 1):
+                      results.append(
+                          _position_review(
+                              config(),
+                              history=draws,
+                              evidence=evidence,
+                              target_period="21348120",
+                              trained_through_period="21348119",
+                              reviewer=reviewer,
+                              challenge=False,
+                          )
+                      )
+                  self.assertEqual(calls[0]["system_prompt"], calls[1]["system_prompt"])
+                  self.assertEqual(calls[0]["shared_payload"], calls[1]["shared_payload"])
+                  tail0 = calls[0]["reviewer_payload"]
+                  tail1 = calls[1]["reviewer_payload"]
+                  self.assertIsInstance(tail0, dict)
+                  self.assertIsInstance(tail1, dict)
+                  assert isinstance(tail0, dict) and isinstance(tail1, dict)
+                  self.assertNotEqual(
+                      tail0["candidate_aliases_A_to_J"],
+                      tail1["candidate_aliases_A_to_J"],
+                  )
+                  for reviewer, result in enumerate(results):
+                      _, original_mapping = _anonymized_items(
+                          evidence,
+                          target_period="21348120",
+                          phase="position",
+                          reviewer=reviewer,
+                      )
+                      for label, actual_index in original_mapping.items():
+                          self.assertAlmostEqual(
+                              result.scores[actual_index],
+                              labeled_scores()[label] / 55.0,
+                          )
+          
+              @patch("app.ai_ensemble._call_json")
+              def test_number_reviewers_share_neutral_prefix_but_keep_independent_aliases(self, call_json: object) -> None:
+                  calls: list[dict[str, object]] = []
+          
+                  def fake_call(*args: object, **kwargs: object) -> dict[str, object]:
+                      calls.append(dict(kwargs))
+                      return {
+                          "scores": labeled_scores(),
+                          "analysis": "号码评审",
+                          "_tianji_usage": {"request_count": 1},
+                      }
+          
+                  call_json.side_effect = fake_call
+                  draws = history()
+                  for reviewer in (0, 1):
+                      _number_review(
+                          config(),
+                          history=draws,
+                          position=0,
+                          target_period="21348120",
+                          trained_through_period="21348119",
+                          reviewer=reviewer,
+                          mask_recent=0,
+                      )
+                  self.assertEqual(calls[0]["system_prompt"], calls[1]["system_prompt"])
+                  self.assertEqual(calls[0]["shared_payload"], calls[1]["shared_payload"])
+                  tail0 = calls[0]["reviewer_payload"]
+                  tail1 = calls[1]["reviewer_payload"]
+                  assert isinstance(tail0, dict) and isinstance(tail1, dict)
+                  self.assertNotEqual(
+                      tail0["candidate_aliases_A_to_J"],
+                      tail1["candidate_aliases_A_to_J"],
+                  )
+          
+              def test_first_reviewer_finishes_before_cache_candidates(self) -> None:
+                  order: list[int] = []
+          
+                  def task(reviewer: int) -> _ReviewerResult:
+                      order.append(reviewer)
+                      return _ReviewerResult(scores=[0.1] * 10, analysis="")
+          
+                  results = _run_prefix_cached(3, task)
+                  self.assertEqual(len(results), 3)
+                  self.assertEqual(order[0], 0)
+                  self.assertEqual(set(order[1:]), {1, 2})
+          
+              def test_deepseek_usage_fields_are_preserved(self) -> None:
+                  usage = _usage_from_response(
+                      {
+                          "usage": {
+                              "prompt_tokens": 1000,
+                              "prompt_cache_hit_tokens": 800,
+                              "prompt_cache_miss_tokens": 200,
+                              "completion_tokens": 50,
+                              "total_tokens": 1050,
+                              "completion_tokens_details": {"reasoning_tokens": 20},
+                          }
+                      }
+                  )
+                  self.assertEqual(usage["prompt_cache_hit_tokens"], 800)
+                  self.assertEqual(usage["prompt_cache_miss_tokens"], 200)
+                  self.assertEqual(usage["reasoning_tokens"], 20)
+          
+              @patch("app.ai_ensemble._number_review")
+              @patch("app.ai_ensemble._position_review")
+              def test_ensemble_aggregates_usage_without_changing_reviewer_count(
+                  self,
+                  position_review: object,
+                  number_review: object,
+              ) -> None:
+                  position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+                      scores=[0.1] * 10,
+                      analysis="名次",
+                      usage={
+                          "request_count": 1,
+                          "prompt_tokens": 100,
+                          "prompt_cache_hit_tokens": 60,
+                          "prompt_cache_miss_tokens": 40,
+                          "completion_tokens": 10,
+                          "reasoning_tokens": 2,
+                      },
+                  )
+                  number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+                      scores=[0.1] * 10,
+                      analysis="号码",
+                      usage={
+                          "request_count": 1,
+                          "prompt_tokens": 50,
+                          "prompt_cache_hit_tokens": 0,
+                          "prompt_cache_miss_tokens": 50,
+                          "completion_tokens": 5,
+                          "reasoning_tokens": 1,
+                      },
+                  )
+                  result = analyze_ensemble(history(), "21348120", config())
+                  self.assertEqual(result.position_reviewers, 3)
+                  self.assertEqual(result.number_reviewers, 2)
+                  self.assertEqual(result.request_count, 5)
+                  self.assertEqual(result.prompt_cache_hit_tokens, 180)
+                  self.assertEqual(result.prompt_cache_miss_tokens, 220)
+                  self.assertAlmostEqual(result.cache_hit_rate, 0.45)
+          
+          
+          if __name__ == "__main__":
+              unittest.main()
+          ''', encoding='utf-8')
+
+          compile(path.read_text(encoding='utf-8'), str(path), 'exec')
+          compile(test_path.read_text(encoding='utf-8'), str(test_path), 'exec')
+          PY
+      - name: Install backend dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Run backend tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+      - name: Commit refinement
+        shell: bash
+        run: |
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app/ai_ensemble.py server/tests/test_ai_prefix_cache.py
+          git commit -m "refactor(server): preserve independent mappings with neutral cache prefix"
+          git push origin optimize/deepseek-prefix-cache
