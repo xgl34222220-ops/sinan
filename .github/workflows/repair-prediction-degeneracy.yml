@@ -1,0 +1,44 @@
+name: Repair Prediction Degeneracy
+
+on:
+  push:
+    branches:
+      - fix/prediction-degeneracy
+    paths:
+      - tools/repair_prediction_degeneracy.py
+      - .github/workflows/repair-prediction-degeneracy.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/prediction-degeneracy
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply algorithm repair
+        run: python tools/repair_prediction_degeneracy.py
+      - name: Install server test dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Compile server
+        run: python -m compileall -q server/app server/tests
+      - name: Run server tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+      - name: Commit repaired algorithm
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(server): 重做名次验证并阻止最近六码复制"
+          git push origin HEAD:fix/prediction-degeneracy
