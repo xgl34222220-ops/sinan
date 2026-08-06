@@ -7,6 +7,8 @@ from typing import Any
 
 import requests
 
+from .config import settings
+
 
 _TELEGRAM_API = "https://api.telegram.org"
 _SPLIT_CHAT_IDS = re.compile(r"[\s,;]+")
@@ -43,8 +45,15 @@ def _is_native_message(text: str) -> bool:
     return _NATIVE_SOURCE_FRAGMENT in str(text)
 
 
+def _event_visual(streak: int, threshold: int) -> tuple[str, str]:
+    if streak <= 2:
+        return "⚠️ <b>连续两期不中</b>", "提前预警"
+    if streak == threshold:
+        return "🚨 <b>连续三期不中</b>", "加强提醒"
+    return f"🔴 <b>连续 {streak} 期不中</b>", "升级提醒"
+
+
 def format_alert_message(alert: Any) -> str:
-    title = html.escape(str(alert["title"]))
     lottery_name = html.escape(str(alert["lottery_name"]))
     source_name = html.escape(str(alert["source_name"]))
     model = html.escape(str(alert["model"]))
@@ -61,36 +70,39 @@ def format_alert_message(alert: Any) -> str:
     except (TypeError, ValueError):
         recent_periods = []
 
-    if streak == 2:
-        heading = "⚠️ <b>连续两期不中 · 提前预警</b>"
-        notice = "已连续两期 Top 6 未中，请留意下一期；每期云端 AI 预测仍会正常推送。"
-    elif streak == threshold:
-        heading = "🚨🚨 <b>连续三期不中 · 加强提醒</b>"
-        notice = "已达到加强提醒条件，请重点关注下一期预测；后续每期预测仍会正常推送。"
-    else:
-        heading = f"🔴🔴 <b>连续 {streak} 期不中 · 升级提醒</b>"
-        notice = "连续未中仍在扩大，当前处于升级提醒状态；后续每期预测仍会正常推送。"
-
+    heading, level = _event_visual(streak, threshold)
     lines = [
         heading,
+        f"<i>{level}</i>",
         "",
-        f"<b>预警类型：</b>{title}",
-        f"<b>彩种：</b>{lottery_name}",
-        f"<b>来源：</b>{source_name}",
-        f"<b>模型：</b><code>{model}</code>",
-        f"<b>连续未中：</b><b>{streak} 期</b>（Top 6）",
-        f"<b>最新目标期：</b><code>{latest_period}</code>",
+        f"🎯 <b>{lottery_name}</b> · {source_name}",
+        f"🤖 <code>{model}</code>",
+        f"📌 目标期：<code>{latest_period}</code>",
+        f"📉 连续未中：<b>{streak} 期</b>（Top 6）",
     ]
     if recent_periods:
-        lines.append(f"<b>最近期号：</b>{'、'.join(recent_periods)}")
+        lines.append(f"🕘 最近期号：{'、'.join(recent_periods)}")
     lines.extend(
         [
             "",
-            notice,
-            "命中后连续未中计数清零；下一次两期不中先预警，三期不中再加强提醒。",
+            "请重点关注下一期预测；命中后连续未中计数会自动清零。",
         ]
     )
     return "\n".join(lines)
+
+
+def _reply_markup() -> dict[str, Any] | None:
+    base = settings.public_base_url.strip().rstrip("/")
+    if not base.startswith("https://"):
+        return None
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "查看最新预测", "url": base},
+                {"text": "打开管理面板", "url": f"{base}/admin"},
+            ]
+        ]
+    }
 
 
 def send_html_message(
@@ -139,13 +151,16 @@ def send_alert(
         return True, 204, _NATIVE_SUPPRESSED_MESSAGE
 
     url = f"{_TELEGRAM_API}/bot{token}/sendMessage"
-    payload = {
+    payload: dict[str, Any] = {
         "chat_id": target,
         "text": format_alert_message(alert),
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
         "disable_notification": False,
     }
+    markup = _reply_markup()
+    if markup is not None:
+        payload["reply_markup"] = markup
     try:
         response = requests.post(url, json=payload, timeout=timeout_seconds)
         text = response.text[:800]
