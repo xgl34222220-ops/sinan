@@ -39,7 +39,9 @@ internal class SecurePushIdentityStore(
     private fun randomSecret(): String {
         val bytes = ByteArray(32)
         SecureRandom().nextBytes(bytes)
-        return bytes.joinToString(separator = "") { value -> "%02x".format(value) }
+        return bytes.joinToString(separator = "") { value ->
+            "%02x".format(value.toInt() and 0xff)
+        }
     }
 
     private fun encrypt(value: String): String? = runCatching {
