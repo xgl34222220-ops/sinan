@@ -18,7 +18,7 @@ services:
     env_file:
       - .env
     environment:
-      TIANJI_RUNTIME_REVISION: "1.7.2-adaptive-v4"
+      TIANJI_RUNTIME_REVISION: "1.7.3-learning-reconcile"
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups:ro
@@ -35,7 +35,7 @@ services:
     env_file:
       - .env
     environment:
-      TIANJI_RUNTIME_REVISION: "1.7.2-adaptive-v4"
+      TIANJI_RUNTIME_REVISION: "1.7.3-learning-reconcile"
     volumes:
       - ./data:/app/data
     depends_on:

@@ -11,7 +11,7 @@ from app.service import SERVICE_VERSION
 
 class AdaptiveWorkerRuntimeTests(unittest.TestCase):
     def test_service_version_marks_forced_worker_runtime(self) -> None:
-        self.assertEqual(SERVICE_VERSION, "1.7.2")
+        self.assertEqual(SERVICE_VERSION, "1.7.3")
 
     def test_v4_forecast_requires_strategy_snapshot_on_settlement(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -82,6 +82,54 @@ class AdaptiveWorkerRuntimeTests(unittest.TestCase):
             )
             diagnostics = database.strategy_snapshot_diagnostics("xyft")
             self.assertEqual(diagnostics[0]["settled_snapshot_count"], 2)
+
+
+    def test_reconciles_snapshots_after_legacy_forecast_settlement(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(f"{directory}/reconcile.db")
+            forecast_id = database.save_forecast_with_strategies(
+                lottery="xyft",
+                target_period="400003",
+                trained_through_period="400002",
+                position=0,
+                top6=[1,2,3,4,5,6],
+                top7=[1,2,3,4,5,6,7],
+                probabilities=[0.1] * 10,
+                source="native",
+                model="tianji-native-cloud-v4",
+                analysis="reconcile",
+                risk_note="test",
+                probabilities_by_strategy={
+                    "good": [0.7] + [0.3 / 9] * 9,
+                    "bad": [0.3 / 9] * 9 + [0.7],
+                },
+                weights={"good": 0.5, "bad": 0.5},
+            )
+            self.assertIsNotNone(forecast_id)
+            with database.connection() as db:
+                db.execute(
+                    """
+                    UPDATE forecasts SET
+                        actual_number = 1, top6_hit = 1, top7_hit = 1, settled_at = 123456789
+                    WHERE id = ?
+                    """,
+                    (forecast_id,),
+                )
+
+            before = database.strategy_snapshot_diagnostics("xyft")[0]
+            self.assertEqual(before["snapshot_count"], 2)
+            self.assertEqual(before["settled_snapshot_count"], 0)
+
+            self.assertEqual(database.settle_forecasts("xyft"), 1)
+            learning = database.strategy_learning_summary("xyft", "native")
+            self.assertEqual({row["samples"] for row in learning}, {1})
+            self.assertGreater(
+                next(row["weight"] for row in learning if row["strategy"] == "good"),
+                next(row["weight"] for row in learning if row["strategy"] == "bad"),
+            )
+            after = database.strategy_snapshot_diagnostics("xyft")[0]
+            self.assertEqual(after["settled_snapshot_count"], 2)
+            self.assertEqual(database.settle_forecasts("xyft"), 0)
 
 
 if __name__ == "__main__":

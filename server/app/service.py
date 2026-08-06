@@ -15,7 +15,7 @@ from .predictor import predict
 from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
-SERVICE_VERSION = "1.7.2"
+SERVICE_VERSION = "1.7.3"
 SAFETY_WINDOW_MS = 5_000
 AI_RETRY_AFTER_MS = 30_000
 _AI_EXECUTOR = ThreadPoolExecutor(
