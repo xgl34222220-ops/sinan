@@ -29,8 +29,8 @@ android {
         applicationId = "com.tianji.probabilitylab.nativev5"
         minSdk = 26
         targetSdk = 36
-        versionCode = 58
-        versionName = "6.0.0"
+        versionCode = 59
+        versionName = "6.1.0-beta01"
 
         buildConfigField("String", "TIANJI_CLOUD_BASE_URL", "\"${cloudBaseUrl.get()}\"")
         buildConfigField("String", "TIANJI_FIREBASE_PROJECT_ID", "\"${firebaseProjectId.get()}\"")
@@ -60,9 +60,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            if (releaseSigningAvailable) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            if (releaseSigningAvailable) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -85,8 +83,6 @@ android {
     }
 
     lint {
-        // API 36 and these AndroidX versions are the newest set verified with AGP 8.13.
-        // Reported newer releases require API 37 / AGP 9.1, so upgrading them is intentionally deferred.
         disable += setOf("OldTargetApi", "GradleDependency")
     }
 }

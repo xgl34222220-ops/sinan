@@ -1,6 +1,11 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
@@ -27,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
 import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
 import com.tianji.probabilitylab.nativev4.push.PushAlertNavigation
@@ -89,6 +95,26 @@ fun TianjiApp() {
     var showAlertCenter by rememberSaveable { mutableStateOf(false) }
     var focusedAlertId by rememberSaveable { mutableStateOf<Long?>(null) }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        PushAlertCoordinator.refresh()
+    }
+
+    LaunchedEffect(showAlertCenter, pushPreferences.enabled) {
+        if (
+            showAlertCenter &&
+            pushPreferences.enabled &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     LaunchedEffect(pendingAlertId) {
         pendingAlertId?.let { alertId ->
             focusedAlertId = alertId.takeIf { it > 0L }
@@ -115,9 +141,7 @@ fun TianjiApp() {
     ) {
         val colors = LocalTianjiColors.current
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(colors.page),
+            modifier = Modifier.fillMaxSize().background(colors.page),
         ) {
             TianjiRootScaffold {
                 Column(Modifier.fillMaxSize()) {
@@ -196,8 +220,7 @@ fun TianjiApp() {
                             onSelected = { destination = it },
                             onChat = { showChat = true },
                             isAiRunning = state.isAiAnalyzing || chatRunning,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
+                            modifier = Modifier.align(Alignment.BottomCenter)
                                 .padding(start = 12.dp, end = 12.dp, bottom = 9.dp),
                         )
                     }
@@ -240,10 +263,8 @@ fun TianjiApp() {
 private fun pageTransformV2(from: Int, to: Int): ContentTransform {
     val direction = if (to >= from) 1 else -1
     return (
-        slideInHorizontally(tween(230)) { it / 9 * direction } +
-            fadeIn(tween(190))
+        slideInHorizontally(tween(230)) { it / 9 * direction } + fadeIn(tween(190))
         ) togetherWith (
-        slideOutHorizontally(tween(170)) { -it / 11 * direction } +
-            fadeOut(tween(130))
+        slideOutHorizontally(tween(170)) { -it / 11 * direction } + fadeOut(tween(130))
         )
 }

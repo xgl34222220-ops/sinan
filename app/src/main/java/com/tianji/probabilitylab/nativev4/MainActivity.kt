@@ -1,17 +1,12 @@
 package com.tianji.probabilitylab.nativev4
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import com.tianji.probabilitylab.nativev4.push.PushAlertNavigation
 import com.tianji.probabilitylab.nativev4.push.PushNotificationManager
 import com.tianji.probabilitylab.nativev4.ui.TianjiApp
@@ -24,7 +19,6 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         handlePushIntent(intent)
-        requestNotificationPermission()
         setContent { TianjiApp() }
     }
 
@@ -35,28 +29,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handlePushIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(PushNotificationManager.EXTRA_OPEN_ALERT_CENTER, false) == true) {
-            PushAlertNavigation.open(
-                intent.getLongExtra(PushNotificationManager.EXTRA_ALERT_ID, 0L),
-            )
-        }
-    }
+        intent ?: return
+        val openAlertCenter =
+            intent.getBooleanExtra(PushNotificationManager.EXTRA_OPEN_ALERT_CENTER, false) ||
+                intent.getStringExtra(PushNotificationManager.EXTRA_OPEN_ALERT_CENTER)
+                    ?.toBooleanStrictOrNull() == true ||
+                intent.hasExtra(PushNotificationManager.EXTRA_ALERT_ID)
+        if (!openAlertCenter) return
 
-    private fun requestNotificationPermission() {
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                NOTIFICATION_PERMISSION_REQUEST,
-            )
+        val alertId = when (val value = intent.extras?.get(PushNotificationManager.EXTRA_ALERT_ID)) {
+            is Number -> value.toLong()
+            is String -> value.toLongOrNull() ?: 0L
+            else -> 0L
         }
-    }
-
-    companion object {
-        private const val NOTIFICATION_PERMISSION_REQUEST = 5098
+        PushAlertNavigation.open(alertId)
     }
 }

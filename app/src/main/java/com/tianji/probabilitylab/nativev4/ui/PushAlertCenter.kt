@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import com.tianji.probabilitylab.nativev4.push.PushAlert
 import com.tianji.probabilitylab.nativev4.push.PushConnectionStatus
 import com.tianji.probabilitylab.nativev4.push.PushPreferences
+import com.tianji.probabilitylab.nativev4.push.PushProtocol
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,11 +76,15 @@ fun PushAlertCenterScreen(
         compareByDescending<PushAlert> { it.id == focusAlertId }
             .thenByDescending { it.id },
     )
-    val modeTitle = if (status.instantReady) "FCM 即时推送" else "后台检查模式"
-    val modeDetail = if (status.instantReady) {
-        "云端检测到预警后会直接推送到当前设备"
-    } else {
-        "系统约每 ${status.fallbackMinutes} 分钟检查一次，并使用本地通知提醒"
+    val modeTitle = when {
+        status.instantReady -> "FCM 即时推送"
+        status.registered -> "后台增量检查"
+        else -> "等待连接"
+    }
+    val modeDetail = when {
+        status.instantReady -> "预测完成、恢复命中和风险预警会直接送达当前设备"
+        status.registered -> "系统约每 ${status.fallbackMinutes} 分钟增量检查，不会重复拉取全部历史"
+        else -> status.detail
     }
 
     Column(
@@ -110,7 +116,7 @@ fun PushAlertCenterScreen(
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    "预警中心",
+                    "通知中心",
                     color = colors.text,
                     fontSize = 19.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -136,7 +142,7 @@ fun PushAlertCenterScreen(
                 IconButton(onClick = onRefresh, modifier = Modifier.size(44.dp)) {
                     Icon(
                         Icons.Rounded.Refresh,
-                        "刷新预警",
+                        "刷新通知",
                         tint = colors.accent,
                         modifier = Modifier.size(21.dp),
                     )
@@ -178,7 +184,7 @@ fun PushAlertCenterScreen(
                             Spacer(Modifier.width(11.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    "预测预警",
+                                    "智能通知",
                                     color = colors.text,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.ExtraBold,
@@ -227,24 +233,34 @@ fun PushAlertCenterScreen(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            Text(
-                                if (status.instantReady) "即时" else "${status.fallbackMinutes} 分钟",
-                                color = if (status.instantReady) colors.green else colors.accent,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(
-                                        (if (status.instantReady) colors.green else colors.accent)
-                                            .copy(alpha = 0.10f),
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    if (status.instantReady) "即时" else "${status.fallbackMinutes} 分钟",
+                                    color = if (status.instantReady) colors.green else colors.accent,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(
+                                            (if (status.instantReady) colors.green else colors.accent)
+                                                .copy(alpha = 0.10f),
+                                        )
+                                        .padding(horizontal = 9.dp, vertical = 6.dp),
+                                )
+                                if (status.protocolVersion >= 2) {
+                                    Text(
+                                        "协议 v${status.protocolVersion}",
+                                        color = colors.textDim,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(top = 4.dp),
                                     )
-                                    .padding(horizontal = 9.dp, vertical = 6.dp),
-                            )
+                                }
+                            }
                         }
 
                         AlertToggleRow(
                             title = "总开关",
-                            detail = "关闭后不再弹出通知，历史预警仍会保留",
+                            detail = "关闭后不再弹出系统通知，历史记录仍会安全保留",
                             checked = preferences.enabled,
                             onChecked = {
                                 onPreferencesChange(preferences.copy(enabled = it))
@@ -265,29 +281,29 @@ fun PushAlertCenterScreen(
                         )
                         AlertToggleRow(
                             "幸运飞艇",
-                            "该彩种每个预测来源独立统计",
+                            "预测完成、恢复命中与风险预警",
                             preferences.xyftEnabled,
                         ) { onPreferencesChange(preferences.copy(xyftEnabled = it)) }
                         AlertToggleRow(
                             "澳洲幸运10",
-                            "该彩种每个预测来源独立统计",
+                            "预测完成、恢复命中与风险预警",
                             preferences.azxy10Enabled,
                         ) { onPreferencesChange(preferences.copy(azxy10Enabled = it)) }
                         AlertToggleRow(
                             "天机云端 AI",
-                            "服务器 AI 模型连续三期不中",
+                            "云端 AI 的新预测与连续未命中状态",
                             preferences.aiEnabled,
                             Icons.Rounded.Cloud,
                         ) { onPreferencesChange(preferences.copy(aiEnabled = it)) }
                         AlertToggleRow(
                             "天机云端本地",
-                            "服务器本地模型连续三期不中",
+                            "服务器本地模型的预测与验证状态",
                             preferences.nativeEnabled,
                             Icons.Rounded.Memory,
                         ) { onPreferencesChange(preferences.copy(nativeEnabled = it)) }
                         AlertToggleRow(
                             "升级预警",
-                            "连续 4、5 期仍不中时继续提醒",
+                            "首次加强提醒保留；连续 4、5 期仍不中时继续提醒",
                             preferences.escalationEnabled,
                         ) { onPreferencesChange(preferences.copy(escalationEnabled = it)) }
                     }
@@ -301,7 +317,7 @@ fun PushAlertCenterScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "历史预警",
+                            "通知历史",
                             color = colors.text,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -336,14 +352,14 @@ fun PushAlertCenterScreen(
                                 modifier = Modifier.size(34.dp),
                             )
                             Text(
-                                "暂无连续三期不中预警",
+                                "暂无通知",
                                 color = colors.text,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                             Text(
-                                "后台检查到新预警后会自动出现在这里",
+                                "新预测、恢复命中或风险状态会自动出现在这里",
                                 color = colors.textDim,
                                 fontSize = 11.sp,
                             )
@@ -368,7 +384,7 @@ private fun AlertToggleRow(
     title: String,
     detail: String,
     checked: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    icon: ImageVector? = null,
     onChecked: (Boolean) -> Unit,
 ) {
     val colors = LocalTianjiColors.current
@@ -380,12 +396,7 @@ private fun AlertToggleRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(
-                icon,
-                null,
-                tint = colors.textDim,
-                modifier = Modifier.size(20.dp),
-            )
+            Icon(icon, null, tint = colors.textDim, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(9.dp))
         }
         Column(Modifier.weight(1f)) {
@@ -433,19 +444,55 @@ private fun AlertHistoryCard(
     onRead: () -> Unit,
 ) {
     val colors = LocalTianjiColors.current
-    val accent = if (alert.streak > alert.threshold) colors.red else colors.amber
+    val visual = when (alert.eventType) {
+        PushProtocol.EVENT_PREDICTION_READY -> AlertVisual(
+            icon = Icons.Rounded.Cloud,
+            accent = colors.accent,
+            label = "预测完成",
+        )
+        PushProtocol.EVENT_HIT_RECOVERY -> AlertVisual(
+            icon = Icons.Rounded.CheckCircle,
+            accent = colors.green,
+            label = "恢复命中",
+        )
+        PushProtocol.EVENT_MISS_PREALERT -> AlertVisual(
+            icon = Icons.Rounded.WarningAmber,
+            accent = colors.amber,
+            label = "提前预警",
+        )
+        PushProtocol.EVENT_MISS_ESCALATION -> AlertVisual(
+            icon = Icons.Rounded.WarningAmber,
+            accent = colors.red,
+            label = "升级预警",
+        )
+        PushProtocol.EVENT_SERVICE_WARNING -> AlertVisual(
+            icon = Icons.Rounded.WarningAmber,
+            accent = colors.red,
+            label = "服务异常",
+        )
+        PushProtocol.EVENT_SYSTEM_NOTICE -> AlertVisual(
+            icon = Icons.Rounded.NotificationsActive,
+            accent = colors.violet,
+            label = "系统通知",
+        )
+        else -> AlertVisual(
+            icon = Icons.Rounded.WarningAmber,
+            accent = if (alert.streak > alert.threshold) colors.red else colors.amber,
+            label = "风险预警",
+        )
+    }
     val shape = RoundedCornerShape(19.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(
-                if (!alert.isRead || focused) accent.copy(alpha = 0.10f)
+                if (!alert.isRead || focused) visual.accent.copy(alpha = 0.10f)
                 else colors.surfaceStrong,
             )
             .border(
                 if (focused) 1.5.dp else 1.dp,
-                if (focused || !alert.isRead) accent.copy(alpha = 0.45f) else colors.line,
+                if (focused || !alert.isRead) visual.accent.copy(alpha = 0.45f) else colors.line,
                 shape,
             )
             .clickable {
@@ -454,50 +501,97 @@ private fun AlertHistoryCard(
             .padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Rounded.WarningAmber,
-                null,
-                tint = accent,
-                modifier = Modifier.size(21.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                alert.title,
-                color = accent,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.weight(1f),
-            )
-            if (!alert.isRead) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(visual.accent.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    visual.icon,
+                    null,
+                    tint = visual.accent,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    visual.label,
+                    color = visual.accent,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Text(
+                    alert.title,
+                    color = colors.text,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (alert.isExpired) {
+                Text(
+                    "已过期",
+                    color = colors.textDim,
+                    fontSize = 9.sp,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(colors.surfaceSoft)
+                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                )
+            } else if (!alert.isRead) {
                 Box(
                     Modifier
                         .size(7.dp)
                         .clip(CircleShape)
-                        .background(accent),
+                        .background(visual.accent),
                 )
             }
         }
-        Text(
-            "${alert.lotteryName} · ${alert.sourceName}",
-            color = colors.text,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 7.dp),
-        )
-        Text(
-            alert.model,
-            color = colors.textSoft,
-            fontSize = 11.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            "连续 ${alert.streak} 期 Top 6 未命中",
-            color = colors.text,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-        if (alert.recentPeriods.isNotEmpty()) {
+
+        if (alert.body.isNotBlank()) {
+            Text(
+                alert.body,
+                color = colors.textSoft,
+                fontSize = 11.sp,
+                lineHeight = 17.sp,
+                modifier = Modifier.padding(top = 9.dp),
+            )
+        }
+
+        val sourceLine = listOf(alert.lotteryName, alert.sourceName)
+            .filter(String::isNotBlank)
+            .joinToString(" · ")
+        if (sourceLine.isNotBlank()) {
+            Text(
+                sourceLine,
+                color = colors.text,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+        if (alert.model.isNotBlank()) {
+            Text(
+                alert.model,
+                color = colors.textDim,
+                fontSize = 10.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (alert.latestTargetPeriod.isNotBlank()) {
+            Text(
+                "目标期：${alert.latestTargetPeriod}",
+                color = colors.textSoft,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        if (alert.recentPeriods.isNotEmpty() && alert.isRiskAlert) {
             Text(
                 "最近期号：${alert.recentPeriods.joinToString("、")}",
                 color = colors.textDim,
@@ -512,6 +606,12 @@ private fun AlertHistoryCard(
         )
     }
 }
+
+private data class AlertVisual(
+    val icon: ImageVector,
+    val accent: Color,
+    val label: String,
+)
 
 private fun formatAlertTime(epochMs: Long): String =
     SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(epochMs))
