@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 from app.ai_ensemble import (
     _ReviewerResult,
+    _anonymized_items,
+    _number_review,
     _position_review,
     _run_prefix_cached,
     _usage_from_response,
@@ -41,41 +43,98 @@ def config() -> RuntimeAiConfig:
     )
 
 
+def labeled_scores() -> dict[str, int]:
+    return {label: index for index, label in enumerate("ABCDEFGHIJ", start=1)}
+
+
 class PrefixCacheTests(unittest.TestCase):
     @patch("app.ai_ensemble._call_json")
-    def test_position_reviewers_share_large_prefix_but_keep_independent_tail(self, call_json: object) -> None:
+    def test_position_reviewers_share_neutral_prefix_and_preserve_original_mapping(self, call_json: object) -> None:
         calls: list[dict[str, object]] = []
 
         def fake_call(*args: object, **kwargs: object) -> dict[str, object]:
             calls.append(dict(kwargs))
             return {
-                "scores": {label: 1 for label in "ABCDEFGHIJ"},
+                "scores": labeled_scores(),
                 "analysis": "独立评审",
                 "_tianji_usage": {"request_count": 1},
             }
 
         call_json.side_effect = fake_call
-        evidence = build_position_evidence(history())
+        draws = history()
+        evidence = build_position_evidence(draws)
+        results = []
         for reviewer in (0, 1):
-            _position_review(
-                config(),
-                history=history(),
-                evidence=evidence,
-                target_period="21348120",
-                trained_through_period="21348119",
-                reviewer=reviewer,
-                challenge=False,
+            results.append(
+                _position_review(
+                    config(),
+                    history=draws,
+                    evidence=evidence,
+                    target_period="21348120",
+                    trained_through_period="21348119",
+                    reviewer=reviewer,
+                    challenge=False,
+                )
             )
         self.assertEqual(calls[0]["system_prompt"], calls[1]["system_prompt"])
         self.assertEqual(calls[0]["shared_payload"], calls[1]["shared_payload"])
-        self.assertNotEqual(calls[0]["reviewer_payload"], calls[1]["reviewer_payload"])
-        shared = calls[0]["shared_payload"]
-        self.assertIsInstance(shared, dict)
-        assert isinstance(shared, dict)
-        self.assertNotIn("reviewer", shared)
-        self.assertEqual(len(shared["anonymous_raw_draws"]), 120)
+        tail0 = calls[0]["reviewer_payload"]
+        tail1 = calls[1]["reviewer_payload"]
+        self.assertIsInstance(tail0, dict)
+        self.assertIsInstance(tail1, dict)
+        assert isinstance(tail0, dict) and isinstance(tail1, dict)
+        self.assertNotEqual(
+            tail0["candidate_aliases_A_to_J"],
+            tail1["candidate_aliases_A_to_J"],
+        )
+        for reviewer, result in enumerate(results):
+            _, original_mapping = _anonymized_items(
+                evidence,
+                target_period="21348120",
+                phase="position",
+                reviewer=reviewer,
+            )
+            for label, actual_index in original_mapping.items():
+                self.assertAlmostEqual(
+                    result.scores[actual_index],
+                    labeled_scores()[label] / 55.0,
+                )
 
-    def test_first_two_reviewers_finish_before_cache_candidate(self) -> None:
+    @patch("app.ai_ensemble._call_json")
+    def test_number_reviewers_share_neutral_prefix_but_keep_independent_aliases(self, call_json: object) -> None:
+        calls: list[dict[str, object]] = []
+
+        def fake_call(*args: object, **kwargs: object) -> dict[str, object]:
+            calls.append(dict(kwargs))
+            return {
+                "scores": labeled_scores(),
+                "analysis": "号码评审",
+                "_tianji_usage": {"request_count": 1},
+            }
+
+        call_json.side_effect = fake_call
+        draws = history()
+        for reviewer in (0, 1):
+            _number_review(
+                config(),
+                history=draws,
+                position=0,
+                target_period="21348120",
+                trained_through_period="21348119",
+                reviewer=reviewer,
+                mask_recent=0,
+            )
+        self.assertEqual(calls[0]["system_prompt"], calls[1]["system_prompt"])
+        self.assertEqual(calls[0]["shared_payload"], calls[1]["shared_payload"])
+        tail0 = calls[0]["reviewer_payload"]
+        tail1 = calls[1]["reviewer_payload"]
+        assert isinstance(tail0, dict) and isinstance(tail1, dict)
+        self.assertNotEqual(
+            tail0["candidate_aliases_A_to_J"],
+            tail1["candidate_aliases_A_to_J"],
+        )
+
+    def test_first_reviewer_finishes_before_cache_candidates(self) -> None:
         order: list[int] = []
 
         def task(reviewer: int) -> _ReviewerResult:
@@ -84,8 +143,8 @@ class PrefixCacheTests(unittest.TestCase):
 
         results = _run_prefix_cached(3, task)
         self.assertEqual(len(results), 3)
-        self.assertEqual(order[:2], [0, 1])
-        self.assertEqual(order[2], 2)
+        self.assertEqual(order[0], 0)
+        self.assertEqual(set(order[1:]), {1, 2})
 
     def test_deepseek_usage_fields_are_preserved(self) -> None:
         usage = _usage_from_response(
@@ -111,10 +170,8 @@ class PrefixCacheTests(unittest.TestCase):
         position_review: object,
         number_review: object,
     ) -> None:
-        position_scores = [0.1] * 10
-        number_scores = [0.1] * 10
         position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=position_scores,
+            scores=[0.1] * 10,
             analysis="名次",
             usage={
                 "request_count": 1,
@@ -126,7 +183,7 @@ class PrefixCacheTests(unittest.TestCase):
             },
         )
         number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=number_scores,
+            scores=[0.1] * 10,
             analysis="号码",
             usage={
                 "request_count": 1,

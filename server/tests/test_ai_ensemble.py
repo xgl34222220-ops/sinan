@@ -135,26 +135,33 @@ class AiEnsembleTests(unittest.TestCase):
             trained_through_period="21348119",
             reviewer=0,
         )
-        payload = captured["user_payload"]
-        self.assertIsInstance(payload, dict)
-        assert isinstance(payload, dict)
+        shared = captured["shared_payload"]
+        reviewer_tail = captured["reviewer_payload"]
+        self.assertIsInstance(shared, dict)
+        self.assertIsInstance(reviewer_tail, dict)
+        assert isinstance(shared, dict)
+        assert isinstance(reviewer_tail, dict)
         self.assertEqual(
-            payload["evidence_mode"],
-            "anonymous_full_sequence_plus_aggregates",
+            shared["evidence_mode"],
+            "neutral_anonymous_full_sequence_plus_aggregates",
         )
-        self.assertEqual(payload["history_order"], "oldest_to_newest")
-        self.assertEqual(len(payload["anonymous_history"]), 120)
+        self.assertEqual(shared["history_order"], "oldest_to_newest")
+        self.assertEqual(len(shared["neutral_history"]), 120)
+        neutral_ids = {f"N{index:02d}" for index in range(1, 11)}
         self.assertTrue(
             all(
-                item["candidate_id"] in set("ABCDEFGHIJ")
+                item["candidate_id"] in neutral_ids
                 and set(item) == {"period", "candidate_id"}
-                for item in payload["anonymous_history"]
+                for item in shared["neutral_history"]
             )
         )
-        for candidate in payload["candidates"]:
+        for candidate in shared["neutral_candidates"]:
             self.assertNotIn("number", candidate["evidence"])
             self.assertNotIn("current_number", candidate["evidence"])
             self.assertNotIn("latest_16_newest_to_oldest", candidate["evidence"])
+        aliases = reviewer_tail["candidate_aliases_A_to_J"]
+        self.assertEqual(set(aliases), set("ABCDEFGHIJ"))
+        self.assertEqual(set(aliases.values()), neutral_ids)
 
     def test_blend_probabilities_keeps_both_ai_reviews(self) -> None:
         primary = _scores_for_order([4, 5, 6, 7, 8, 9, 10, 1, 2, 3])

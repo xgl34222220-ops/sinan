@@ -362,6 +362,51 @@ def _anonymized_items(
     return payload, mapping
 
 
+_NEUTRAL_IDS = tuple(f"N{index:02d}" for index in range(1, 11))
+
+
+def _shared_anonymized_items(
+    items: list[dict[str, Any]],
+    *,
+    target_period: str,
+    phase: str,
+) -> tuple[list[dict[str, Any]], dict[str, int], dict[int, str]]:
+    """Build one neutral evidence namespace shared by all reviewers in a phase."""
+    _, shared_order = _anonymized_items(
+        items,
+        target_period=target_period,
+        phase=phase,
+        reviewer=0,
+    )
+    neutral_mapping: dict[str, int] = {}
+    payload: list[dict[str, Any]] = []
+    for neutral_id, actual_index in zip(
+        _NEUTRAL_IDS,
+        shared_order.values(),
+        strict=True,
+    ):
+        neutral_mapping[neutral_id] = actual_index
+        value = dict(items[actual_index])
+        value.pop("position", None)
+        value.pop("number", None)
+        payload.append({"evidence_id": neutral_id, "evidence": value})
+    neutral_by_actual = {
+        actual_index: neutral_id
+        for neutral_id, actual_index in neutral_mapping.items()
+    }
+    return payload, neutral_mapping, neutral_by_actual
+
+
+def _reviewer_aliases(
+    reviewer_mapping: dict[str, int],
+    neutral_by_actual: dict[int, str],
+) -> dict[str, str]:
+    return {
+        label: neutral_by_actual[actual_index]
+        for label, actual_index in reviewer_mapping.items()
+    }
+
+
 def _anonymized_position_history(
     history: list[DrawModel],
     mapping: dict[str, int],
@@ -433,19 +478,24 @@ def _position_review(
     reviewer: int,
     challenge: bool,
 ) -> _ReviewerResult:
-    # 同一期名次评审共享同一套匿名映射和证据前缀；真实名次仍不会暴露。
-    # 每一路的评审编号和反偏置要求放在长前缀之后，供 DeepSeek 复用缓存。
-    candidates, mapping = _anonymized_items(
+    shared_candidates, neutral_mapping, neutral_by_actual = _shared_anonymized_items(
         evidence,
         target_period=target_period,
-        phase="position",
-        reviewer=0,
+        phase="position-shared",
+    )
+    # Preserve the exact reviewer-specific permutation seed used before caching.
+    _, reviewer_mapping = _anonymized_items(
+        evidence,
+        target_period=target_period,
+        phase="position-challenge" if challenge else "position",
+        reviewer=reviewer,
     )
     prompt = (
-        "你是天机服务端的独立前向预测评审。候选A至J对应十个真实名次，但映射已随机匿名，"
-        "不得猜测字母对应哪个名次，也不得偏向列表第一项。你会同时看到匿名后的原始开奖序列和程序逐期核验的统计证据，"
-        "对全部10个候选给出0以上评分。评分代表相对预测证据，不是真实中奖概率。"
-        "必须明确选出证据最高的一个候选，每期必须形成预测，不得回答无法预测。"
+        "你是天机服务端的独立前向预测评审。共享证据中的N01至N10是服务器随机生成的中性编号，"
+        "不会暴露真实名次；本路参数会单独给出A至J到这些中性编号的一次性映射。"
+        "必须按照本路映射独立分析，不得猜测真实名次，也不得参考其他评审。"
+        "你会看到完整匿名开奖序列和程序逐期核验的统计证据，需对A至J全部给出0以上评分。"
+        "评分代表相对预测证据，不是真实中奖概率；必须明确选出证据最高的一个候选。"
         "只返回紧凑JSON：{\"scores\":{\"A\":数值,...,\"J\":数值},"
         "\"selected\":\"A至J之一\",\"analysis\":\"不超过120字简体中文\"}。"
     )
@@ -456,25 +506,32 @@ def _position_review(
             "target_period": target_period,
             "trained_through_period": trained_through_period,
             "history_order": "oldest_to_newest",
-            "evidence_mode": "shared_anonymous_full_sequence_plus_aggregates",
-            "anonymous_raw_draws": _anonymized_position_history(history, mapping),
-            "candidates": candidates,
+            "evidence_mode": "neutral_anonymous_full_sequence_plus_aggregates",
+            "neutral_raw_draws": _anonymized_position_history(
+                history,
+                neutral_mapping,
+            ),
+            "neutral_candidates": shared_candidates,
         },
         reviewer_payload={
             "reviewer": reviewer + 1,
             "independent_review": True,
+            "candidate_aliases_A_to_J": _reviewer_aliases(
+                reviewer_mapping,
+                neutral_by_actual,
+            ),
             "challenge": challenge,
             "review_instruction": (
                 "最近正式结果出现同一名次连续入选。本轮主动复核首位偏置、惯性选择和弱证据；"
                 "若匿名证据仍支持同一候选可以继续选择，禁止为了轮换故意换名次。"
                 if challenge
-                else "基于共享匿名证据独立评分，不参考其他评审结果。"
+                else "基于共享中性匿名证据独立评分，不参考其他评审结果。"
             ),
         },
         max_tokens=1200,
         timeout_seconds=55,
     )
-    return _parse_label_scores(result, mapping)
+    return _parse_label_scores(result, reviewer_mapping)
 
 
 def _number_evidence(
@@ -552,25 +609,32 @@ def _number_review(
         mask_recent=mask_recent,
     )
     phase = f"number-{position}-masked-{mask_recent}"
-    candidates, mapping = _anonymized_items(
+    shared_candidates, neutral_mapping, neutral_by_actual = _shared_anonymized_items(
+        evidence,
+        target_period=target_period,
+        phase=f"{phase}-shared",
+    )
+    # Preserve the exact per-reviewer A-J permutation from the original algorithm.
+    _, reviewer_mapping = _anonymized_items(
         evidence,
         target_period=target_period,
         phase=phase,
         reviewer=reviewer,
     )
-    anonymous_history = _anonymized_number_series(
+    neutral_history = _anonymized_number_series(
         history,
         position,
-        mapping,
+        neutral_mapping,
         mask_recent=mask_recent,
     )
     prompt = (
-        "你是天机服务端的独立号码排序评审。候选A至J对应号码1至10，但每轮映射都会随机改变并由服务端保密。"
-        "你会看到该名次完整的匿名历史时间序列，以及使用同一匿名映射生成的短中长期频率、遗漏、转移和趋势证据。"
-        "请分析真实的先后顺序、重复间隔、冷热切换、状态转移与多窗口稳定性，而不是只抄最近出现过的候选集合。"
-        "任何输入都不会暴露A至J对应的真实号码；不得猜测真实号码身份，不得偏向列表第一项，不得编造统计。"
+        "你是天机服务端的独立号码排序评审。共享证据中的N01至N10是服务器随机生成的中性编号，"
+        "不会暴露真实号码；本路参数会给出A至J到这些中性编号的一次性随机映射。"
+        "必须按照本路映射独立评分，不得猜测真实号码身份，不得参考其他评审。"
+        "请依据完整匿名历史时序、短中长期频率、遗漏、转移和趋势证据，分析先后顺序、"
+        "重复间隔、冷热切换、状态转移与多窗口稳定性，而不是只抄最近出现过的集合。"
         + (
-            "本轮为近期集合复刻复核，最近7期已作为留出窗口隐藏；请仅依据更早的完整匿名时序独立评分。"
+            "本轮为近期集合复刻复核，最近7期已作为留出窗口隐藏；仅依据更早时序评分。"
             if mask_recent
             else "本轮使用开奖前可见的完整匿名历史时序进行首次独立评分。"
         )
@@ -581,21 +645,29 @@ def _number_review(
     result = _call_json(
         config,
         system_prompt=prompt,
-        user_payload={
+        shared_payload={
             "target_period": target_period,
             "trained_through_period": trained_through_period,
             "selected_position": position + 1,
-            "reviewer": reviewer + 1,
             "history_order": "oldest_to_newest",
             "masked_recent_draws": mask_recent,
-            "evidence_mode": "anonymous_full_sequence_plus_aggregates",
-            "anonymous_history": anonymous_history,
-            "candidates": candidates,
+            "evidence_mode": "neutral_anonymous_full_sequence_plus_aggregates",
+            "neutral_history": neutral_history,
+            "neutral_candidates": shared_candidates,
+        },
+        reviewer_payload={
+            "reviewer": reviewer + 1,
+            "independent_review": True,
+            "candidate_aliases_A_to_J": _reviewer_aliases(
+                reviewer_mapping,
+                neutral_by_actual,
+            ),
+            "review_instruction": "仅依据共享中性匿名证据独立评分，不参考其他评审结果。",
         },
         max_tokens=1400,
         timeout_seconds=50,
     )
-    return _parse_label_scores(result, mapping)
+    return _parse_label_scores(result, reviewer_mapping)
 
 
 def _run_parallel(count: int, task: Any) -> list[_ReviewerResult]:
@@ -614,10 +686,10 @@ def _run_parallel(count: int, task: Any) -> list[_ReviewerResult]:
 
 
 def _run_prefix_cached(count: int, task: Any) -> list[_ReviewerResult]:
-    """先完成两路真实评审以建立公共前缀，之后的评审才有机会命中缓存。"""
+    """Complete one real review first, then run the remaining independent reviews."""
     results: list[_ReviewerResult] = []
     errors: list[str] = []
-    warm_count = min(2, max(0, count))
+    warm_count = min(1, max(0, count))
     for reviewer in range(warm_count):
         try:
             results.append(task(reviewer))
@@ -731,7 +803,7 @@ def analyze_ensemble(
         selected_position,
     )
     if collapse_reviewed:
-        challenge_results = _run_parallel(
+        challenge_results = _run_prefix_cached(
             2,
             lambda reviewer: _position_review(
                 config,
@@ -747,7 +819,7 @@ def analyze_ensemble(
         position_scores = _aggregate(position_results)
         selected_position = max(range(10), key=position_scores.__getitem__)
 
-    number_results = _run_parallel(
+    number_results = _run_prefix_cached(
         _NUMBER_REVIEWERS,
         lambda reviewer: _number_review(
             config,
@@ -770,7 +842,7 @@ def analyze_ensemble(
     )
     holdout_results: list[_ReviewerResult] = []
     if recent_copy_reviewed:
-        holdout_results = _run_parallel(
+        holdout_results = _run_prefix_cached(
             _NUMBER_REVIEWERS,
             lambda reviewer: _number_review(
                 config,
