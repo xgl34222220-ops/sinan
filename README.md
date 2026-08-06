@@ -4,7 +4,7 @@
 
 ## 当前版本
 
-- 当前正式版：**6.1.1**
+- 当前正式版：**6.1.2**
 - 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
@@ -20,6 +20,7 @@
 - 服务端引入可重复执行的数据库迁移、设备已读游标、事件过期时间和投递索引。
 - FCM 改为受限并发投递；失败任务按时间窗口重试，无效 Token 自动清理。
 - Worker 周期超时成为真正的硬边界：任务永久卡住时退出 Worker，由 Docker 拉起干净进程。
+- 服务端与 App 端统一启用按真实开奖结算的持续学习，并按彩种、模型和具体名次隔离权重。
 - README、App 版本和协议版本同步，避免发布信息继续漂移。
 
 详细设计与回归范围：
