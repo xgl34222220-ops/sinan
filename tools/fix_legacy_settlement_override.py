@@ -34,8 +34,8 @@ compose_text = compose_path.read_text(encoding="utf-8")
 compose_text = compose_text.replace('TIANJI_RUNTIME_REVISION: "1.7.3-learning-reconcile"', 'TIANJI_RUNTIME_REVISION: "1.7.4-learning-settlement"')
 compose_path.write_text(compose_text, encoding="utf-8")
 
-test_path = root / "server/tests/test_runtime_optimizations.py"
-test_text = test_path.read_text(encoding="utf-8")
+runtime_test_path = root / "server/tests/test_runtime_optimizations.py"
+runtime_test_text = runtime_test_path.read_text(encoding="utf-8")
 anchor = '\n\nif __name__ == "__main__":\n'
 new_test = '''
     def test_runtime_hook_reconciles_learning_snapshots(self) -> None:
@@ -77,7 +77,15 @@ new_test = '''
             self.assertEqual(diagnostics[0]["settled_snapshot_count"], 2)
             self.assertEqual(_batch_settle_forecasts(database, "xyft"), 0)
 '''
-if anchor not in test_text:
-    raise SystemExit("test anchor missing")
-test_text = test_text.replace(anchor, "\n" + new_test + anchor)
-test_path.write_text(test_text, encoding="utf-8")
+if anchor not in runtime_test_text:
+    raise SystemExit("runtime test anchor missing")
+runtime_test_text = runtime_test_text.replace(anchor, "\n" + new_test + anchor)
+runtime_test_path.write_text(runtime_test_text, encoding="utf-8")
+
+version_test_path = root / "server/tests/test_adaptive_worker_runtime.py"
+version_test_text = version_test_path.read_text(encoding="utf-8")
+version_test_text = version_test_text.replace(
+    'self.assertEqual(SERVICE_VERSION, "1.7.3")',
+    'self.assertEqual(SERVICE_VERSION, "1.7.4")',
+)
+version_test_path.write_text(version_test_text, encoding="utf-8")
