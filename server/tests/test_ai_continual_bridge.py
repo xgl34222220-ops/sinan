@@ -80,20 +80,21 @@ class AiContinualBridgeTest(unittest.TestCase):
         }
         namespaced = position_strategy_probabilities(2, probabilities)
         self.assertEqual(
-            {"position_3:ai_reviewer_1", "position_3:ai_reviewer_2"},
+            {"ai_position_3:reviewer_1", "ai_position_3:reviewer_2"},
             set(namespaced),
         )
+        self.assertTrue(all(name.startswith("ai_") for name in namespaced))
         weights = position_strategy_weights(
             2,
             probabilities,
             {
-                "position_3:ai_reviewer_1": 0.8,
-                "position_3:ai_reviewer_2": 0.2,
-                "position_7:ai_reviewer_1": 1.0,
+                "ai_position_3:reviewer_1": 0.8,
+                "ai_position_3:reviewer_2": 0.2,
+                "ai_position_7:reviewer_1": 1.0,
             },
         )
-        self.assertAlmostEqual(0.8, weights["position_3:ai_reviewer_1"], places=9)
-        self.assertAlmostEqual(0.2, weights["position_3:ai_reviewer_2"], places=9)
+        self.assertAlmostEqual(0.8, weights["ai_position_3:reviewer_1"], places=9)
+        self.assertAlmostEqual(0.2, weights["ai_position_3:reviewer_2"], places=9)
         self.assertAlmostEqual(1.0, sum(weights.values()), places=9)
 
 
