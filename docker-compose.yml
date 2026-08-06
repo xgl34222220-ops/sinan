@@ -17,6 +17,8 @@ services:
       - "*"
     env_file:
       - .env
+    environment:
+      TIANJI_RUNTIME_REVISION: "1.7.2-adaptive-v4"
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups:ro
@@ -32,6 +34,8 @@ services:
     command: ["python", "-m", "app.worker"]
     env_file:
       - .env
+    environment:
+      TIANJI_RUNTIME_REVISION: "1.7.2-adaptive-v4"
     volumes:
       - ./data:/app/data
     depends_on:

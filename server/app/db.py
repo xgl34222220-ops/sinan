@@ -556,6 +556,7 @@ class Database:
         forecast_id: int,
         lottery: str,
         source: str,
+        model: str,
         actual_number: int,
         settled_at: int,
     ) -> None:
@@ -568,6 +569,10 @@ class Database:
             (forecast_id,),
         ).fetchall()
         if not rows:
+            if model == "tianji-native-cloud-v4":
+                raise RuntimeError(
+                    f"自适应 v4 预测缺少策略快照：forecast_id={forecast_id}"
+                )
             return
 
         metrics: dict[str, dict[str, float | bool]] = {}
@@ -650,6 +655,36 @@ class Database:
                 ),
             )
 
+    def strategy_snapshot_diagnostics(
+        self,
+        lottery: str,
+        limit: int = 8,
+    ) -> list[dict[str, object]]:
+        safe_limit = max(1, min(30, int(limit)))
+        with self.connection() as db:
+            rows = db.execute(
+                """
+                SELECT
+                    f.id AS forecast_id,
+                    f.target_period,
+                    f.source,
+                    f.model,
+                    f.actual_number,
+                    f.created_at,
+                    COUNT(s.strategy) AS snapshot_count,
+                    COALESCE(SUM(CASE WHEN s.settled_at IS NOT NULL THEN 1 ELSE 0 END), 0)
+                        AS settled_snapshot_count
+                FROM forecasts f
+                LEFT JOIN forecast_strategy_predictions s ON s.forecast_id = f.id
+                WHERE f.lottery = ?
+                GROUP BY f.id
+                ORDER BY f.created_at DESC, f.id DESC
+                LIMIT ?
+                """,
+                (lottery, safe_limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def strategy_learning_summary(self, lottery: str, source: str) -> list[dict[str, object]]:
         with self.connection() as db:
             rows = db.execute(
@@ -668,7 +703,8 @@ class Database:
         with self.connection() as db:
             pending = db.execute(
                 """
-                SELECT id, target_period, position_index, top6_json, top7_json, source
+                SELECT id, target_period, position_index, top6_json, top7_json,
+                       source, model
                 FROM forecasts
                 WHERE lottery = ? AND settled_at IS NULL
                 ORDER BY id ASC
@@ -704,6 +740,7 @@ class Database:
                     forecast_id=int(row["id"]),
                     lottery=lottery,
                     source=str(row["source"]),
+                    model=str(row["model"]),
                     actual_number=actual,
                     settled_at=now,
                 )

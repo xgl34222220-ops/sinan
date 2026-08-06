@@ -181,6 +181,7 @@ def _lottery_overview(key: str) -> dict[str, Any]:
             "native": database.strategy_learning_summary(key, "native"),
             "ai": database.strategy_learning_summary(key, "ai"),
         },
+        "learning_diagnostics": database.strategy_snapshot_diagnostics(key),
     }
 
 
@@ -218,8 +219,14 @@ def health() -> HealthModel:
 def public_overview() -> dict[str, Any]:
     runtime_ai = load_ai_config()
     registry = load_ai_registry()
+    heartbeat = _decode_state("worker_heartbeat") or {}
     return {
         "health": health_value().model_dump(),
+        "worker": {
+            "service_version": heartbeat.get("service_version"),
+            "completed_at_epoch_ms": heartbeat.get("completed_at_epoch_ms"),
+            "errors": heartbeat.get("errors") or {},
+        },
         "ai": runtime_ai.public_dict(),
         "ai_profile_count": len(registry.profiles),
         "lotteries": [_lottery_overview(key) for key in LOTTERIES],
