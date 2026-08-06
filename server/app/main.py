@@ -177,6 +177,10 @@ def _lottery_overview(key: str) -> dict[str, Any]:
         "draw_count": len(database.list_draws(key, spec.history_target)),
         "forecasts": [record.model_dump() for record in records],
         "ai_job": database.get_forecast_job(key, "ai"),
+        "learning": {
+            "native": database.strategy_learning_summary(key, "native"),
+            "ai": database.strategy_learning_summary(key, "ai"),
+        },
     }
 
 
