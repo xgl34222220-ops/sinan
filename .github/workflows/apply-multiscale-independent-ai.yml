@@ -6,6 +6,7 @@ on:
       - feat/multiscale-independent-ai
     paths:
       - tools/apply_multiscale_independent_ai.py
+      - tools/fix_multiscale_round2.py
       - .github/workflows/apply-multiscale-independent-ai.yml
 
 permissions:
@@ -24,7 +25,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Apply optimization
-        run: python tools/apply_multiscale_independent_ai.py
+        run: |
+          python tools/apply_multiscale_independent_ai.py
+          python tools/fix_multiscale_round2.py
       - name: Install server dependencies
         working-directory: server
         run: pip install -r requirements.txt
