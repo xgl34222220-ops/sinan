@@ -1,0 +1,44 @@
+name: Fix Adaptive Snapshot Atomicity
+
+on:
+  push:
+    branches:
+      - fix/adaptive-snapshot-atomic
+    paths:
+      - tools/fix_adaptive_snapshot_atomic.py
+      - .github/workflows/fix-adaptive-snapshot-atomic.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/adaptive-snapshot-atomic
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply atomic snapshot fix
+        run: python tools/fix_adaptive_snapshot_atomic.py
+      - name: Install dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Compile server
+        run: python -m compileall -q server/app server/tests
+      - name: Run complete server tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+      - name: Commit business files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app/db.py server/app/service.py server/tests/test_adaptive_snapshot_atomic.py
+          git diff --cached --check
+          git commit -m "fix(server): 原子保存预测与学习快照"
+          git push origin HEAD:fix/adaptive-snapshot-atomic
