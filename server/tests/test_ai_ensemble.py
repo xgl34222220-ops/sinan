@@ -6,7 +6,9 @@ from unittest.mock import patch
 from app.ai_ensemble import (
     _ReviewerResult,
     _anonymized_items,
+    _anonymized_number_series,
     _anonymized_position_history,
+    _blend_probabilities,
     _number_evidence,
     _number_review,
     analyze_ensemble,
@@ -55,7 +57,6 @@ def _scores_for_order(order: list[int]) -> list[float]:
 class AiEnsembleTests(unittest.TestCase):
     def test_position_evidence_contains_all_ten_api_positions(self) -> None:
         evidence = build_position_evidence(_history())
-
         self.assertEqual(len(evidence), 10)
         self.assertEqual([item["position"] for item in evidence], list(range(1, 11)))
         for item in evidence:
@@ -73,7 +74,6 @@ class AiEnsembleTests(unittest.TestCase):
             phase="position",
             reviewer=0,
         )
-
         self.assertEqual(set(mapping), set("ABCDEFGHIJ"))
         self.assertEqual(sorted(mapping.values()), list(range(10)))
         self.assertTrue(all("position" not in item["evidence"] for item in candidates))
@@ -83,17 +83,30 @@ class AiEnsembleTests(unittest.TestCase):
         history = _history(30)
         mapping = {label: 9 - index for index, label in enumerate("ABCDEFGHIJ")}
         raw = _anonymized_position_history(history, mapping)
-
         self.assertEqual(raw[-1]["period"], history[-1].period)
         self.assertEqual(set(raw[-1]["values_by_candidate"]), set("ABCDEFGHIJ"))
-        self.assertEqual(
-            raw[-1]["values_by_candidate"]["A"],
-            history[-1].numbers[9],
+        self.assertEqual(raw[-1]["values_by_candidate"]["A"], history[-1].numbers[9])
+
+    def test_number_sequence_keeps_full_order_but_only_uses_labels(self) -> None:
+        history = _history()
+        mapping = {label: index for index, label in enumerate("ABCDEFGHIJ")}
+        series = _anonymized_number_series(history, position=0, mapping=mapping)
+        self.assertEqual(len(series), 120)
+        self.assertEqual(series[0]["candidate_id"], "A")
+        self.assertEqual(series[-1]["candidate_id"], "J")
+        self.assertTrue(all(set(item) == {"period", "candidate_id"} for item in series))
+        self.assertTrue(all(item["candidate_id"] in set("ABCDEFGHIJ") for item in series))
+        masked = _anonymized_number_series(
+            history,
+            position=0,
+            mapping=mapping,
+            mask_recent=7,
         )
+        self.assertEqual(len(masked), 113)
+        self.assertEqual(masked[-1]["candidate_id"], "C")
 
     def test_number_evidence_does_not_leak_recent_sequence_or_current_number(self) -> None:
         evidence = _number_evidence(_history(), position=0)
-
         self.assertEqual(len(evidence), 10)
         for item in evidence:
             self.assertNotIn("latest_16_newest_to_oldest", item)
@@ -103,14 +116,14 @@ class AiEnsembleTests(unittest.TestCase):
             self.assertIn("transition_rate", item)
 
     @patch("app.ai_ensemble._call_json")
-    def test_number_review_sends_anonymous_aggregates_only(self, call_json: object) -> None:
+    def test_number_review_sends_full_anonymous_sequence_and_aggregates(self, call_json: object) -> None:
         captured: dict[str, object] = {}
 
         def fake_call(*args: object, **kwargs: object) -> dict[str, object]:
             captured.update(kwargs)
             return {
                 "scores": {label: 1 for label in "ABCDEFGHIJ"},
-                "analysis": "仅使用匿名聚合证据",
+                "analysis": "完整匿名时序评审",
             }
 
         call_json.side_effect = fake_call
@@ -122,17 +135,34 @@ class AiEnsembleTests(unittest.TestCase):
             trained_through_period="21348119",
             reviewer=0,
         )
-
         payload = captured["user_payload"]
         self.assertIsInstance(payload, dict)
         assert isinstance(payload, dict)
-        self.assertEqual(payload["evidence_mode"], "anonymous_aggregates_only")
-        self.assertNotIn("anonymous_raw_position_series", payload)
-        self.assertNotIn("history_order", payload)
+        self.assertEqual(
+            payload["evidence_mode"],
+            "anonymous_full_sequence_plus_aggregates",
+        )
+        self.assertEqual(payload["history_order"], "oldest_to_newest")
+        self.assertEqual(len(payload["anonymous_history"]), 120)
+        self.assertTrue(
+            all(
+                item["candidate_id"] in set("ABCDEFGHIJ")
+                and set(item) == {"period", "candidate_id"}
+                for item in payload["anonymous_history"]
+            )
+        )
         for candidate in payload["candidates"]:
             self.assertNotIn("number", candidate["evidence"])
             self.assertNotIn("current_number", candidate["evidence"])
             self.assertNotIn("latest_16_newest_to_oldest", candidate["evidence"])
+
+    def test_blend_probabilities_keeps_both_ai_reviews(self) -> None:
+        primary = _scores_for_order([4, 5, 6, 7, 8, 9, 10, 1, 2, 3])
+        holdout = _scores_for_order([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        blended = _blend_probabilities(primary, holdout)
+        self.assertAlmostEqual(sum(blended), 1.0)
+        self.assertNotEqual(blended, primary)
+        self.assertNotEqual(blended, holdout)
 
     def test_collapse_review_requires_six_consecutive_same_positions(self) -> None:
         self.assertFalse(needs_collapse_review([0, 0, 0, 0, 0], 0))
@@ -141,7 +171,7 @@ class AiEnsembleTests(unittest.TestCase):
 
     @patch("app.ai_ensemble._number_review")
     @patch("app.ai_ensemble._position_review")
-    def test_recent_seven_copy_is_replaced_by_masked_independent_review(
+    def test_recent_seven_copy_adds_holdout_ai_review_and_blends_results(
         self,
         position_review: object,
         number_review: object,
@@ -149,9 +179,8 @@ class AiEnsembleTests(unittest.TestCase):
         position_scores = [0.02] * 10
         position_scores[0] = 0.82
         initial_order = [4, 5, 6, 7, 8, 9, 10, 1, 2, 3]
-        masked_order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        holdout_order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         masks: list[int] = []
-
         position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
             scores=position_scores,
             analysis="匿名名次评审",
@@ -161,22 +190,19 @@ class AiEnsembleTests(unittest.TestCase):
             mask_recent = int(kwargs.get("mask_recent", 0))
             masks.append(mask_recent)
             return _ReviewerResult(
-                scores=_scores_for_order(masked_order if mask_recent else initial_order),
-                analysis="隐藏近期样本复核" if mask_recent else "初次匿名评审",
+                scores=_scores_for_order(holdout_order if mask_recent else initial_order),
+                analysis="匿名留出评审" if mask_recent else "完整匿名历史评审",
             )
 
         number_review.side_effect = fake_number_review
-        result = analyze_ensemble(
-            _history(),
-            "21348120",
-            _config(),
-        )
-
+        result = analyze_ensemble(_history(), "21348120", _config())
         self.assertTrue(result.recent_copy_reviewed)
-        self.assertIn(7, masks)
-        self.assertEqual(result.top7, masked_order[:7])
-        self.assertEqual(result.top6, masked_order[:6])
-        self.assertIn("隐藏最近7期重新独立评审", result.analysis)
+        self.assertEqual(masks.count(0), 2)
+        self.assertEqual(masks.count(7), 2)
+        self.assertEqual(result.number_reviewers, 4)
+        self.assertNotEqual(result.top7, initial_order[:7])
+        self.assertIn("完整历史评审与留出评审加权汇总", result.analysis)
+        self.assertIn("保留完整历史先后顺序", result.risk_note)
 
     @patch("app.ai_ensemble._number_review")
     @patch("app.ai_ensemble._position_review")
@@ -197,14 +223,12 @@ class AiEnsembleTests(unittest.TestCase):
             scores=number_scores,
             analysis="匿名号码评审",
         )
-
         result = analyze_ensemble(
             _history(),
             "21348120",
             _config(),
             recent_positions=[3, 3, 3, 3, 3, 3],
         )
-
         self.assertEqual(result.position, 3)
         self.assertEqual(result.top6[0], 8)
         self.assertTrue(result.collapse_reviewed)
