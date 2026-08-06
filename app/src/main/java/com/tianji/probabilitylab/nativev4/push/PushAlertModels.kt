@@ -51,7 +51,9 @@ data class PushAlert(
 
     val stableNotificationKey: String
         get() = collapseKey.ifBlank {
-            listOf(lottery, source, model, eventType).joinToString(":")
+            // A warning that grows from two misses to three or more must update the
+            // same system notification instead of creating one notification per level.
+            listOf(lottery, source, model).joinToString(":")
         }
 }
 
@@ -69,9 +71,10 @@ data class PushPreferences(
         if (alert.lottery == "azxy10" && !azxy10Enabled) return false
         if (alert.source == "ai" && !aiEnabled) return false
         if (alert.source == "native" && !nativeEnabled) return false
-        if (alert.eventType == PushProtocol.EVENT_MISS_ESCALATION && !escalationEnabled) {
-            return false
-        }
+        val isEscalation =
+            alert.eventType == PushProtocol.EVENT_MISS_ESCALATION ||
+                alert.streak > alert.threshold
+        if (isEscalation && !escalationEnabled) return false
         return true
     }
 }
