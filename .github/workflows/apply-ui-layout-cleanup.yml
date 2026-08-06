@@ -1,0 +1,59 @@
+name: Apply one-shot UI layout cleanup
+
+on:
+  push:
+    branches:
+      - feat/ui-push-console-polish
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/ui-push-console-polish
+          fetch-depth: 0
+
+      - name: Replace legacy bottom-bar reservations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ui/RefinedForecastStrategy.kt": [
+                  ("bottom = 96.dp", "bottom = 16.dp"),
+              ],
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ui/RefinedArchive.kt": [
+                  ("bottom = 88.dp", "bottom = 16.dp"),
+              ],
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ui/SettingsHubV2.kt": [
+                  ("bottom = 96.dp", "bottom = 16.dp"),
+              ],
+              "app/src/main/java/com/tianji/probabilitylab/nativev4/ui/Screens.kt": [
+                  ("bottom = 124.dp", "bottom = 16.dp"),
+              ],
+          }
+
+          for raw_path, rules in replacements.items():
+              path = Path(raw_path)
+              value = path.read_text(encoding="utf-8")
+              original = value
+              for old, new in rules:
+                  value = value.replace(old, new)
+              if value == original:
+                  raise SystemExit(f"expected layout reservation was not found in {raw_path}")
+              path.write_text(value, encoding="utf-8")
+          PY
+
+      - name: Commit exact replacements
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ui
+          git diff --cached --check
+          git commit -m "refactor(app): remove manual bottom bar reservations"
+          git push origin HEAD:feat/ui-push-console-polish
