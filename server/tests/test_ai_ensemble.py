@@ -6,8 +6,9 @@ from unittest.mock import patch
 from app.ai_ensemble import (
     _ReviewerResult,
     _anonymized_items,
-    _anonymized_number_series,
     _anonymized_position_history,
+    _number_evidence,
+    _number_review,
     analyze_ensemble,
     build_position_evidence,
     needs_collapse_review,
@@ -42,6 +43,13 @@ def _config() -> RuntimeAiConfig:
         api_key="secret",
         timeout_seconds=60,
     )
+
+
+def _scores_for_order(order: list[int]) -> list[float]:
+    scores = [0.0] * 10
+    for weight, number in enumerate(reversed(order), start=1):
+        scores[number - 1] = float(weight)
+    return scores
 
 
 class AiEnsembleTests(unittest.TestCase):
@@ -83,19 +91,92 @@ class AiEnsembleTests(unittest.TestCase):
             history[-1].numbers[9],
         )
 
-    def test_anonymous_number_series_uses_candidate_labels_not_real_numbers(self) -> None:
-        history = _history(30)
-        mapping = {label: index for index, label in enumerate("JIHGFEDCBA")}
-        series = _anonymized_number_series(history, position=0, mapping=mapping)
+    def test_number_evidence_does_not_leak_recent_sequence_or_current_number(self) -> None:
+        evidence = _number_evidence(_history(), position=0)
 
-        self.assertEqual(len(series), 30)
-        self.assertTrue(all(item["candidate_id"] in set("ABCDEFGHIJ") for item in series))
-        self.assertTrue(all("number" not in item for item in series))
+        self.assertEqual(len(evidence), 10)
+        for item in evidence:
+            self.assertNotIn("latest_16_newest_to_oldest", item)
+            self.assertNotIn("current_number", item)
+            self.assertNotIn("latest_sequence", item)
+            self.assertIn("count_12", item)
+            self.assertIn("transition_rate", item)
+
+    @patch("app.ai_ensemble._call_json")
+    def test_number_review_sends_anonymous_aggregates_only(self, call_json: object) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_call(*args: object, **kwargs: object) -> dict[str, object]:
+            captured.update(kwargs)
+            return {
+                "scores": {label: 1 for label in "ABCDEFGHIJ"},
+                "analysis": "仅使用匿名聚合证据",
+            }
+
+        call_json.side_effect = fake_call
+        _number_review(
+            _config(),
+            history=_history(),
+            position=0,
+            target_period="21348120",
+            trained_through_period="21348119",
+            reviewer=0,
+        )
+
+        payload = captured["user_payload"]
+        self.assertIsInstance(payload, dict)
+        assert isinstance(payload, dict)
+        self.assertEqual(payload["evidence_mode"], "anonymous_aggregates_only")
+        self.assertNotIn("anonymous_raw_position_series", payload)
+        self.assertNotIn("history_order", payload)
+        for candidate in payload["candidates"]:
+            self.assertNotIn("number", candidate["evidence"])
+            self.assertNotIn("current_number", candidate["evidence"])
+            self.assertNotIn("latest_16_newest_to_oldest", candidate["evidence"])
 
     def test_collapse_review_requires_six_consecutive_same_positions(self) -> None:
         self.assertFalse(needs_collapse_review([0, 0, 0, 0, 0], 0))
         self.assertTrue(needs_collapse_review([0, 0, 0, 0, 0, 0], 0))
         self.assertFalse(needs_collapse_review([0, 0, 1, 0, 0, 0], 0))
+
+    @patch("app.ai_ensemble._number_review")
+    @patch("app.ai_ensemble._position_review")
+    def test_recent_seven_copy_is_replaced_by_masked_independent_review(
+        self,
+        position_review: object,
+        number_review: object,
+    ) -> None:
+        position_scores = [0.02] * 10
+        position_scores[0] = 0.82
+        initial_order = [4, 5, 6, 7, 8, 9, 10, 1, 2, 3]
+        masked_order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        masks: list[int] = []
+
+        position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=position_scores,
+            analysis="匿名名次评审",
+        )
+
+        def fake_number_review(*args: object, **kwargs: object) -> _ReviewerResult:
+            mask_recent = int(kwargs.get("mask_recent", 0))
+            masks.append(mask_recent)
+            return _ReviewerResult(
+                scores=_scores_for_order(masked_order if mask_recent else initial_order),
+                analysis="隐藏近期样本复核" if mask_recent else "初次匿名评审",
+            )
+
+        number_review.side_effect = fake_number_review
+        result = analyze_ensemble(
+            _history(),
+            "21348120",
+            _config(),
+        )
+
+        self.assertTrue(result.recent_copy_reviewed)
+        self.assertIn(7, masks)
+        self.assertEqual(result.top7, masked_order[:7])
+        self.assertEqual(result.top6, masked_order[:6])
+        self.assertIn("隐藏最近7期重新独立评审", result.analysis)
 
     @patch("app.ai_ensemble._number_review")
     @patch("app.ai_ensemble._position_review")

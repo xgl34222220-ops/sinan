@@ -20,6 +20,7 @@ _LABELS = tuple("ABCDEFGHIJ")
 _POSITION_REVIEWERS = 3
 _NUMBER_REVIEWERS = 2
 _MAX_ATTEMPTS_PER_REVIEWER = 2
+_RECENT_COPY_WINDOW = 7
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class AiEnsembleResult:
     position_reviewers: int
     number_reviewers: int
     collapse_reviewed: bool
+    recent_copy_reviewed: bool
 
 
 @dataclass(frozen=True)
@@ -162,7 +164,11 @@ def _call_json(
                     headers=_headers(config),
                     json=request_body,
                 )
-                if response.status_code >= 400 and not is_responses and "response_format" in request_body:
+                if (
+                    response.status_code >= 400
+                    and not is_responses
+                    and "response_format" in request_body
+                ):
                     retry = dict(request_body)
                     retry.pop("response_format", None)
                     response = client.post(endpoint, headers=_headers(config), json=retry)
@@ -226,11 +232,17 @@ def build_position_evidence(history: list[DrawModel]) -> list[dict[str, Any]]:
                 successors[values[index] - 1] += 1
                 transition_samples += 1
         drift = sum(
-            abs(count20[index] / min(20, len(values)) - count60[index] / min(60, len(values)))
+            abs(
+                count20[index] / min(20, len(values))
+                - count60[index] / min(60, len(values))
+            )
             for index in range(10)
         ) / 10.0
         long_drift = sum(
-            abs(count60[index] / min(60, len(values)) - count120[index] / len(values))
+            abs(
+                count60[index] / min(60, len(values))
+                - count120[index] / len(values)
+            )
             for index in range(10)
         ) / 10.0
         evidence.append(
@@ -287,21 +299,6 @@ def _anonymized_position_history(
                 label: draw.numbers[position]
                 for label, position in mapping.items()
             },
-        }
-        for draw in _canonical_history(history)
-    ]
-
-
-def _anonymized_number_series(
-    history: list[DrawModel],
-    position: int,
-    mapping: dict[str, int],
-) -> list[dict[str, Any]]:
-    label_by_number = {actual_index + 1: label for label, actual_index in mapping.items()}
-    return [
-        {
-            "period": draw.period,
-            "candidate_id": label_by_number[draw.numbers[position]],
         }
         for draw in _canonical_history(history)
     ]
@@ -373,10 +370,20 @@ def _position_review(
     return _parse_label_scores(result, mapping)
 
 
-def _number_evidence(history: list[DrawModel], position: int) -> list[dict[str, Any]]:
+def _number_evidence(
+    history: list[DrawModel],
+    position: int,
+    *,
+    mask_recent: int = 0,
+) -> list[dict[str, Any]]:
     verified = _canonical_history(history)
+    if mask_recent > 0:
+        if len(verified) - mask_recent < 30:
+            raise ValueError("隐藏近期样本后不足30期，无法进行独立复核")
+        verified = verified[:-mask_recent]
     values = [draw.numbers[position] for draw in verified]
-    count20 = _counts(values, 20)
+    count12 = _counts(values, 12)
+    count30 = _counts(values, 30)
     count60 = _counts(values, 60)
     count120 = _counts(values, 120)
     omission = _omission(values)
@@ -387,17 +394,41 @@ def _number_evidence(history: list[DrawModel], position: int) -> list[dict[str, 
         if values[index - 1] == current:
             successors[values[index] - 1] += 1
             transition_samples += 1
+
+    short_size = min(12, len(values))
+    medium_size = min(30, len(values))
+    long_size = min(60, len(values))
+    full_size = len(values)
     return [
         {
             "number": number,
-            "count_20": count20[number - 1],
+            "count_12": count12[number - 1],
+            "count_30": count30[number - 1],
             "count_60": count60[number - 1],
             "count_120": count120[number - 1],
             "omission": omission[number - 1],
             "successor_after_current": successors[number - 1],
             "successor_sample_size": transition_samples,
-            "latest_16_newest_to_oldest": list(reversed(values[-16:])),
-            "current_number": current,
+            "short_rate": round(count12[number - 1] / short_size, 6),
+            "medium_rate": round(count30[number - 1] / medium_size, 6),
+            "long_rate": round(count60[number - 1] / long_size, 6),
+            "full_rate": round(count120[number - 1] / full_size, 6),
+            "short_vs_medium_delta": round(
+                count12[number - 1] / short_size
+                - count30[number - 1] / medium_size,
+                6,
+            ),
+            "medium_vs_long_delta": round(
+                count30[number - 1] / medium_size
+                - count60[number - 1] / long_size,
+                6,
+            ),
+            "transition_rate": round(
+                successors[number - 1] / transition_samples,
+                6,
+            )
+            if transition_samples
+            else 0.0,
         }
         for number in range(1, 11)
     ]
@@ -411,19 +442,27 @@ def _number_review(
     target_period: str,
     trained_through_period: str,
     reviewer: int,
+    mask_recent: int = 0,
 ) -> _ReviewerResult:
-    evidence = _number_evidence(history, position)
+    evidence = _number_evidence(
+        history,
+        position,
+        mask_recent=mask_recent,
+    )
+    phase = f"number-{position}-masked-{mask_recent}"
     candidates, mapping = _anonymized_items(
         evidence,
         target_period=target_period,
-        phase=f"number-{position}",
+        phase=phase,
         reviewer=reviewer,
     )
     prompt = (
-        "你是天机服务端号码排序评审。候选A至J对应号码1至10，但映射已随机匿名。"
-        "你会同时看到该名次匿名后的原始开奖序列与程序逐期核验的统计证据，对全部10个匿名号码候选给出0以上相对评分。"
-        "不得偏向列表第一项，不得编造期号、次数或遗漏。每期必须给出完整排序。"
-        "只返回紧凑JSON：{\"scores\":{\"A\":数值,...,\"J\":数值},"
+        "你是天机服务端的独立号码排序评审。候选A至J对应号码1至10，但映射已随机匿名。"
+        "你只能看到每个匿名候选的聚合统计证据，不会看到真实号码、最近开奖顺序或可反推出映射的原始序列。"
+        "请独立比较短中长期频率、遗漏、转移样本和趋势差异，对全部10个候选给出0以上相对评分。"
+        "不得把最近出现过的号码集合直接当作答案，不得偏向列表第一项，不得编造期号、次数或遗漏。"
+        "每期必须给出完整排序。只返回紧凑JSON："
+        "{\"scores\":{\"A\":数值,...,\"J\":数值},"
         "\"selected\":\"A至J之一\",\"analysis\":\"不超过100字简体中文\"}。"
     )
     result = _call_json(
@@ -434,12 +473,8 @@ def _number_review(
             "trained_through_period": trained_through_period,
             "selected_position": position + 1,
             "reviewer": reviewer + 1,
-            "history_order": "oldest_to_newest",
-            "anonymous_raw_position_series": _anonymized_number_series(
-                history,
-                position,
-                mapping,
-            ),
+            "masked_recent_draws": mask_recent,
+            "evidence_mode": "anonymous_aggregates_only",
             "candidates": candidates,
         },
         max_tokens=1000,
@@ -477,6 +512,26 @@ def needs_collapse_review(recent_positions: list[int], selected_position: int) -
             break
         streak += 1
     return streak >= 6
+
+
+def _recent_window_set(
+    history: list[DrawModel],
+    position: int,
+    window: int = _RECENT_COPY_WINDOW,
+) -> set[int]:
+    verified = _canonical_history(history)
+    return {draw.numbers[position] for draw in verified[-window:]}
+
+
+def _matches_recent_window(
+    ranked: list[int],
+    history: list[DrawModel],
+    position: int,
+    window: int = _RECENT_COPY_WINDOW,
+) -> bool:
+    recent = _recent_window_set(history, position, window)
+    predicted = {index + 1 for index in ranked[:window]}
+    return len(recent) == window and predicted == recent
 
 
 def analyze_ensemble(
@@ -537,24 +592,64 @@ def analyze_ensemble(
             target_period=target_period,
             trained_through_period=trained_through,
             reviewer=reviewer,
+            mask_recent=0,
         ),
     )
-    probabilities = _aggregate(number_results)
+    final_number_results = number_results
+    probabilities = _aggregate(final_number_results)
     ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
 
+    recent_copy_reviewed = _matches_recent_window(
+        ranked,
+        verified,
+        selected_position,
+    )
+    if recent_copy_reviewed:
+        masked_results = _run_parallel(
+            _NUMBER_REVIEWERS,
+            lambda reviewer: _number_review(
+                config,
+                history=verified,
+                position=selected_position,
+                target_period=target_period,
+                trained_through_period=trained_through,
+                reviewer=reviewer + 100,
+                mask_recent=_RECENT_COPY_WINDOW,
+            ),
+        )
+        number_results.extend(masked_results)
+        final_number_results = masked_results
+        probabilities = _aggregate(final_number_results)
+        ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
+
     position_margin = sorted(position_scores, reverse=True)
-    margin = (position_margin[0] - position_margin[1]) * 100 if len(position_margin) > 1 else 0.0
-    position_comment = next((item.analysis for item in position_results if item.analysis), "")
-    number_comment = next((item.analysis for item in number_results if item.analysis), "")
+    margin = (
+        (position_margin[0] - position_margin[1]) * 100
+        if len(position_margin) > 1
+        else 0.0
+    )
+    position_comment = next(
+        (item.analysis for item in position_results if item.analysis),
+        "",
+    )
+    number_comment = next(
+        (item.analysis for item in final_number_results if item.analysis),
+        "",
+    )
     analysis = (
         f"{len(position_results)}轮匿名名次评审选择第{selected_position + 1}名，"
         f"前两名次汇总差约{margin:.2f}个百分点；"
-        f"{len(number_results)}轮匿名号码评审完成排序。"
+        f"{len(number_results)}轮匿名聚合号码评审完成独立排序。"
         + (f" {position_comment}" if position_comment else "")
         + (f" {number_comment}" if number_comment else "")
     )[:360]
     if collapse_reviewed:
         analysis = (analysis + " 已触发连续同名次反偏置复核，未人为强制轮换。")[:420]
+    if recent_copy_reviewed:
+        analysis = (
+            analysis
+            + " 初次Top 7与该名次最近7期号码集合完全重合，已隐藏最近7期重新独立评审并以复核结果为准。"
+        )[:500]
 
     return AiEnsembleResult(
         position=selected_position,
@@ -563,11 +658,12 @@ def analyze_ensemble(
         top7=[index + 1 for index in ranked[:7]],
         analysis=analysis,
         risk_note=(
-            "这是开奖前冻结的AI多轮相对排序，不是统计模型兜底，也不是真实中奖概率。"
-            "随机开奖仍可能使任何分析失效，只能用于前向验证。"
+            "这是开奖前冻结的AI多轮相对排序。号码阶段只使用匿名聚合证据，不向模型暴露真实号码映射或最近开奖顺序；"
+            "检测到近期集合复刻时会隐藏最近7期重新评审。随机开奖仍可能使任何分析失效，只能用于前向验证。"
         ),
         latency_ms=int((time.monotonic() - started) * 1000),
         position_reviewers=len(position_results),
         number_reviewers=len(number_results),
         collapse_reviewed=collapse_reviewed,
+        recent_copy_reviewed=recent_copy_reviewed,
     )
