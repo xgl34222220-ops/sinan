@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import json
 import logging
+import os
 import random
 import signal
 import threading
@@ -10,6 +11,7 @@ import time
 from typing import Any
 
 from .config import settings
+from .db import database
 from .runtime_optimizations import cleanup_runtime_state, install as install_runtime_optimizations
 
 install_runtime_optimizations()
@@ -18,10 +20,7 @@ from .runtime_config import load_ai_config  # noqa: E402
 from .service import run_all_cycles  # noqa: E402
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("tianji.worker")
 stop_event = threading.Event()
 
@@ -30,11 +29,7 @@ def _log(level: int, event: str, **payload: Any) -> None:
     logger.log(
         level,
         json.dumps(
-            {
-                "event": event,
-                "at_epoch_ms": int(time.time() * 1000),
-                **payload,
-            },
+            {"event": event, "at_epoch_ms": int(time.time() * 1000), **payload},
             ensure_ascii=False,
             default=str,
         ),
@@ -49,15 +44,32 @@ def _stop(signum: int, _frame: object) -> None:
 def _cycle_has_errors(result: dict[str, Any]) -> bool:
     if result.get("errors"):
         return True
-    for value in (result.get("results") or {}).values():
-        if isinstance(value, dict) and value.get("errors"):
-            return True
-    return False
+    return any(
+        isinstance(value, dict) and value.get("errors")
+        for value in (result.get("results") or {}).values()
+    )
 
 
 def _wait_with_jitter(seconds: float) -> None:
-    jitter = random.uniform(0.88, 1.12)
-    stop_event.wait(max(1.0, seconds * jitter))
+    stop_event.wait(max(1.0, seconds * random.uniform(0.88, 1.12)))
+
+
+def _terminate_after_hard_timeout(cycle: int, timeout_seconds: int) -> None:
+    """Exit the process because Python cannot safely cancel a running thread."""
+    now = int(time.time() * 1000)
+    payload = {
+        "cycle": cycle,
+        "timeout_seconds": timeout_seconds,
+        "at_epoch_ms": now,
+        "action": "process_restart",
+    }
+    try:
+        database.set_state("worker_hard_timeout", json.dumps(payload, ensure_ascii=False))
+    except Exception as exc:  # noqa: BLE001
+        _log(logging.ERROR, "worker_timeout_state_failed", error=str(exc)[:500])
+    _log(logging.CRITICAL, "worker_cycle_hard_timeout", **payload)
+    # Bypass ThreadPoolExecutor's atexit join; Docker restart: unless-stopped starts cleanly.
+    os._exit(70)
 
 
 def main() -> None:
@@ -80,25 +92,14 @@ def main() -> None:
             cycle_count += 1
             cycle_started = time.monotonic()
             future = executor.submit(run_all_cycles)
-            timed_out = False
             try:
                 result = future.result(timeout=settings.worker_cycle_timeout_seconds)
             except TimeoutError:
-                timed_out = True
-                _log(
-                    logging.WARNING,
-                    "worker_cycle_slow",
+                _terminate_after_hard_timeout(
                     cycle=cycle_count,
                     timeout_seconds=settings.worker_cycle_timeout_seconds,
                 )
-                while not future.done() and not stop_event.wait(5.0):
-                    _log(logging.WARNING, "worker_cycle_still_running", cycle=cycle_count)
-                if stop_event.is_set() and not future.done():
-                    break
-                try:
-                    result = future.result()
-                except Exception as exc:
-                    result = {"results": {}, "errors": {"worker": str(exc)[:500]}}
+                raise AssertionError("unreachable")
             except Exception as exc:
                 result = {"results": {}, "errors": {"worker": str(exc)[:500]}}
                 _log(
@@ -109,11 +110,13 @@ def main() -> None:
                 )
 
             elapsed = time.monotonic() - cycle_started
-            failed = timed_out or _cycle_has_errors(result)
-            if failed:
-                failure_streak += 1
-            else:
-                failure_streak = 0
+            failed = _cycle_has_errors(result)
+            failure_streak = failure_streak + 1 if failed else 0
+            if not failed:
+                try:
+                    database.delete_state("worker_hard_timeout")
+                except Exception:
+                    pass
 
             _log(
                 logging.WARNING if failed else logging.INFO,
@@ -137,8 +140,7 @@ def main() -> None:
 
             if cycle_count % 20 == 0:
                 try:
-                    maintenance = cleanup_runtime_state()
-                    _log(logging.INFO, "worker_maintenance", **maintenance)
+                    _log(logging.INFO, "worker_maintenance", **cleanup_runtime_state())
                 except Exception as exc:
                     _log(logging.WARNING, "worker_maintenance_failed", error=str(exc)[:500])
 
