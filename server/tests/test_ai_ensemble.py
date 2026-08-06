@@ -171,10 +171,10 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertNotEqual(blended, primary)
         self.assertNotEqual(blended, holdout)
 
-    def test_collapse_review_requires_six_consecutive_same_positions(self) -> None:
-        self.assertFalse(needs_collapse_review([0, 0, 0, 0, 0], 0))
-        self.assertTrue(needs_collapse_review([0, 0, 0, 0, 0, 0], 0))
-        self.assertFalse(needs_collapse_review([0, 0, 1, 0, 0, 0], 0))
+    def test_collapse_review_starts_after_three_consecutive_same_positions(self) -> None:
+        self.assertFalse(needs_collapse_review([0, 0], 0))
+        self.assertTrue(needs_collapse_review([0, 0, 0], 0))
+        self.assertFalse(needs_collapse_review([0, 0, 1, 0], 0))
 
     @patch("app.ai_ensemble._number_review")
     @patch("app.ai_ensemble._position_review")
@@ -208,12 +208,12 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertEqual(masks.count(7), 2)
         self.assertEqual(result.number_reviewers, 4)
         self.assertNotEqual(result.top7, initial_order[:7])
-        self.assertIn("完整历史评审与留出评审加权汇总", result.analysis)
+        self.assertIn("避免直接复制最新六码", result.analysis)
         self.assertIn("保留完整历史先后顺序", result.risk_note)
 
     @patch("app.ai_ensemble._number_review")
     @patch("app.ai_ensemble._position_review")
-    def test_final_prediction_is_aggregated_from_ai_reviews_only(
+    def test_final_prediction_blends_ai_with_forward_validation(
         self,
         position_review: object,
         number_review: object,
@@ -240,7 +240,7 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertEqual(result.top6[0], 8)
         self.assertTrue(result.collapse_reviewed)
         self.assertIn("AI多轮", result.risk_note)
-        self.assertIn("未人为强制轮换", result.analysis)
+        self.assertIn("不再机械锁死", result.analysis)
 
     @patch("app.ai_ensemble._position_review", side_effect=RuntimeError("provider down"))
     def test_provider_failure_does_not_forge_a_statistical_ai_prediction(

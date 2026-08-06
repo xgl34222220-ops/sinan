@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 
+from .forecast_quality import position_quality_profile, regularize_recent_copy
 from .models import DrawModel
 
 
@@ -13,6 +13,10 @@ class PositionResult:
     top6: list[int]
     top7: list[int]
     boundary_margin: float
+    walk_forward_samples: int
+    walk_forward_hit_rate: float
+    validation_score: float
+    copy_guard_applied: bool
 
 
 @dataclass(frozen=True)
@@ -23,137 +27,59 @@ class NativePrediction:
     risk_note: str
 
 
-def _normalize(values: list[float]) -> list[float]:
-    safe = [value if math.isfinite(value) and value > 0 else 1e-12 for value in values]
-    total = sum(safe) or 1.0
-    return [value / total for value in safe]
-
-
-def _counts(values: list[int], window: int) -> list[float]:
-    result = [0.0] * 10
-    for number in values[-window:]:
-        if 1 <= number <= 10:
-            result[number - 1] += 1.0
-    return result
-
-
 def _position_result(history: list[DrawModel], position: int) -> PositionResult:
-    values = [draw.numbers[position] for draw in history if len(draw.numbers) == 10]
-    if not values:
-        raise ValueError("没有可用于预测的开奖历史")
-
-    count20 = _counts(values, 20)
-    count60 = _counts(values, 60)
-    count120 = _counts(values, 120)
-    size20 = float(max(1, min(20, len(values))))
-    size60 = float(max(1, min(60, len(values))))
-    size120 = float(max(1, min(120, len(values))))
-
-    bayes = _normalize([(count120[index] + 1.0) / (size120 + 10.0) for index in range(10)])
-
-    recency_raw = [0.0] * 10
-    for index, number in enumerate(values):
-        age = len(values) - 1 - index
-        if 1 <= number <= 10:
-            recency_raw[number - 1] += math.exp(-age / 15.0)
-    recency = _normalize(recency_raw)
-
-    omission_raw: list[float] = []
-    for number in range(1, 11):
-        latest_index = -1
-        for index in range(len(values) - 1, -1, -1):
-            if values[index] == number:
-                latest_index = index
-                break
-        gap = len(values) if latest_index < 0 else len(values) - 1 - latest_index
-        omission_raw.append(0.45 + math.exp(-abs(gap - 9.0) / 7.0))
-    omission = _normalize(omission_raw)
-
-    global_prior = _normalize([value + 1.0 for value in count120])
-    current = values[-1]
-    successors = [0.0] * 10
-    transition_samples = 0
-    for index in range(1, len(values)):
-        if values[index - 1] == current and 1 <= values[index] <= 10:
-            successors[values[index] - 1] += 1.0
-            transition_samples += 1
-    shrink = max(5.0, 18.0 - transition_samples)
-    transition = _normalize(
-        [successors[index] + global_prior[index] * shrink for index in range(10)]
+    profile = position_quality_profile(history, position)
+    probabilities, guarded = regularize_recent_copy(
+        profile.probabilities,
+        history,
+        position,
     )
-
-    trend = _normalize(
-        [
-            math.exp((count20[index] / size20 - count60[index] / size60) * 7.0)
-            for index in range(10)
-        ]
+    ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
+    return PositionResult(
+        position=position,
+        probabilities=probabilities,
+        top6=[index + 1 for index in ranked[:6]],
+        top7=[index + 1 for index in ranked[:7]],
+        boundary_margin=probabilities[ranked[5]] - probabilities[ranked[6]],
+        walk_forward_samples=profile.walk_forward_samples,
+        walk_forward_hit_rate=profile.walk_forward_hit_rate,
+        validation_score=profile.validation_score,
+        copy_guard_applied=guarded,
     )
-
-    stability = _normalize(
-        [
-            1.0
-            / (
-                0.04
-                + abs(count20[index] / size20 - count60[index] / size60)
-                + 0.6 * abs(count60[index] / size60 - count120[index] / size120)
-            )
-            for index in range(10)
-        ]
-    )
-
-    short_medium_drift = sum(
-        abs(count20[index] / size20 - count60[index] / size60) for index in range(10)
-    ) / 10.0
-    medium_long_drift = sum(
-        abs(count60[index] / size60 - count120[index] / size120) for index in range(10)
-    ) / 10.0
-    drift_strength = min(1.0, max(0.0, short_medium_drift * 12.0))
-    stability_strength = min(
-        1.0,
-        max(0.0, 1.0 - (short_medium_drift + medium_long_drift) * 8.0),
-    )
-    transition_confidence = min(1.0, transition_samples / 14.0)
-    weights = _normalize(
-        [
-            1.0 + stability_strength * 0.8,
-            1.0 + drift_strength * 2.0,
-            0.62,
-            0.75 + transition_confidence * 1.35,
-            0.9 + drift_strength * 2.5,
-            0.9 + stability_strength * 1.5,
-        ]
-    )
-    factors = [bayes, recency, omission, transition, trend, stability]
-    probabilities = _normalize(
-        [
-            sum(factors[factor][number] * weights[factor] for factor in range(6))
-            for number in range(10)
-        ]
-    )
-    ranked = sorted(range(10), key=lambda index: probabilities[index], reverse=True)
-    top6 = [index + 1 for index in ranked[:6]]
-    top7 = [index + 1 for index in ranked[:7]]
-    boundary_margin = probabilities[ranked[5]] - probabilities[ranked[6]]
-    return PositionResult(position, probabilities, top6, top7, boundary_margin)
 
 
 def predict(history_input: list[DrawModel]) -> NativePrediction:
-    history = [draw for draw in history_input if len(draw.numbers) == 10][-3000:]
+    history = [
+        draw
+        for draw in history_input
+        if len(draw.numbers) == 10 and len(set(draw.numbers)) == 10
+    ][-3000:]
     if len(history) < 30:
         raise ValueError("至少需要 30 期有效历史才能生成预测")
+
     positions = [_position_result(history, position) for position in range(10)]
     selected = max(
         positions,
-        key=lambda item: (item.boundary_margin, max(item.probabilities) - min(item.probabilities)),
+        key=lambda item: (
+            item.validation_score,
+            item.walk_forward_hit_rate,
+            item.boundary_margin,
+        ),
     )
+    hit_percent = selected.walk_forward_hit_rate * 100.0
     margin_percent = selected.boundary_margin * 100.0
     analysis = (
-        f"本机云端引擎比较十个名次后选择第 {selected.position + 1} 名；"
-        f"六码边界差约 {margin_percent:.2f} 个百分点。"
-        "评分综合贝叶斯长窗、近期衰减、非单调遗漏、收缩转移、短中窗变化和稳定性。"
+        f"本机云端引擎对十个名次分别执行滚动前向验证后选择第 {selected.position + 1} 名；"
+        f"验证样本 {selected.walk_forward_samples} 期，收缩命中率约 {hit_percent:.1f}%，"
+        f"当前六码边界差约 {margin_percent:.2f} 个百分点。"
+        + (
+            " 检测到结果过度贴近最近六码，已使用隐藏近期窗口和边界正则重新排序。"
+            if selected.copy_guard_applied
+            else ""
+        )
     )
     risk_note = (
-        "随机开奖不能可靠预测；结果只用于真实前向记录与回测。"
-        "边界差较小时应视为弱信号，不得理解为必中或真实中奖概率。"
+        "随机开奖没有可保证的可预测规律；滚动验证只能约束算法不凭单期结果拍脑袋。"
+        "候选结果不得理解为必中或真实中奖概率。"
     )
     return NativePrediction(selected, positions, analysis, risk_note)

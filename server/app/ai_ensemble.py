@@ -12,6 +12,13 @@ from typing import Any
 
 import httpx
 
+from .forecast_quality import (
+    blend_probabilities as blend_validated_probabilities,
+    position_quality_profile,
+    recent_copy_diagnostics,
+    regularize_recent_copy,
+    statistical_probabilities,
+)
 from .models import DrawModel, compact_json
 from .runtime_config import RuntimeAiConfig
 
@@ -744,7 +751,7 @@ def needs_collapse_review(recent_positions: list[int], selected_position: int) -
         if position != selected_position:
             break
         streak += 1
-    return streak >= 6
+    return streak >= 3
 
 
 def _recent_window_set(
@@ -762,9 +769,8 @@ def _matches_recent_window(
     position: int,
     window: int = _RECENT_COPY_WINDOW,
 ) -> bool:
-    recent = _recent_window_set(history, position, window)
-    predicted = {index + 1 for index in ranked[:window]}
-    return len(recent) >= window - 1 and recent.issubset(predicted)
+    del window
+    return recent_copy_diagnostics(ranked, history, position).triggered
 
 
 def analyze_ensemble(
@@ -795,13 +801,37 @@ def analyze_ensemble(
             challenge=False,
         ),
     )
-    position_scores = _aggregate(position_results)
+    ai_position_scores = _aggregate(position_results)
+    quality_profiles = [
+        position_quality_profile(verified, position)
+        for position in range(10)
+    ]
+    validation_scores = _normalize(
+        [max(0.05, profile.validation_score) for profile in quality_profiles]
+    )
+    position_scores = _normalize(
+        [
+            ai_position_scores[index] * 0.45 + validation_scores[index] * 0.55
+            for index in range(10)
+        ]
+    )
     selected_position = max(range(10), key=position_scores.__getitem__)
+    weak_repeat_guarded = False
+    recent = recent_positions or []
+    ranked_positions = sorted(range(10), key=position_scores.__getitem__, reverse=True)
+    if recent and needs_collapse_review(recent, selected_position):
+        margin = position_scores[ranked_positions[0]] - position_scores[ranked_positions[1]]
+        if margin < 0.012:
+            for candidate in ranked_positions[1:]:
+                if validation_scores[candidate] >= validation_scores[selected_position] * 0.97:
+                    selected_position = candidate
+                    weak_repeat_guarded = True
+                    break
 
     collapse_reviewed = needs_collapse_review(
-        recent_positions or [],
+        recent,
         selected_position,
-    )
+    ) or weak_repeat_guarded
     if collapse_reviewed:
         challenge_results = _run_prefix_cached(
             2,
@@ -816,7 +846,13 @@ def analyze_ensemble(
             ),
         )
         position_results.extend(challenge_results)
-        position_scores = _aggregate(position_results)
+        ai_position_scores = _aggregate(position_results)
+        position_scores = _normalize(
+            [
+                ai_position_scores[index] * 0.45 + validation_scores[index] * 0.55
+                for index in range(10)
+            ]
+        )
         selected_position = max(range(10), key=position_scores.__getitem__)
 
     number_results = _run_prefix_cached(
@@ -831,15 +867,31 @@ def analyze_ensemble(
             mask_recent=0,
         ),
     )
-    primary_probabilities = _aggregate(number_results)
+    primary_ai_probabilities = _aggregate(number_results)
+    raw_ai_ranked = sorted(
+        range(10),
+        key=primary_ai_probabilities.__getitem__,
+        reverse=True,
+    )
+    objective_probabilities = statistical_probabilities(verified, selected_position)
+    primary_probabilities = blend_validated_probabilities(
+        primary_ai_probabilities,
+        objective_probabilities,
+        secondary_weight=0.45,
+    )
     probabilities = primary_probabilities
     ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
 
-    recent_copy_reviewed = _matches_recent_window(
-        ranked,
-        verified,
-        selected_position,
+    raw_copy = recent_copy_diagnostics(raw_ai_ranked, verified, selected_position)
+    final_copy = recent_copy_diagnostics(ranked, verified, selected_position)
+    ai_score_spread = max(primary_ai_probabilities) - min(primary_ai_probabilities)
+    final_boundary = probabilities[ranked[5]] - probabilities[ranked[6]]
+    recent_copy_reviewed = (
+        (ai_score_spread >= 0.02 and raw_copy.triggered)
+        or final_copy.exact_latest_six
+        or (final_copy.triggered and final_boundary >= 0.004)
     )
+    copy_guard_applied = False
     holdout_results: list[_ReviewerResult] = []
     if recent_copy_reviewed:
         holdout_results = _run_prefix_cached(
@@ -855,10 +907,25 @@ def analyze_ensemble(
             ),
         )
         number_results.extend(holdout_results)
-        holdout_probabilities = _aggregate(holdout_results)
+        holdout_ai_probabilities = _aggregate(holdout_results)
+        holdout_objective = statistical_probabilities(
+            verified,
+            selected_position,
+            mask_recent=_RECENT_COPY_WINDOW,
+        )
+        holdout_probabilities = blend_validated_probabilities(
+            holdout_ai_probabilities,
+            holdout_objective,
+            secondary_weight=0.55,
+        )
         probabilities = _blend_probabilities(
             primary_probabilities,
             holdout_probabilities,
+        )
+        probabilities, copy_guard_applied = regularize_recent_copy(
+            probabilities,
+            verified,
+            selected_position,
         )
         ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
 
@@ -878,7 +945,7 @@ def analyze_ensemble(
         "",
     )
     analysis = (
-        f"{len(position_results)}轮匿名名次评审选择第{selected_position + 1}名，"
+        f"{len(position_results)}轮匿名名次评审结合滚动前向验证选择第{selected_position + 1}名，"
         f"前两名次汇总差约{margin:.2f}个百分点；"
         f"{len(number_results)}轮完整匿名时序号码评审完成独立排序。"
         + (f" {position_comment}" if position_comment else "")
@@ -886,12 +953,12 @@ def analyze_ensemble(
     )[:380]
     if collapse_reviewed:
         analysis = (
-            analysis + " 已触发连续同名次反偏置复核，未人为强制轮换。"
+            analysis + " 已触发连续同名次复核；弱边界时由前向验证较优名次裁决，不再机械锁死。"
         )[:440]
     if recent_copy_reviewed:
         analysis = (
             analysis
-            + " 初次Top 7与最近7期候选集合高度重合，已增加隐藏最近7期的独立留出评审；最终结果由完整历史评审与留出评审加权汇总，并非程序换号。"
+            + " 初次结果与最近6/7期集合高度重合，已增加隐藏最近7期的独立留出评审、统计前向裁决和最近集合正则，避免直接复制最新六码。"
         )[:560]
 
     usage = _merge_usage([*position_results, *number_results])
@@ -912,7 +979,7 @@ def analyze_ensemble(
         top7=[index + 1 for index in ranked[:7]],
         analysis=analysis,
         risk_note=(
-            "这是开奖前冻结的AI多轮相对排序。号码阶段保留完整历史先后顺序，但每轮都将号码随机映射为A至J，"
+            "这是开奖前冻结的AI多轮相对排序，并由滚动前向验证约束名次与号码。号码阶段保留完整历史先后顺序，但每轮都将号码随机映射为A至J，"
             "模型只能看到匿名时序与同映射聚合证据；检测到近期集合复刻时会增加留出窗口复核。"
             "随机开奖仍可能使任何分析失效，只能用于前向验证。"
         ),

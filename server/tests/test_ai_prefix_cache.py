@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -163,13 +164,19 @@ class PrefixCacheTests(unittest.TestCase):
         self.assertEqual(usage["prompt_cache_miss_tokens"], 200)
         self.assertEqual(usage["reasoning_tokens"], 20)
 
+    @patch("app.ai_ensemble.recent_copy_diagnostics")
     @patch("app.ai_ensemble._number_review")
     @patch("app.ai_ensemble._position_review")
     def test_ensemble_aggregates_usage_without_changing_reviewer_count(
         self,
         position_review: object,
         number_review: object,
+        copy_diagnostics: object,
     ) -> None:
+        copy_diagnostics.return_value = SimpleNamespace(
+            triggered=False,
+            exact_latest_six=False,
+        )
         position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
             scores=[0.1] * 10,
             analysis="名次",
