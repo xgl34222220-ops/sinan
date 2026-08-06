@@ -1,0 +1,46 @@
+name: Fix Adaptive Worker Runtime
+
+on:
+  push:
+    branches:
+      - fix/adaptive-worker-runtime
+    paths:
+      - tools/fix_adaptive_worker_runtime.py
+      - .github/workflows/fix-adaptive-worker-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/adaptive-worker-runtime
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply worker runtime fix
+        run: python tools/fix_adaptive_worker_runtime.py
+      - name: Install dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Compile server
+        run: python -m compileall -q server/app server/tests
+      - name: Run complete server tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+      - name: Validate Compose
+        run: docker compose config >/dev/null
+      - name: Commit business files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app server/tests docker-compose.yml
+          git diff --cached --check
+          git commit -m "fix(server): 强制更新 Worker 并验证学习快照"
+          git push origin HEAD:fix/adaptive-worker-runtime
