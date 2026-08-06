@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import json
+import math
 import os
 import sqlite3
 import time
 from typing import Any, Iterable, Iterator
 
+from .adaptive_learning import prediction_loss, update_strategy_weights
 from .config import settings
 from .models import DrawModel, ForecastModel
 
@@ -105,7 +107,39 @@ class Database:
       CREATE INDEX IF NOT EXISTS ai_usage_created
           ON ai_usage_events(created_at DESC);
 
-      
+
+                CREATE TABLE IF NOT EXISTS forecast_strategy_predictions (
+                    forecast_id INTEGER NOT NULL,
+                    lottery TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    strategy TEXT NOT NULL,
+                    probabilities_json TEXT NOT NULL,
+                    weight_at_prediction REAL NOT NULL,
+                    log_loss REAL,
+                    brier_score REAL,
+                    top6_hit INTEGER,
+                    settled_at INTEGER,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY (forecast_id, strategy),
+                    FOREIGN KEY (forecast_id) REFERENCES forecasts(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS forecast_strategy_lottery_created
+                    ON forecast_strategy_predictions(lottery, source, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS strategy_learning (
+                    lottery TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    strategy TEXT NOT NULL,
+                    weight REAL NOT NULL,
+                    samples INTEGER NOT NULL DEFAULT 0,
+                    ema_log_loss REAL NOT NULL DEFAULT 0,
+                    ema_brier REAL NOT NULL DEFAULT 0,
+                    top6_hits INTEGER NOT NULL DEFAULT 0,
+                    top6_misses INTEGER NOT NULL DEFAULT 0,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (lottery, source, strategy)
+                );
+
                 CREATE TABLE IF NOT EXISTS service_state (
                     state_key TEXT PRIMARY KEY,
                     state_value TEXT NOT NULL,
@@ -379,11 +413,174 @@ class Database:
             )
             return int(cursor.lastrowid) if cursor.rowcount else None
 
+    def get_strategy_weights(self, lottery: str, source: str) -> dict[str, float]:
+        with self.connection() as db:
+            rows = db.execute(
+                """
+                SELECT strategy, weight
+                FROM strategy_learning
+                WHERE lottery = ? AND source = ?
+                """,
+                (lottery, source),
+            ).fetchall()
+        return {str(row["strategy"]): float(row["weight"]) for row in rows}
+
+    def save_strategy_predictions(
+        self,
+        *,
+        forecast_id: int,
+        lottery: str,
+        source: str,
+        probabilities_by_strategy: dict[str, list[float]],
+        weights: dict[str, float],
+    ) -> None:
+        if not probabilities_by_strategy:
+            return
+        now = int(time.time() * 1000)
+        rows = [
+            (
+                forecast_id,
+                lottery,
+                source,
+                strategy,
+                json.dumps(probabilities, separators=(",", ":")),
+                max(0.0, float(weights.get(strategy, 0.0))),
+                now,
+            )
+            for strategy, probabilities in probabilities_by_strategy.items()
+            if len(probabilities) == 10
+        ]
+        with self.connection() as db:
+            db.executemany(
+                """
+                INSERT OR REPLACE INTO forecast_strategy_predictions(
+                    forecast_id, lottery, source, strategy, probabilities_json,
+                    weight_at_prediction, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+
+    @staticmethod
+    def _settle_strategy_learning(
+        db: sqlite3.Connection,
+        *,
+        forecast_id: int,
+        lottery: str,
+        source: str,
+        actual_number: int,
+        settled_at: int,
+    ) -> None:
+        rows = db.execute(
+            """
+            SELECT strategy, probabilities_json, weight_at_prediction
+            FROM forecast_strategy_predictions
+            WHERE forecast_id = ? AND settled_at IS NULL
+            """,
+            (forecast_id,),
+        ).fetchall()
+        if not rows:
+            return
+
+        metrics: dict[str, dict[str, float | bool]] = {}
+        snapshot_weights: dict[str, float] = {}
+        for row in rows:
+            strategy = str(row["strategy"])
+            probabilities = json.loads(row["probabilities_json"])
+            metrics[strategy] = prediction_loss(probabilities, actual_number)
+            snapshot_weights[strategy] = max(0.0, float(row["weight_at_prediction"]))
+
+        current_rows = db.execute(
+            """
+            SELECT strategy, weight, samples, ema_log_loss, ema_brier,
+                   top6_hits, top6_misses
+            FROM strategy_learning
+            WHERE lottery = ? AND source = ?
+            """,
+            (lottery, source),
+        ).fetchall()
+        current = {str(row["strategy"]): dict(row) for row in current_rows}
+        current_weights = {
+            strategy: float(current.get(strategy, {}).get("weight", snapshot_weights[strategy]))
+            for strategy in metrics
+        }
+        updated_weights = update_strategy_weights(
+            current_weights,
+            {strategy: float(value["combined_loss"]) for strategy, value in metrics.items()},
+        )
+
+        for strategy, value in metrics.items():
+            previous = current.get(strategy, {})
+            samples = int(previous.get("samples", 0)) + 1
+            old_log = float(previous.get("ema_log_loss", value["log_loss"]))
+            old_brier = float(previous.get("ema_brier", value["brier"]))
+            alpha = 0.12 if samples <= 30 else 0.06
+            ema_log = old_log * (1.0 - alpha) + float(value["log_loss"]) * alpha
+            ema_brier = old_brier * (1.0 - alpha) + float(value["brier"]) * alpha
+            hit = bool(value["top6_hit"])
+            db.execute(
+                """
+                INSERT INTO strategy_learning(
+                    lottery, source, strategy, weight, samples,
+                    ema_log_loss, ema_brier, top6_hits, top6_misses, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(lottery, source, strategy) DO UPDATE SET
+                    weight = excluded.weight,
+                    samples = excluded.samples,
+                    ema_log_loss = excluded.ema_log_loss,
+                    ema_brier = excluded.ema_brier,
+                    top6_hits = excluded.top6_hits,
+                    top6_misses = excluded.top6_misses,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    lottery,
+                    source,
+                    strategy,
+                    updated_weights[strategy],
+                    samples,
+                    ema_log,
+                    ema_brier,
+                    int(previous.get("top6_hits", 0)) + int(hit),
+                    int(previous.get("top6_misses", 0)) + int(not hit),
+                    settled_at,
+                ),
+            )
+            db.execute(
+                """
+                UPDATE forecast_strategy_predictions SET
+                    log_loss = ?, brier_score = ?, top6_hit = ?, settled_at = ?
+                WHERE forecast_id = ? AND strategy = ?
+                """,
+                (
+                    float(value["log_loss"]),
+                    float(value["brier"]),
+                    int(hit),
+                    settled_at,
+                    forecast_id,
+                    strategy,
+                ),
+            )
+
+    def strategy_learning_summary(self, lottery: str, source: str) -> list[dict[str, object]]:
+        with self.connection() as db:
+            rows = db.execute(
+                """
+                SELECT strategy, weight, samples, ema_log_loss, ema_brier,
+                       top6_hits, top6_misses, updated_at
+                FROM strategy_learning
+                WHERE lottery = ? AND source = ?
+                ORDER BY weight DESC, strategy ASC
+                """,
+                (lottery, source),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def settle_forecasts(self, lottery: str) -> int:
         with self.connection() as db:
             pending = db.execute(
                 """
-                SELECT id, target_period, position_index, top6_json, top7_json
+                SELECT id, target_period, position_index, top6_json, top7_json, source
                 FROM forecasts
                 WHERE lottery = ? AND settled_at IS NULL
                 ORDER BY id ASC
@@ -413,6 +610,14 @@ class Database:
                     WHERE id = ?
                     """,
                     (actual, int(actual in top6), int(actual in top7), now, row["id"]),
+                )
+                self._settle_strategy_learning(
+                    db,
+                    forecast_id=int(row["id"]),
+                    lottery=lottery,
+                    source=str(row["source"]),
+                    actual_number=actual,
+                    settled_at=now,
                 )
                 settled += 1
             return settled

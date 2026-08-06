@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import re
 import time
@@ -29,6 +29,8 @@ class AiPrediction:
     completion_tokens: int = 0
     reasoning_tokens: int = 0
     cache_hit_rate: float = 0.0
+    strategy_probabilities: dict[str, list[float]] = field(default_factory=dict)
+    strategy_weights: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -257,6 +259,7 @@ def analyze(
     config: RuntimeAiConfig | None = None,
     *,
     recent_positions: list[int] | None = None,
+    strategy_weights: dict[str, float] | None = None,
 ) -> AiPrediction:
     """Generate an AI-only forward prediction through anonymous multi-review consensus."""
     from .ai_ensemble import analyze_ensemble
@@ -267,6 +270,7 @@ def analyze(
         target_period,
         active,
         recent_positions=recent_positions,
+        strategy_weights=strategy_weights,
     )
     return AiPrediction(
         position=result.position,
@@ -284,4 +288,6 @@ def analyze(
         completion_tokens=result.completion_tokens,
         reasoning_tokens=result.reasoning_tokens,
         cache_hit_rate=result.cache_hit_rate,
+        strategy_probabilities=result.strategy_probabilities,
+        strategy_weights=result.strategy_weights,
     )
