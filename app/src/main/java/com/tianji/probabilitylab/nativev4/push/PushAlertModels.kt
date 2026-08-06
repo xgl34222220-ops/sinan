@@ -1,5 +1,20 @@
 package com.tianji.probabilitylab.nativev4.push
 
+object PushProtocol {
+    const val VERSION = 2
+    const val EVENT_PREDICTION_READY = "prediction_ready"
+    const val EVENT_MISS_PREALERT = "miss_prealert"
+    const val EVENT_MISS_ALERT = "miss_alert"
+    const val EVENT_MISS_ESCALATION = "miss_escalation"
+    const val EVENT_HIT_RECOVERY = "hit_recovery"
+    const val EVENT_SERVICE_WARNING = "service_warning"
+    const val EVENT_SYSTEM_NOTICE = "system_notice"
+    const val SEVERITY_INFO = "info"
+    const val SEVERITY_SUCCESS = "success"
+    const val SEVERITY_WARNING = "warning"
+    const val SEVERITY_CRITICAL = "critical"
+}
+
 data class PushAlert(
     val id: Long,
     val eventKey: String,
@@ -16,7 +31,29 @@ data class PushAlert(
     val body: String,
     val createdAtEpochMs: Long,
     val isRead: Boolean,
-)
+    val schemaVersion: Int = 1,
+    val eventType: String = PushProtocol.EVENT_MISS_ALERT,
+    val severity: String = PushProtocol.SEVERITY_WARNING,
+    val deepLink: String = "",
+    val collapseKey: String = "",
+    val expiresAtEpochMs: Long? = null,
+) {
+    val isExpired: Boolean
+        get() = expiresAtEpochMs?.let { it <= System.currentTimeMillis() } == true
+
+    val isRiskAlert: Boolean
+        get() = eventType in setOf(
+            PushProtocol.EVENT_MISS_PREALERT,
+            PushProtocol.EVENT_MISS_ALERT,
+            PushProtocol.EVENT_MISS_ESCALATION,
+            PushProtocol.EVENT_SERVICE_WARNING,
+        )
+
+    val stableNotificationKey: String
+        get() = collapseKey.ifBlank {
+            listOf(lottery, source, model, eventType).joinToString(":")
+        }
+}
 
 data class PushPreferences(
     val enabled: Boolean = true,
@@ -27,12 +64,14 @@ data class PushPreferences(
     val escalationEnabled: Boolean = true,
 ) {
     fun accepts(alert: PushAlert): Boolean {
-        if (!enabled) return false
+        if (!enabled || alert.isExpired) return false
         if (alert.lottery == "xyft" && !xyftEnabled) return false
         if (alert.lottery == "azxy10" && !azxy10Enabled) return false
         if (alert.source == "ai" && !aiEnabled) return false
         if (alert.source == "native" && !nativeEnabled) return false
-        if (alert.streak > alert.threshold && !escalationEnabled) return false
+        if (alert.eventType == PushProtocol.EVENT_MISS_ESCALATION && !escalationEnabled) {
+            return false
+        }
         return true
     }
 }
@@ -44,6 +83,8 @@ data class PushConnectionStatus(
     val fcmTokenPresent: Boolean = false,
     val fallbackMinutes: Int = 15,
     val detail: String = "正在初始化预警服务",
+    val protocolVersion: Int = 1,
+    val lastSyncedAtEpochMs: Long? = null,
 ) {
     val instantReady: Boolean
         get() = registered && firebaseConfigured && serverConfigured && fcmTokenPresent
