@@ -29,10 +29,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handlePushIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(PushNotificationManager.EXTRA_OPEN_ALERT_CENTER, false) == true) {
-            PushAlertNavigation.open(
-                intent.getLongExtra(PushNotificationManager.EXTRA_ALERT_ID, 0L),
-            )
+        intent ?: return
+        val openAlertCenter =
+            intent.getBooleanExtra(PushNotificationManager.EXTRA_OPEN_ALERT_CENTER, false) ||
+                intent.getStringExtra(PushNotificationManager.EXTRA_OPEN_ALERT_CENTER)
+                    ?.toBooleanStrictOrNull() == true ||
+                intent.hasExtra(PushNotificationManager.EXTRA_ALERT_ID)
+        if (!openAlertCenter) return
+
+        val alertId = when (val value = intent.extras?.get(PushNotificationManager.EXTRA_ALERT_ID)) {
+            is Number -> value.toLong()
+            is String -> value.toLongOrNull() ?: 0L
+            else -> 0L
         }
+        PushAlertNavigation.open(alertId)
     }
 }
