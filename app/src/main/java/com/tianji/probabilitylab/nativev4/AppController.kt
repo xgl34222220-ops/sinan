@@ -27,7 +27,7 @@ import com.tianji.probabilitylab.nativev4.ai.AiReasoningState
 import com.tianji.probabilitylab.nativev4.ai.AiRunStatus
 import com.tianji.probabilitylab.nativev4.ai.AiTaskRegistry
 import com.tianji.probabilitylab.nativev4.ai.NativeEnsemblePredictor
-import com.tianji.probabilitylab.nativev4.ai.RemoteAiAnalyzer
+import com.tianji.probabilitylab.nativev4.ai.ContinualRemoteAiAnalyzer
 import com.tianji.probabilitylab.nativev4.ai.SecureAiConfigStore
 import com.tianji.probabilitylab.nativev4.data.AppDatabase
 import com.tianji.probabilitylab.nativev4.data.ArchiveIntegrity
@@ -110,7 +110,7 @@ class AppController(context: Context) {
     private val loadingLotteries = ConcurrentHashMap.newKeySet<LotteryType>()
     private val aiConfigStore = SecureAiConfigStore(appContext)
     private val aiLearningStore = AiAdaptiveLearningStore(appContext)
-    private val remoteAiAnalyzer = RemoteAiAnalyzer(appContext)
+    private val remoteAiAnalyzer = ContinualRemoteAiAnalyzer(appContext)
 
     var state by mutableStateOf(
         AppUiState(lottery = savedLottery(), aiConcurrency = initialAiConcurrency),
