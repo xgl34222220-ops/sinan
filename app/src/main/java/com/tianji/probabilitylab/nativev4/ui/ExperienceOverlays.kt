@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -31,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,13 +45,10 @@ fun HomePredictionFocusStrip(
     val report = state.report ?: return
     val colors = LocalTianjiColors.current
     val selected = report.positions.getOrNull(report.selectedPosition) ?: report.selected
-    val completed = state.aiStatuses.values.count { status ->
-        status.state.name == "CONNECTED"
-    }
-    val aiLabel = when {
-        state.isAiAnalyzing -> "AI 评审进行中"
-        completed > 0 -> "$completed 路 AI 已完成"
-        else -> "等待 AI 评审"
+    val statusLabel = if (state.isAiAnalyzing) {
+        "第 ${report.selectedPosition + 1} 名 · 正在生成预测"
+    } else {
+        "第 ${report.selectedPosition + 1} 名 · 预测结果已生成"
     }
 
     Row(
@@ -89,7 +84,7 @@ fun HomePredictionFocusStrip(
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "第 ${report.targetPeriod} 期 · 第 ${report.selectedPosition + 1} 名",
+                "目标期 ${report.targetPeriod}",
                 color = colors.text,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.ExtraBold,
@@ -97,7 +92,7 @@ fun HomePredictionFocusStrip(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                aiLabel,
+                statusLabel,
                 color = if (state.isAiAnalyzing) colors.accent else colors.textDim,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -134,19 +129,14 @@ fun AiReviewProgressDock(
 ) {
     val colors = LocalTianjiColors.current
     val statuses = state.aiStatuses.values.toList()
-    val running = statuses.filter { status ->
+    val runningMessage = statuses.firstOrNull { status ->
         status.state.name == "ANALYZING" || status.state.name == "TESTING"
-    }
-    val completed = statuses.count { it.state.name == "CONNECTED" }
+    }?.message.orEmpty()
     val failed = statuses.count { it.state.name == "FAILED" }
-    val total = statuses.size.coerceAtLeast(1)
-    val progress = (completed + failed * 0.25f).coerceAtMost(total.toFloat()) / total.toFloat()
-    val detail = running.firstOrNull()?.message.orEmpty().ifBlank {
-        when {
-            failed > 0 -> "$completed 路完成 · $failed 路需要检查"
-            completed > 0 -> "$completed / $total 路独立评审已完成"
-            else -> "正在准备完整历史与匿名证据"
-        }
+    val detail = when {
+        runningMessage.isNotBlank() -> runningMessage
+        failed > 0 -> "部分模型暂未响应，正在继续处理"
+        else -> "正在分析历史数据并生成结果"
     }
 
     AnimatedVisibility(
@@ -173,7 +163,7 @@ fun AiReviewProgressDock(
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        "AI 独立评审",
+                        "正在生成预测",
                         color = colors.text,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
@@ -186,18 +176,9 @@ fun AiReviewProgressDock(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (completed > 0) {
-                    Icon(
-                        Icons.Rounded.CheckCircle,
-                        contentDescription = null,
-                        tint = colors.green,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
             }
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(
-                progress = { progress },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp)
