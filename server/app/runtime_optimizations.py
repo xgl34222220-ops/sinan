@@ -83,6 +83,10 @@ def cleanup_runtime_state(max_job_age_days: int = 30) -> dict[str, Any]:
             "DELETE FROM push_deliveries WHERE attempted_at<?",
             (delivery_cutoff,),
         )
+        stale_devices = db.execute(
+            "DELETE FROM push_devices WHERE last_seen_at<?",
+            (device_cutoff,),
+        )
         reads = db.execute(
             """
             DELETE FROM push_alert_reads
@@ -97,10 +101,6 @@ def cleanup_runtime_state(max_job_age_days: int = 30) -> dict[str, Any]:
               AND id<=COALESCE((SELECT MIN(read_through_alert_id) FROM push_devices),id)
             """,
             (alert_cutoff,),
-        )
-        stale_devices = db.execute(
-            "DELETE FROM push_devices WHERE last_seen_at<? AND fcm_token=''",
-            (device_cutoff,),
         )
         return {
             "forecast_jobs_deleted": max(0, int(jobs.rowcount)),
@@ -120,7 +120,9 @@ def install() -> None:
 
     from .push_runtime_v2 import install as install_push_runtime_v2
     from .push_runtime_bridge import install as install_push_runtime_bridge
+    from .push_runtime_fixes import install as install_push_runtime_fixes
 
     install_push_runtime_v2()
     install_push_runtime_bridge()
+    install_push_runtime_fixes()
     _INSTALLED = True
