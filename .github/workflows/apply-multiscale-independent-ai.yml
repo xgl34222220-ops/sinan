@@ -1,0 +1,42 @@
+name: Apply Multiscale Independent AI
+
+on:
+  push:
+    branches:
+      - feat/multiscale-independent-ai
+    paths:
+      - tools/apply_multiscale_independent_ai.py
+      - .github/workflows/apply-multiscale-independent-ai.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/multiscale-independent-ai
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply optimization
+        run: python tools/apply_multiscale_independent_ai.py
+      - name: Install server dependencies
+        working-directory: server
+        run: pip install -r requirements.txt
+      - name: Compile and run complete server tests
+        working-directory: server
+        run: |
+          python -m compileall app tests
+          python -m unittest discover -s tests -v
+      - name: Commit business changes
+        run: |
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app/adaptive_learning.py server/app/db.py server/app/ai_ensemble.py server/app/service.py server/tests/test_adaptive_learning.py server/tests/test_ai_ensemble.py server/tests/test_adaptive_worker_runtime.py docker-compose.yml
+          git commit -m "feat(server): 多尺度学习并拆分独立 AI 预测"
+          git push origin HEAD:feat/multiscale-independent-ai
