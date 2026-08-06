@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 import math
@@ -37,12 +37,58 @@ class AiEnsembleResult:
     number_reviewers: int
     collapse_reviewed: bool
     recent_copy_reviewed: bool
+    request_count: int
+    prompt_tokens: int
+    prompt_cache_hit_tokens: int
+    prompt_cache_miss_tokens: int
+    completion_tokens: int
+    reasoning_tokens: int
+    cache_hit_rate: float
 
 
 @dataclass(frozen=True)
 class _ReviewerResult:
     scores: list[float]
     analysis: str
+    usage: dict[str, int] = field(default_factory=dict)
+
+
+def _usage_from_response(payload: dict[str, Any]) -> dict[str, int]:
+    raw = payload.get("usage")
+    usage = raw if isinstance(raw, dict) else {}
+    details = usage.get("completion_tokens_details")
+    completion_details = details if isinstance(details, dict) else {}
+    hit = max(0, int(usage.get("prompt_cache_hit_tokens") or 0))
+    miss = max(0, int(usage.get("prompt_cache_miss_tokens") or 0))
+    prompt = max(0, int(usage.get("prompt_tokens") or hit + miss))
+    completion = max(0, int(usage.get("completion_tokens") or 0))
+    total = max(0, int(usage.get("total_tokens") or prompt + completion))
+    reasoning = max(0, int(completion_details.get("reasoning_tokens") or 0))
+    return {
+        "request_count": 1,
+        "prompt_tokens": prompt,
+        "prompt_cache_hit_tokens": hit,
+        "prompt_cache_miss_tokens": miss,
+        "completion_tokens": completion,
+        "reasoning_tokens": reasoning,
+        "total_tokens": total,
+    }
+
+
+def _merge_usage(results: list[_ReviewerResult]) -> dict[str, int]:
+    keys = (
+        "request_count",
+        "prompt_tokens",
+        "prompt_cache_hit_tokens",
+        "prompt_cache_miss_tokens",
+        "completion_tokens",
+        "reasoning_tokens",
+        "total_tokens",
+    )
+    return {
+        key: sum(max(0, int(result.usage.get(key, 0))) for result in results)
+        for key in keys
+    }
 
 
 def _normalize(values: list[float]) -> list[float]:
@@ -116,18 +162,29 @@ def _call_json(
     config: RuntimeAiConfig,
     *,
     system_prompt: str,
-    user_payload: dict[str, Any],
+    user_payload: dict[str, Any] | None = None,
+    shared_payload: dict[str, Any] | None = None,
+    reviewer_payload: dict[str, Any] | None = None,
     max_tokens: int,
     timeout_seconds: int,
 ) -> dict[str, Any]:
     endpoint = config.endpoint.rstrip("/")
     is_responses = endpoint.endswith("/responses")
+    if shared_payload is not None:
+        user_content = (
+            "共享预测证据（同一批次各路评审完全一致）：\n"
+            + compact_json(shared_payload)
+            + "\n\n本路独立评审参数：\n"
+            + compact_json(reviewer_payload or {})
+        )
+    else:
+        user_content = compact_json(user_payload or {})
     if is_responses:
         body: dict[str, Any] = {
             "model": config.model,
             "input": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": compact_json(user_payload)},
+                {"role": "user", "content": user_content},
             ],
             "max_output_tokens": max_tokens,
         }
@@ -136,7 +193,7 @@ def _call_json(
             "model": config.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": compact_json(user_payload)},
+                {"role": "user", "content": user_content},
             ],
             "temperature": 0.2,
             "stream": False,
@@ -178,10 +235,12 @@ def _call_json(
                 payload = response.json()
             if not isinstance(payload, dict):
                 raise ValueError("AI 接口返回格式异常")
-            text = _response_text(payload).strip()
-            if not text:
+            response_text = _response_text(payload).strip()
+            if not response_text:
                 raise ValueError("AI 最终正文为空")
-            return _extract_json(text)
+            parsed = _extract_json(response_text)
+            parsed["_tianji_usage"] = _usage_from_response(payload)
+            return parsed
         except Exception as exc:  # noqa: BLE001 - provider failures must be retried
             last_error = exc
     raise RuntimeError(f"AI 独立评审失败：{str(last_error)[:240]}")
@@ -303,6 +362,51 @@ def _anonymized_items(
     return payload, mapping
 
 
+_NEUTRAL_IDS = tuple(f"N{index:02d}" for index in range(1, 11))
+
+
+def _shared_anonymized_items(
+    items: list[dict[str, Any]],
+    *,
+    target_period: str,
+    phase: str,
+) -> tuple[list[dict[str, Any]], dict[str, int], dict[int, str]]:
+    """Build one neutral evidence namespace shared by all reviewers in a phase."""
+    _, shared_order = _anonymized_items(
+        items,
+        target_period=target_period,
+        phase=phase,
+        reviewer=0,
+    )
+    neutral_mapping: dict[str, int] = {}
+    payload: list[dict[str, Any]] = []
+    for neutral_id, actual_index in zip(
+        _NEUTRAL_IDS,
+        shared_order.values(),
+        strict=True,
+    ):
+        neutral_mapping[neutral_id] = actual_index
+        value = dict(items[actual_index])
+        value.pop("position", None)
+        value.pop("number", None)
+        payload.append({"evidence_id": neutral_id, "evidence": value})
+    neutral_by_actual = {
+        actual_index: neutral_id
+        for neutral_id, actual_index in neutral_mapping.items()
+    }
+    return payload, neutral_mapping, neutral_by_actual
+
+
+def _reviewer_aliases(
+    reviewer_mapping: dict[str, int],
+    neutral_by_actual: dict[int, str],
+) -> dict[str, str]:
+    return {
+        label: neutral_by_actual[actual_index]
+        for label, actual_index in reviewer_mapping.items()
+    }
+
+
 def _anonymized_position_history(
     history: list[DrawModel],
     mapping: dict[str, int],
@@ -355,9 +459,12 @@ def _parse_label_scores(
         if not math.isfinite(value) or value < 0:
             raise ValueError(f"AI 候选{label}评分无效")
         scores[actual_index] = value
+    raw_usage = result.get("_tianji_usage")
+    usage = raw_usage if isinstance(raw_usage, dict) else {}
     return _ReviewerResult(
         scores=_normalize(scores),
         analysis=str(result.get("analysis") or "").strip()[:300],
+        usage={str(key): max(0, int(value)) for key, value in usage.items()},
     )
 
 
@@ -371,41 +478,60 @@ def _position_review(
     reviewer: int,
     challenge: bool,
 ) -> _ReviewerResult:
-    candidates, mapping = _anonymized_items(
+    shared_candidates, neutral_mapping, neutral_by_actual = _shared_anonymized_items(
+        evidence,
+        target_period=target_period,
+        phase="position-shared",
+    )
+    # Preserve the exact reviewer-specific permutation seed used before caching.
+    _, reviewer_mapping = _anonymized_items(
         evidence,
         target_period=target_period,
         phase="position-challenge" if challenge else "position",
         reviewer=reviewer,
     )
     prompt = (
-        "你是天机服务端的独立前向预测评审。候选A至J对应十个真实名次，但映射已随机匿名，"
-        "不得猜测字母对应哪个名次，也不得偏向列表第一项。你会同时看到匿名后的原始开奖序列和程序逐期核验的统计证据，"
-        "对全部10个候选给出0以上评分。评分代表相对预测证据，不是真实中奖概率。"
-        "必须明确选出证据最高的一个候选，每期必须形成预测，不得回答无法预测。"
-        + (
-            "最近正式结果出现同一名次连续入选，本轮是反偏置复核。请主动寻找首位偏置、惯性选择和弱证据，"
-            "但如果匿名证据仍支持同一候选，也可以继续选择，禁止为了轮换而故意换名次。"
-            if challenge
-            else ""
-        )
-        + "只返回紧凑JSON：{\"scores\":{\"A\":数值,...,\"J\":数值},"
+        "你是天机服务端的独立前向预测评审。共享证据中的N01至N10是服务器随机生成的中性编号，"
+        "不会暴露真实名次；本路参数会单独给出A至J到这些中性编号的一次性映射。"
+        "必须按照本路映射独立分析，不得猜测真实名次，也不得参考其他评审。"
+        "你会看到完整匿名开奖序列和程序逐期核验的统计证据，需对A至J全部给出0以上评分。"
+        "评分代表相对预测证据，不是真实中奖概率；必须明确选出证据最高的一个候选。"
+        "只返回紧凑JSON：{\"scores\":{\"A\":数值,...,\"J\":数值},"
         "\"selected\":\"A至J之一\",\"analysis\":\"不超过120字简体中文\"}。"
     )
     result = _call_json(
         config,
         system_prompt=prompt,
-        user_payload={
+        shared_payload={
             "target_period": target_period,
             "trained_through_period": trained_through_period,
-            "reviewer": reviewer + 1,
             "history_order": "oldest_to_newest",
-            "anonymous_raw_draws": _anonymized_position_history(history, mapping),
-            "candidates": candidates,
+            "evidence_mode": "neutral_anonymous_full_sequence_plus_aggregates",
+            "neutral_raw_draws": _anonymized_position_history(
+                history,
+                neutral_mapping,
+            ),
+            "neutral_candidates": shared_candidates,
+        },
+        reviewer_payload={
+            "reviewer": reviewer + 1,
+            "independent_review": True,
+            "candidate_aliases_A_to_J": _reviewer_aliases(
+                reviewer_mapping,
+                neutral_by_actual,
+            ),
+            "challenge": challenge,
+            "review_instruction": (
+                "最近正式结果出现同一名次连续入选。本轮主动复核首位偏置、惯性选择和弱证据；"
+                "若匿名证据仍支持同一候选可以继续选择，禁止为了轮换故意换名次。"
+                if challenge
+                else "基于共享中性匿名证据独立评分，不参考其他评审结果。"
+            ),
         },
         max_tokens=1200,
         timeout_seconds=55,
     )
-    return _parse_label_scores(result, mapping)
+    return _parse_label_scores(result, reviewer_mapping)
 
 
 def _number_evidence(
@@ -483,25 +609,32 @@ def _number_review(
         mask_recent=mask_recent,
     )
     phase = f"number-{position}-masked-{mask_recent}"
-    candidates, mapping = _anonymized_items(
+    shared_candidates, neutral_mapping, neutral_by_actual = _shared_anonymized_items(
+        evidence,
+        target_period=target_period,
+        phase=f"{phase}-shared",
+    )
+    # Preserve the exact per-reviewer A-J permutation from the original algorithm.
+    _, reviewer_mapping = _anonymized_items(
         evidence,
         target_period=target_period,
         phase=phase,
         reviewer=reviewer,
     )
-    anonymous_history = _anonymized_number_series(
+    neutral_history = _anonymized_number_series(
         history,
         position,
-        mapping,
+        neutral_mapping,
         mask_recent=mask_recent,
     )
     prompt = (
-        "你是天机服务端的独立号码排序评审。候选A至J对应号码1至10，但每轮映射都会随机改变并由服务端保密。"
-        "你会看到该名次完整的匿名历史时间序列，以及使用同一匿名映射生成的短中长期频率、遗漏、转移和趋势证据。"
-        "请分析真实的先后顺序、重复间隔、冷热切换、状态转移与多窗口稳定性，而不是只抄最近出现过的候选集合。"
-        "任何输入都不会暴露A至J对应的真实号码；不得猜测真实号码身份，不得偏向列表第一项，不得编造统计。"
+        "你是天机服务端的独立号码排序评审。共享证据中的N01至N10是服务器随机生成的中性编号，"
+        "不会暴露真实号码；本路参数会给出A至J到这些中性编号的一次性随机映射。"
+        "必须按照本路映射独立评分，不得猜测真实号码身份，不得参考其他评审。"
+        "请依据完整匿名历史时序、短中长期频率、遗漏、转移和趋势证据，分析先后顺序、"
+        "重复间隔、冷热切换、状态转移与多窗口稳定性，而不是只抄最近出现过的集合。"
         + (
-            "本轮为近期集合复刻复核，最近7期已作为留出窗口隐藏；请仅依据更早的完整匿名时序独立评分。"
+            "本轮为近期集合复刻复核，最近7期已作为留出窗口隐藏；仅依据更早时序评分。"
             if mask_recent
             else "本轮使用开奖前可见的完整匿名历史时序进行首次独立评分。"
         )
@@ -512,21 +645,29 @@ def _number_review(
     result = _call_json(
         config,
         system_prompt=prompt,
-        user_payload={
+        shared_payload={
             "target_period": target_period,
             "trained_through_period": trained_through_period,
             "selected_position": position + 1,
-            "reviewer": reviewer + 1,
             "history_order": "oldest_to_newest",
             "masked_recent_draws": mask_recent,
-            "evidence_mode": "anonymous_full_sequence_plus_aggregates",
-            "anonymous_history": anonymous_history,
-            "candidates": candidates,
+            "evidence_mode": "neutral_anonymous_full_sequence_plus_aggregates",
+            "neutral_history": neutral_history,
+            "neutral_candidates": shared_candidates,
+        },
+        reviewer_payload={
+            "reviewer": reviewer + 1,
+            "independent_review": True,
+            "candidate_aliases_A_to_J": _reviewer_aliases(
+                reviewer_mapping,
+                neutral_by_actual,
+            ),
+            "review_instruction": "仅依据共享中性匿名证据独立评分，不参考其他评审结果。",
         },
         max_tokens=1400,
         timeout_seconds=50,
     )
-    return _parse_label_scores(result, mapping)
+    return _parse_label_scores(result, reviewer_mapping)
 
 
 def _run_parallel(count: int, task: Any) -> list[_ReviewerResult]:
@@ -539,6 +680,33 @@ def _run_parallel(count: int, task: Any) -> list[_ReviewerResult]:
                 results.append(future.result())
             except Exception as exc:  # noqa: BLE001
                 errors.append(str(exc)[:180])
+    if not results:
+        raise RuntimeError("全部AI评审失败：" + "；".join(errors[:3]))
+    return results
+
+
+def _run_prefix_cached(count: int, task: Any) -> list[_ReviewerResult]:
+    """Complete one real review first, then run the remaining independent reviews."""
+    results: list[_ReviewerResult] = []
+    errors: list[str] = []
+    warm_count = min(1, max(0, count))
+    for reviewer in range(warm_count):
+        try:
+            results.append(task(reviewer))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(str(exc)[:180])
+    remaining = list(range(warm_count, count))
+    if remaining:
+        with ThreadPoolExecutor(
+            max_workers=len(remaining),
+            thread_name_prefix="tianji-ai-cache-hit",
+        ) as pool:
+            futures = [pool.submit(task, reviewer) for reviewer in remaining]
+            for future in as_completed(futures):
+                try:
+                    results.append(future.result())
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(str(exc)[:180])
     if not results:
         raise RuntimeError("全部AI评审失败：" + "；".join(errors[:3]))
     return results
@@ -615,7 +783,7 @@ def analyze_ensemble(
     started = time.monotonic()
     evidence = build_position_evidence(verified)
 
-    position_results = _run_parallel(
+    position_results = _run_prefix_cached(
         _POSITION_REVIEWERS,
         lambda reviewer: _position_review(
             config,
@@ -635,7 +803,7 @@ def analyze_ensemble(
         selected_position,
     )
     if collapse_reviewed:
-        challenge_results = _run_parallel(
+        challenge_results = _run_prefix_cached(
             2,
             lambda reviewer: _position_review(
                 config,
@@ -651,7 +819,7 @@ def analyze_ensemble(
         position_scores = _aggregate(position_results)
         selected_position = max(range(10), key=position_scores.__getitem__)
 
-    number_results = _run_parallel(
+    number_results = _run_prefix_cached(
         _NUMBER_REVIEWERS,
         lambda reviewer: _number_review(
             config,
@@ -674,7 +842,7 @@ def analyze_ensemble(
     )
     holdout_results: list[_ReviewerResult] = []
     if recent_copy_reviewed:
-        holdout_results = _run_parallel(
+        holdout_results = _run_prefix_cached(
             _NUMBER_REVIEWERS,
             lambda reviewer: _number_review(
                 config,
@@ -726,6 +894,17 @@ def analyze_ensemble(
             + " 初次Top 7与最近7期候选集合高度重合，已增加隐藏最近7期的独立留出评审；最终结果由完整历史评审与留出评审加权汇总，并非程序换号。"
         )[:560]
 
+    usage = _merge_usage([*position_results, *number_results])
+    cache_input_tokens = (
+        usage["prompt_cache_hit_tokens"]
+        + usage["prompt_cache_miss_tokens"]
+    )
+    cache_hit_rate = (
+        usage["prompt_cache_hit_tokens"] / cache_input_tokens
+        if cache_input_tokens
+        else 0.0
+    )
+
     return AiEnsembleResult(
         position=selected_position,
         probabilities=probabilities,
@@ -742,4 +921,11 @@ def analyze_ensemble(
         number_reviewers=len(number_results),
         collapse_reviewed=collapse_reviewed,
         recent_copy_reviewed=recent_copy_reviewed,
+        request_count=usage["request_count"],
+        prompt_tokens=usage["prompt_tokens"],
+        prompt_cache_hit_tokens=usage["prompt_cache_hit_tokens"],
+        prompt_cache_miss_tokens=usage["prompt_cache_miss_tokens"],
+        completion_tokens=usage["completion_tokens"],
+        reasoning_tokens=usage["reasoning_tokens"],
+        cache_hit_rate=round(cache_hit_rate, 6),
     )
