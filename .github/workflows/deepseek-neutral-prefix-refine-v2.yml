@@ -1,0 +1,111 @@
+name: DeepSeek Neutral Prefix Refine V2
+
+on:
+  push:
+    branches:
+      - optimize/deepseek-prefix-cache
+    paths:
+      - .github/workflows/deepseek-neutral-prefix-refine-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: optimize/deepseek-prefix-cache
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply neutral prefix and update legacy contract test
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/deepseek-neutral-prefix-refine.yml').read_text(encoding='utf-8')
+          source = workflow.split("          python - <<'PY'\n", 1)[1].split("\n          PY\n", 1)[0]
+          source = textwrap.dedent(source)
+
+          old_compile = '''compile(path.read_text(encoding='utf-8'), str(path), 'exec')
+          compile(test_path.read_text(encoding='utf-8'), str(test_path), 'exec')'''
+          test_patch = '''legacy_test_path = Path('server/tests/test_ai_ensemble.py')
+          legacy_text = legacy_test_path.read_text(encoding='utf-8')
+          old_contract = """        payload = captured[\\"user_payload\\"]
+                  self.assertIsInstance(payload, dict)
+                  assert isinstance(payload, dict)
+                  self.assertEqual(
+                      payload[\\"evidence_mode\\"],
+                      \\"anonymous_full_sequence_plus_aggregates\\",
+                  )
+                  self.assertEqual(payload[\\"history_order\\"], \\"oldest_to_newest\\")
+                  self.assertEqual(len(payload[\\"anonymous_history\\"]), 120)
+                  self.assertTrue(
+                      all(
+                          item[\\"candidate_id\\"] in set(\\"ABCDEFGHIJ\\")
+                          and set(item) == {\\"period\\", \\"candidate_id\\"}
+                          for item in payload[\\"anonymous_history\\"]
+                      )
+                  )
+                  for candidate in payload[\\"candidates\\"]:
+                      self.assertNotIn(\\"number\\", candidate[\\"evidence\\"])
+          """
+          new_contract = """        shared = captured[\\"shared_payload\\"]
+                  reviewer_tail = captured[\\"reviewer_payload\\"]
+                  self.assertIsInstance(shared, dict)
+                  self.assertIsInstance(reviewer_tail, dict)
+                  assert isinstance(shared, dict)
+                  assert isinstance(reviewer_tail, dict)
+                  self.assertEqual(
+                      shared[\\"evidence_mode\\"],
+                      \\"neutral_anonymous_full_sequence_plus_aggregates\\",
+                  )
+                  self.assertEqual(shared[\\"history_order\\"], \\"oldest_to_newest\\")
+                  self.assertEqual(len(shared[\\"neutral_history\\"]), 120)
+                  neutral_ids = {f\\"N{index:02d}\\" for index in range(1, 11)}
+                  self.assertTrue(
+                      all(
+                          item[\\"candidate_id\\"] in neutral_ids
+                          and set(item) == {\\"period\\", \\"candidate_id\\"}
+                          for item in shared[\\"neutral_history\\"]
+                      )
+                  )
+                  for candidate in shared[\\"neutral_candidates\\"]:
+                      self.assertNotIn(\\"number\\", candidate[\\"evidence\\"])
+                  aliases = reviewer_tail[\\"candidate_aliases_A_to_J\\"]
+                  self.assertEqual(set(aliases), set(\\"ABCDEFGHIJ\\"))
+                  self.assertEqual(set(aliases.values()), neutral_ids)
+          """
+          if old_contract not in legacy_text:
+              raise SystemExit('legacy number review contract not found')
+          legacy_test_path.write_text(
+              legacy_text.replace(old_contract, new_contract, 1),
+              encoding='utf-8',
+          )
+
+          compile(path.read_text(encoding='utf-8'), str(path), 'exec')
+          compile(test_path.read_text(encoding='utf-8'), str(test_path), 'exec')
+          compile(legacy_test_path.read_text(encoding='utf-8'), str(legacy_test_path), 'exec')'''
+          if old_compile not in source:
+              raise SystemExit('compile anchor not found')
+          source = source.replace(old_compile, test_patch, 1)
+          exec(compile(source, '<neutral-prefix-refine-v2>', 'exec'))
+          PY
+      - name: Install backend dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Run backend tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+      - name: Commit refinement
+        shell: bash
+        run: |
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app/ai_ensemble.py server/tests/test_ai_prefix_cache.py server/tests/test_ai_ensemble.py
+          git commit -m "refactor(server): preserve independent mappings with neutral cache prefix"
+          git push origin optimize/deepseek-prefix-cache
