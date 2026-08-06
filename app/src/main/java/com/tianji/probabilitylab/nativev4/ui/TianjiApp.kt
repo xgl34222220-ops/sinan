@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
 import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
+import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.push.PushAlertNavigation
 import com.tianji.probabilitylab.nativev4.service.AiForegroundService
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceMode
@@ -58,6 +59,7 @@ fun TianjiApp() {
     val pushPreferences by PushAlertCoordinator.preferences.collectAsState()
     val pushStatus by PushAlertCoordinator.status.collectAsState()
     val pendingAlertId by PushAlertNavigation.pendingAlertId.collectAsState()
+    val pendingPrediction by PushAlertNavigation.pendingPrediction.collectAsState()
     val scope = rememberCoroutineScope()
     val state = controller.state
 
@@ -111,6 +113,17 @@ fun TianjiApp() {
             ) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    LaunchedEffect(pendingPrediction) {
+        pendingPrediction?.let { target ->
+            LotteryType.entries.firstOrNull { it.apiKey == target.lottery }
+                ?.let(controller::selectLottery)
+            destination = MainDestination.HOME
+            showAlertCenter = false
+            focusedAlertId = null
+            PushAlertNavigation.consumePrediction()
         }
     }
 
@@ -170,12 +183,6 @@ fun TianjiApp() {
                             showAlertCenter = true
                         },
                     )
-                    if (destination == MainDestination.HOME && state.report != null) {
-                        HomePredictionFocusStrip(
-                            state = state,
-                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 9.dp),
-                        )
-                    }
                     Box(Modifier.weight(1f)) {
                         AnimatedContent(
                             targetState = destination,

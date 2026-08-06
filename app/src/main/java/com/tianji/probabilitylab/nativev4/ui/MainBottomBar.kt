@@ -34,6 +34,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -121,7 +123,7 @@ private fun StandardNavItem(
         animationSpec = spring(dampingRatio = 0.84f, stiffness = 520f),
         label = "main-nav-scale",
     )
-    val interaction = remember { MutableInteractionSource() }
+    val haptics = LocalHapticFeedback.current
     Column(
         modifier = modifier
             .heightIn(min = 64.dp)
@@ -133,11 +135,10 @@ private fun StandardNavItem(
                 if (active) colors.accent.copy(alpha = 0.25f) else Color.Transparent,
                 RoundedCornerShape(17.dp),
             )
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-            ),
+            .clickable {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -174,17 +175,16 @@ private fun ChatNavItem(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalTianjiColors.current
-    val interaction = remember { MutableInteractionSource() }
+    val haptics = LocalHapticFeedback.current
     Column(
         modifier = modifier
             .heightIn(min = 64.dp)
             .clip(RoundedCornerShape(17.dp))
             .padding(vertical = 1.dp)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-            ),
+            .clickable {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

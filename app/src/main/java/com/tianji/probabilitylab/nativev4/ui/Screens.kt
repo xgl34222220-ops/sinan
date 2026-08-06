@@ -99,60 +99,6 @@ import kotlinx.coroutines.delay
 import kotlin.math.min
 
 @Composable
-fun ForecastScreen(
-    state: AppUiState,
-    aiConfigs: List<AiConfig>,
-    onSelectLottery: (LotteryType) -> Unit,
-    onRefresh: () -> Unit,
-    onAnalyzeAllAi: () -> Unit,
-    onCancelAi: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 12.dp,
-            end = 12.dp,
-            top = 14.dp,
-            bottom = 16.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item(key = "game-switcher") { GameSwitcher(state.lottery, onSelectLottery) }
-        when {
-            state.snapshot != null && state.report != null -> {
-                item(key = "live-draw") {
-                    LiveDrawCard(
-                        snapshot = state.snapshot,
-                        lottery = state.lottery,
-                        isRefreshing = state.isRefreshing,
-                        error = state.error,
-                        aiRunning = state.isAiAnalyzing,
-                        onRefresh = onRefresh,
-                    )
-                }
-                item(key = "native-forecast") { ForecastHero(state.report) }
-                item(key = "ai-analysis") {
-                    AiAnalysisPanel(state, aiConfigs, onAnalyzeAllAi, onCancelAi)
-                }
-                item(key = "probability-matrix") { ProbabilityPanel(state.report) }
-                item(key = "model-panel") { CompactModelPanel(state.report.models) }
-            }
-            state.isLoading -> item {
-                EmptyState(
-                    "正在同步真实开奖",
-                    "同步完成后在本机训练 11 模型并执行时间切分验证",
-                    true,
-                )
-            }
-            else -> item {
-                EmptyState("暂时无法生成预测", state.error ?: "没有足够的真实历史数据")
-            }
-        }
-    }
-}
-
-@Composable
 private fun LiveDrawCard(
     snapshot: com.tianji.probabilitylab.nativev4.model.DrawSnapshot,
     lottery: LotteryType,

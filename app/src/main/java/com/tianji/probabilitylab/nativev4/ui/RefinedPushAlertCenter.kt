@@ -325,7 +325,7 @@ private fun AlertConnectionCard(
                     Text(
                         status.detail,
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         lineHeight = 15.sp,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -355,14 +355,14 @@ private fun AlertConnectionCard(
                 Text(
                     if (status.instantReady) "FCM 即时" else "${status.fallbackMinutes} 分钟增量检查",
                     color = tint,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     if (expanded) "收起接收范围" else "管理接收范围",
                     color = colors.accent,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -449,7 +449,7 @@ private fun FilterChipText(text: String, active: Boolean, onClick: () -> Unit) {
     Text(
         text,
         color = if (active) Color.White else colors.textSoft,
-        fontSize = 10.sp,
+        fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
             .clip(CircleShape)
@@ -514,14 +514,14 @@ private fun CompactAlertCard(
                     Text(
                         visual.label,
                         color = visual.accent,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
                     )
                     if (alert.lotteryName.isNotBlank()) {
                         Text(
                             " · ${alert.lotteryName}",
                             color = colors.textDim,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
@@ -565,14 +565,14 @@ private fun CompactAlertCard(
             Text(
                 "目标期 $period",
                 color = colors.textSoft,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 formatAlertTimeV2(alert.createdAtEpochMs),
                 color = colors.textDim,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
             )
         }
 
@@ -584,7 +584,7 @@ private fun CompactAlertCard(
                 Text(
                     sourceLine,
                     color = colors.textDim,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     lineHeight = 15.sp,
                     modifier = Modifier.padding(top = 6.dp),
                 )
@@ -593,7 +593,7 @@ private fun CompactAlertCard(
                 Text(
                     "最近期号：${alert.recentPeriods.joinToString("、")}",
                     color = colors.textDim,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier.padding(top = 3.dp),
                 )
             }
