@@ -700,13 +700,13 @@ def _run_parallel(count: int, task: Any) -> list[_ReviewerResult]:
 
 
 def _run_prefix_cached(count: int, task: Any) -> list[_ReviewerResult]:
-    """Complete one real review first, then run the remaining independent reviews."""
-    results: list[_ReviewerResult] = []
+    """Complete one real review first, then run the rest while preserving IDs."""
+    indexed: dict[int, _ReviewerResult] = {}
     errors: list[str] = []
     warm_count = min(1, max(0, count))
     for reviewer in range(warm_count):
         try:
-            results.append(task(reviewer))
+            indexed[reviewer] = task(reviewer)
         except Exception as exc:  # noqa: BLE001
             errors.append(str(exc)[:180])
     remaining = list(range(warm_count, count))
@@ -715,15 +715,16 @@ def _run_prefix_cached(count: int, task: Any) -> list[_ReviewerResult]:
             max_workers=len(remaining),
             thread_name_prefix="tianji-ai-cache-hit",
         ) as pool:
-            futures = [pool.submit(task, reviewer) for reviewer in remaining]
+            futures = {pool.submit(task, reviewer): reviewer for reviewer in remaining}
             for future in as_completed(futures):
+                reviewer = futures[future]
                 try:
-                    results.append(future.result())
+                    indexed[reviewer] = future.result()
                 except Exception as exc:  # noqa: BLE001
                     errors.append(str(exc)[:180])
-    if not results:
+    if not indexed:
         raise RuntimeError("全部AI评审失败：" + "；".join(errors[:3]))
-    return results
+    return [indexed[index] for index in sorted(indexed)]
 
 
 def _aggregate(results: list[_ReviewerResult]) -> list[float]:
@@ -797,6 +798,8 @@ def analyze_ensemble(
     started = time.monotonic()
     evidence = build_position_evidence(verified)
 
+    # AI source is intentionally independent: no native statistical component
+    # participates in position selection or number ranking.
     position_results = _run_prefix_cached(
         _POSITION_REVIEWERS,
         lambda reviewer: _position_review(
@@ -809,48 +812,10 @@ def analyze_ensemble(
             challenge=False,
         ),
     )
-    ai_position_scores = _aggregate(position_results)
-    quality_profiles = [
-        position_quality_profile(verified, position)
-        for position in range(10)
-    ]
-    validation_scores = _normalize(
-        [max(0.05, profile.validation_score) for profile in quality_profiles]
-    )
-    math_weight_total = sum(
-        value for name, value in (strategy_weights or {}).items() if name != "ai_review"
-    )
-    position_mix = normalize_strategy_weights(
-        {
-            "ai_review": (strategy_weights or {}).get("ai_review", 0.35),
-            "walk_forward": math_weight_total or 0.65,
-        },
-        ("ai_review", "walk_forward"),
-    )
-    position_scores = _normalize(
-        [
-            ai_position_scores[index] * position_mix["ai_review"]
-            + validation_scores[index] * position_mix["walk_forward"]
-            for index in range(10)
-        ]
-    )
+    position_scores = _aggregate(position_results)
     selected_position = max(range(10), key=position_scores.__getitem__)
-    weak_repeat_guarded = False
     recent = recent_positions or []
-    ranked_positions = sorted(range(10), key=position_scores.__getitem__, reverse=True)
-    if recent and needs_collapse_review(recent, selected_position):
-        margin = position_scores[ranked_positions[0]] - position_scores[ranked_positions[1]]
-        if margin < 0.012:
-            for candidate in ranked_positions[1:]:
-                if validation_scores[candidate] >= validation_scores[selected_position] * 0.97:
-                    selected_position = candidate
-                    weak_repeat_guarded = True
-                    break
-
-    collapse_reviewed = needs_collapse_review(
-        recent,
-        selected_position,
-    ) or weak_repeat_guarded
+    collapse_reviewed = needs_collapse_review(recent, selected_position)
     if collapse_reviewed:
         challenge_results = _run_prefix_cached(
             2,
@@ -865,14 +830,7 @@ def analyze_ensemble(
             ),
         )
         position_results.extend(challenge_results)
-        ai_position_scores = _aggregate(position_results)
-        position_scores = _normalize(
-            [
-                ai_position_scores[index] * position_mix["ai_review"]
-                + validation_scores[index] * position_mix["walk_forward"]
-                for index in range(10)
-            ]
-        )
+        position_scores = _aggregate(position_results)
         selected_position = max(range(10), key=position_scores.__getitem__)
 
     number_results = _run_prefix_cached(
@@ -887,36 +845,27 @@ def analyze_ensemble(
             mask_recent=0,
         ),
     )
-    primary_ai_probabilities = _aggregate(number_results)
-    raw_ai_ranked = sorted(
-        range(10),
-        key=primary_ai_probabilities.__getitem__,
-        reverse=True,
-    )
-    math_components = statistical_components(verified, selected_position)
-    strategy_probabilities = dict(math_components)
-    strategy_probabilities["ai_review"] = primary_ai_probabilities
+    strategy_probabilities = {
+        f"ai_reviewer_{index + 1}": _normalize(result.scores)
+        for index, result in enumerate(number_results)
+    }
     active_strategy_weights = normalize_strategy_weights(
         strategy_weights,
         strategy_probabilities,
     )
-    primary_probabilities = blend_strategy_probabilities(
+    probabilities = blend_strategy_probabilities(
         strategy_probabilities,
         active_strategy_weights,
     )
-    probabilities = primary_probabilities
     ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
 
-    raw_copy = recent_copy_diagnostics(raw_ai_ranked, verified, selected_position)
-    final_copy = recent_copy_diagnostics(ranked, verified, selected_position)
-    ai_score_spread = max(primary_ai_probabilities) - min(primary_ai_probabilities)
+    raw_copy = recent_copy_diagnostics(ranked, verified, selected_position)
+    ai_score_spread = max(probabilities) - min(probabilities)
     final_boundary = probabilities[ranked[5]] - probabilities[ranked[6]]
     recent_copy_reviewed = (
-        (ai_score_spread >= 0.02 and raw_copy.triggered)
-        or final_copy.exact_latest_six
-        or (final_copy.triggered and final_boundary >= 0.004)
+        raw_copy.exact_latest_six
+        or (raw_copy.triggered and ai_score_spread >= 0.02 and final_boundary >= 0.004)
     )
-    copy_guard_applied = False
     holdout_results: list[_ReviewerResult] = []
     if recent_copy_reviewed:
         holdout_results = _run_prefix_cached(
@@ -932,27 +881,19 @@ def analyze_ensemble(
             ),
         )
         number_results.extend(holdout_results)
-        holdout_ai_probabilities = _aggregate(holdout_results)
-        holdout_components = statistical_components(
-            verified,
-            selected_position,
-            mask_recent=_RECENT_COPY_WINDOW,
+        for index, result in enumerate(holdout_results):
+            strategy_probabilities[f"ai_holdout_{index + 1}"] = _normalize(result.scores)
+        learned = dict(strategy_weights or {})
+        if not any(name.startswith("ai_holdout_") for name in learned):
+            for name in strategy_probabilities:
+                learned.setdefault(name, 0.35 if name.startswith("ai_holdout_") else 0.15)
+        active_strategy_weights = normalize_strategy_weights(
+            learned,
+            strategy_probabilities,
         )
-        holdout_strategy_probabilities = dict(holdout_components)
-        holdout_strategy_probabilities["ai_review"] = holdout_ai_probabilities
-        holdout_probabilities = blend_strategy_probabilities(
-            holdout_strategy_probabilities,
+        probabilities = blend_strategy_probabilities(
+            strategy_probabilities,
             active_strategy_weights,
-        )
-        probabilities = _blend_probabilities(
-            primary_probabilities,
-            holdout_probabilities,
-        )
-        probabilities, copy_guard_applied = regularize_recent_copy(
-            probabilities,
-            verified,
-            selected_position,
-            strategy_weights=active_strategy_weights,
         )
         ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
 
@@ -962,31 +903,23 @@ def analyze_ensemble(
         if len(position_margin) > 1
         else 0.0
     )
-    position_comment = next(
-        (item.analysis for item in position_results if item.analysis),
-        "",
-    )
+    position_comment = next((item.analysis for item in position_results if item.analysis), "")
     number_comment_source = holdout_results or number_results
-    number_comment = next(
-        (item.analysis for item in number_comment_source if item.analysis),
-        "",
-    )
+    number_comment = next((item.analysis for item in number_comment_source if item.analysis), "")
     analysis = (
-        f"{len(position_results)}轮匿名名次评审结合滚动前向验证选择第{selected_position + 1}名，"
-        f"前两名次汇总差约{margin:.2f}个百分点；"
-        f"{len(number_results)}轮完整匿名时序号码评审完成独立排序。"
+        f"{len(position_results)}轮独立AI匿名名次评审选择第{selected_position + 1}名，"
+        f"前两名次AI评分差约{margin:.2f}个百分点；"
+        f"{len(number_results)}轮独立AI匿名时序评审完成号码排序。"
         + (f" {position_comment}" if position_comment else "")
         + (f" {number_comment}" if number_comment else "")
-    )[:380]
+        + " AI预测不再混入本地频率、遗漏、马尔可夫、趋势或稳定性策略。"
+    )[:520]
     if collapse_reviewed:
-        analysis = (
-            analysis + " 已触发连续同名次复核；弱边界时由前向验证较优名次裁决，不再机械锁死。"
-        )[:440]
+        analysis = (analysis + " 已触发连续同名次的额外AI挑战评审。")[:580]
     if recent_copy_reviewed:
         analysis = (
-            analysis
-            + " 初次结果与最近6/7期集合高度重合，已增加隐藏最近7期的独立留出评审、统计前向裁决和最近集合正则，避免直接复制最新六码。"
-        )[:560]
+            analysis + " 初次结果与最近集合高度重合，已增加隐藏最近7期的独立AI留出评审，避免直接复制最新六码。"
+        )[:640]
     learning_leaders = sorted(
         active_strategy_weights.items(),
         key=lambda item: item[1],
@@ -997,14 +930,11 @@ def analyze_ensemble(
     )
     analysis = (
         analysis
-        + f" 当前融合权重由已结算预测在线学习，主要策略：{learning_text}；不中会自动降权，不再使用固定融合比例。"
-    )[:720]
+        + f" AI评审权重按最近100期50%、最近300期30%、全历史20%独立学习：{learning_text}。"
+    )[:760]
 
     usage = _merge_usage([*position_results, *number_results])
-    cache_input_tokens = (
-        usage["prompt_cache_hit_tokens"]
-        + usage["prompt_cache_miss_tokens"]
-    )
+    cache_input_tokens = usage["prompt_cache_hit_tokens"] + usage["prompt_cache_miss_tokens"]
     cache_hit_rate = (
         usage["prompt_cache_hit_tokens"] / cache_input_tokens
         if cache_input_tokens
@@ -1018,9 +948,8 @@ def analyze_ensemble(
         top7=[index + 1 for index in ranked[:7]],
         analysis=analysis,
         risk_note=(
-            "这是开奖前冻结的AI多轮相对排序，并由滚动前向验证约束名次与号码。号码阶段保留完整历史先后顺序，但每轮都将号码随机映射为A至J，"
-            "模型只能看到匿名时序与同映射聚合证据；检测到近期集合复刻时会增加留出窗口复核。"
-            "随机开奖仍可能使任何分析失效，只能用于前向验证。"
+            "这是开奖前冻结的独立AI多路匿名排序，保留完整历史先后顺序。AI只读取匿名历史与证据，不再复用本地模型最终概率；"
+            "本地数学模型与AI模型分别结算、分别学习。随机开奖仍可能使任何分析失效。"
         ),
         latency_ms=int((time.monotonic() - started) * 1000),
         position_reviewers=len(position_results),

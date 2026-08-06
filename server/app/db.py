@@ -8,7 +8,11 @@ import sqlite3
 import time
 from typing import Any, Iterable, Iterator
 
-from .adaptive_learning import prediction_loss, update_strategy_weights
+from .adaptive_learning import (
+    multiscale_strategy_weights,
+    prediction_loss,
+    update_strategy_weights,
+)
 from .config import settings
 from .models import DrawModel, ForecastModel
 
@@ -503,7 +507,7 @@ class Database:
 
     def get_strategy_weights(self, lottery: str, source: str) -> dict[str, float]:
         with self.connection() as db:
-            rows = db.execute(
+            stored_rows = db.execute(
                 """
                 SELECT strategy, weight
                 FROM strategy_learning
@@ -511,7 +515,21 @@ class Database:
                 """,
                 (lottery, source),
             ).fetchall()
-        return {str(row["strategy"]): float(row["weight"]) for row in rows}
+            event_rows = db.execute(
+                """
+                SELECT strategy, log_loss, brier_score, top6_hit, settled_at
+                FROM forecast_strategy_predictions
+                WHERE lottery = ? AND source = ? AND settled_at IS NOT NULL
+                ORDER BY settled_at DESC, forecast_id DESC
+                """,
+                (lottery, source),
+            ).fetchall()
+        stored = {str(row["strategy"]): float(row["weight"]) for row in stored_rows}
+        if not event_rows:
+            return stored
+        # Use neutral/default priors once real events exist. The old sequential
+        # weight is intentionally not used as a second historical vote.
+        return multiscale_strategy_weights([dict(row) for row in event_rows])
 
     def save_strategy_predictions(
         self,
@@ -686,6 +704,7 @@ class Database:
         return [dict(row) for row in rows]
 
     def strategy_learning_summary(self, lottery: str, source: str) -> list[dict[str, object]]:
+        effective = self.get_strategy_weights(lottery, source)
         with self.connection() as db:
             rows = db.execute(
                 """
@@ -693,11 +712,23 @@ class Database:
                        top6_hits, top6_misses, updated_at
                 FROM strategy_learning
                 WHERE lottery = ? AND source = ?
-                ORDER BY weight DESC, strategy ASC
                 """,
                 (lottery, source),
             ).fetchall()
-        return [dict(row) for row in rows]
+        result: list[dict[str, object]] = []
+        for row in rows:
+            item = dict(row)
+            strategy = str(item["strategy"])
+            samples = int(item.get("samples") or 0)
+            item["stored_weight"] = float(item["weight"])
+            item["weight"] = float(effective.get(strategy, item["weight"]))
+            item["recent_100_samples"] = min(100, samples)
+            item["recent_300_samples"] = min(300, samples)
+            item["all_samples"] = samples
+            item["weight_mode"] = "recent100_50_recent300_30_all_20"
+            result.append(item)
+        result.sort(key=lambda item: (-float(item["weight"]), str(item["strategy"])))
+        return result
 
     def settle_forecasts(self, lottery: str) -> int:
         with self.connection() as db:
