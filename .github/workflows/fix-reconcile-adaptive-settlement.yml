@@ -1,0 +1,44 @@
+name: Fix Adaptive Settlement Reconciliation
+
+on:
+  push:
+    branches:
+      - fix/reconcile-adaptive-settlement
+    paths:
+      - tools/fix_reconcile_adaptive_settlement.py
+      - .github/workflows/fix-reconcile-adaptive-settlement.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/reconcile-adaptive-settlement
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply reconciliation patch
+        run: python tools/fix_reconcile_adaptive_settlement.py
+      - name: Install dependencies
+        working-directory: server
+        run: pip install -r requirements.txt
+      - name: Compile and run complete tests
+        working-directory: server
+        run: |
+          python -m compileall app tests
+          python -m unittest discover -s tests -v
+      - name: Validate Compose
+        run: docker compose config >/dev/null
+      - name: Commit business files
+        run: |
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app/db.py server/app/service.py server/tests/test_adaptive_worker_runtime.py docker-compose.yml
+          git commit -m "fix(server): 补偿结算遗漏的策略学习快照"
+          git push origin HEAD:fix/reconcile-adaptive-settlement
