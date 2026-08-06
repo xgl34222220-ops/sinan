@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+import time
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +17,11 @@ class TelegramAlertTests(unittest.TestCase):
             db.execute("DELETE FROM push_alert_reads")
             db.execute("DELETE FROM push_alerts")
             db.execute("DELETE FROM push_devices")
+            db.execute(
+                "DELETE FROM forecasts WHERE lottery='xyft' AND target_period='103' "
+                "AND source='ai' AND model='deepseek<pro>'"
+            )
+            db.execute("DELETE FROM draws WHERE lottery='xyft' AND period='103'")
 
     @staticmethod
     def watch(source: str = "ai", streak: int = 3) -> dict:
@@ -45,6 +51,33 @@ class TelegramAlertTests(unittest.TestCase):
                 }
             ],
         }
+
+    @staticmethod
+    def seed_fresh_settlement() -> None:
+        now = int(time.time() * 1000)
+        with database.connection() as db:
+            db.execute(
+                """
+                INSERT INTO draws(
+                    lottery,period,numbers_json,draw_time,source,created_at
+                ) VALUES('xyft','103','[1,2,3,4,5,6,7,8,9,10]',?,'test',?)
+                """,
+                (str(now // 1000), now),
+            )
+            db.execute(
+                """
+                INSERT INTO forecasts(
+                    lottery,target_period,trained_through_period,position_index,
+                    top6_json,top7_json,probabilities_json,source,model,analysis,
+                    risk_note,created_at,actual_number,top6_hit,top7_hit,settled_at
+                ) VALUES(
+                    'xyft','103','102',0,'[2,3,4,5,6,7]','[2,3,4,5,6,7,8]',
+                    '[0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1]',
+                    'ai','deepseek<pro>','','',?,1,0,0,?
+                )
+                """,
+                (now, now),
+            )
 
     def test_chat_ids_are_trimmed_and_deduplicated(self) -> None:
         self.assertEqual(
@@ -91,6 +124,7 @@ class TelegramAlertTests(unittest.TestCase):
         self.assertIn("升级提醒状态", message)
 
     def test_delivery_works_without_fcm_and_is_idempotent(self) -> None:
+        self.seed_fresh_settlement()
         push_alerts.materialize_warning_alerts(self.watch())
         fake_settings = SimpleNamespace(
             fcm_enabled=False,

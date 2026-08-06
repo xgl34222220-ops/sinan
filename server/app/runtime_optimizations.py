@@ -121,8 +121,10 @@ def install() -> None:
     from .push_runtime_v2 import install as install_push_runtime_v2
     from .push_runtime_bridge import install as install_push_runtime_bridge
     from .push_runtime_fixes import install as install_push_runtime_fixes
+    from .push_freshness_guard import install as install_push_freshness_guard
 
     install_push_runtime_v2()
     install_push_runtime_bridge()
     install_push_runtime_fixes()
+    install_push_freshness_guard()
     _INSTALLED = True
