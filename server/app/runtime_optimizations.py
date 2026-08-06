@@ -13,48 +13,14 @@ _INSTALLED = False
 
 
 def _batch_settle_forecasts(self: Database, lottery: str) -> int:
-    """Settle every available forecast in one read and one batch update."""
-    with self.connection() as db:
-        rows = db.execute(
-            """
-            SELECT f.id,f.position_index,f.top6_json,f.top7_json,d.numbers_json
-            FROM forecasts AS f
-            INNER JOIN draws AS d
-                ON d.lottery=f.lottery AND d.period=f.target_period
-            WHERE f.lottery=? AND f.settled_at IS NULL
-            ORDER BY f.id ASC
-            """,
-            (lottery,),
-        ).fetchall()
-        if not rows:
-            return 0
+    """Delegate to the canonical learning-aware settlement implementation.
 
-        import time
-
-        settled_at = int(time.time() * 1000)
-        updates: list[tuple[int, int, int, int, int]] = []
-        for row in rows:
-            numbers = json.loads(row["numbers_json"])
-            position = int(row["position_index"])
-            if position < 0 or position >= len(numbers):
-                continue
-            actual = int(numbers[position])
-            top6 = set(json.loads(row["top6_json"]))
-            top7 = set(json.loads(row["top7_json"]))
-            updates.append(
-                (actual, int(actual in top6), int(actual in top7), settled_at, int(row["id"]))
-            )
-
-        if updates:
-            db.executemany(
-                """
-                UPDATE forecasts SET
-                    actual_number=?,top6_hit=?,top7_hit=?,settled_at=?
-                WHERE id=? AND settled_at IS NULL
-                """,
-                updates,
-            )
-        return len(updates)
+    This hook used to replace ``Database.settle_forecasts`` with a faster legacy
+    query that only settled the forecast row. That silently skipped strategy
+    snapshots and prevented online learning. Keep the hook for compatibility,
+    but make the canonical database method the single source of truth.
+    """
+    return Database.settle_forecasts(self, lottery)
 
 
 def ensure_runtime_indexes() -> None:
