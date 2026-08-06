@@ -1,0 +1,42 @@
+name: Expose Adaptive Learning
+
+on:
+  push:
+    branches:
+      - fix/adaptive-learning-visibility
+    paths:
+      - tools/expose_adaptive_learning.py
+      - .github/workflows/expose-adaptive-learning.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/adaptive-learning-visibility
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply observability patch
+        run: python tools/expose_adaptive_learning.py
+      - name: Install dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Run complete server tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+      - name: Commit business files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app/main.py server/tests/test_adaptive_learning_public.py
+          git diff --cached --check
+          git commit -m "fix(server): 公开精确自适应学习状态"
+          git push origin HEAD:fix/adaptive-learning-visibility
