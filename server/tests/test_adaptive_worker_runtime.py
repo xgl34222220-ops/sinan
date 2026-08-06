@@ -11,7 +11,7 @@ from app.service import SERVICE_VERSION
 
 class AdaptiveWorkerRuntimeTests(unittest.TestCase):
     def test_service_version_marks_forced_worker_runtime(self) -> None:
-        self.assertEqual(SERVICE_VERSION, "1.7.3")
+        self.assertEqual(SERVICE_VERSION, "1.7.4")
 
     def test_v4_forecast_requires_strategy_snapshot_on_settlement(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -82,7 +82,6 @@ class AdaptiveWorkerRuntimeTests(unittest.TestCase):
             )
             diagnostics = database.strategy_snapshot_diagnostics("xyft")
             self.assertEqual(diagnostics[0]["settled_snapshot_count"], 2)
-
 
     def test_reconciles_snapshots_after_legacy_forecast_settlement(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
