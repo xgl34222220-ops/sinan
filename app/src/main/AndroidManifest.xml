@@ -32,9 +32,13 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name=".push.PushNotificationActionReceiver"
+            android:exported="false" />
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="tianji_prediction_alerts" />
+            android:value="tianji_prediction_updates" />
 
         <activity
             android:name=".MainActivity"
