@@ -1,0 +1,86 @@
+name: DeepSeek Prefix Cache Refactor V2
+
+on:
+  push:
+    branches:
+      - optimize/deepseek-prefix-cache
+    paths:
+      - .github/workflows/deepseek-prefix-cache-refactor-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: optimize/deepseek-prefix-cache
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply corrected refactor
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import textwrap
+
+          workflow = Path('.github/workflows/deepseek-prefix-cache-refactor.yml').read_text(encoding='utf-8')
+          marker = "          python - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          source = workflow.split(marker, 1)[1].split(end_marker, 1)[0]
+          source = textwrap.dedent(source)
+
+          pattern = re.compile(
+              r"text = replace_once\(\n\s*text,\n\s*'''\s*CREATE INDEX IF NOT EXISTS forecast_jobs_updated[\s\S]+?'ai usage table',\n\s*\)",
+              re.MULTILINE,
+          )
+          replacement = '''db_pattern = re.compile(
+              r"(\\s*CREATE INDEX IF NOT EXISTS forecast_jobs_updated\\n\\s*ON forecast_jobs\\(updated_at DESC\\);\\n)(\\s*CREATE TABLE IF NOT EXISTS service_state \\()",
+              re.MULTILINE,
+          )
+          db_insert = """\\1
+                CREATE TABLE IF NOT EXISTS ai_usage_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lottery TEXT NOT NULL,
+                    target_period TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    request_count INTEGER NOT NULL DEFAULT 0,
+                    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                    prompt_cache_hit_tokens INTEGER NOT NULL DEFAULT 0,
+                    prompt_cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
+                    completion_tokens INTEGER NOT NULL DEFAULT 0,
+                    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+                    cache_hit_rate REAL NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    UNIQUE(lottery, target_period, model)
+                );
+                CREATE INDEX IF NOT EXISTS ai_usage_created
+                    ON ai_usage_events(created_at DESC);
+
+                \\2"""
+          text, db_count = db_pattern.subn(db_insert, text, count=1)
+          if db_count != 1:
+              raise SystemExit(f'ai usage table regex count={db_count}')'''
+          source, count = pattern.subn(lambda _: replacement, source, count=1)
+          if count != 1:
+              raise SystemExit(f'workflow patch count={count}')
+          exec(compile(source, '<deepseek-cache-refactor>', 'exec'))
+          PY
+      - name: Install backend dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Run backend tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+      - name: Commit refactor
+        shell: bash
+        run: |
+          git config user.name "xgl34222220-ops"
+          git config user.email "xgl34222220@gmail.com"
+          git add server/app/ai_ensemble.py server/app/ai.py server/app/db.py server/app/service.py server/app/admin_insights.py server/tests/test_ai_prefix_cache.py
+          git commit -m "perf(server): improve DeepSeek prefix cache reuse"
+          git push origin optimize/deepseek-prefix-cache
