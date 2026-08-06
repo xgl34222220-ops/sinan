@@ -18,9 +18,13 @@ from .runtime_optimizations import cleanup_runtime_state, install as install_run
 
 install_runtime_optimizations()
 
+from . import push_alerts  # noqa: E402
 from .main import app, require_admin_session  # noqa: E402
 from .models import LOTTERIES  # noqa: E402
+from .push_delivery_v3 import install as install_push_delivery  # noqa: E402
 from .service import SERVICE_VERSION  # noqa: E402
+
+install_push_delivery(push_alerts)
 
 
 logger = logging.getLogger("tianji.http")
