@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 
-from .adaptive_learning import normalize_strategy_weights
-from .forecast_quality import (
-    position_quality_profile,
-    regularize_recent_copy,
-    statistical_components,
+from .continual_learning import (
+    build_position_profile,
+    regularize_continual_recent_copy,
 )
 from .models import DrawModel
 
@@ -22,6 +21,10 @@ class PositionResult:
     walk_forward_hit_rate: float
     validation_score: float
     copy_guard_applied: bool
+    average_log_loss: float = math.log(10.0)
+    excess_hit_rate: float = 0.0
+    max_miss_streak: int = 0
+    evidence_passed: bool = False
     strategy_probabilities: dict[str, list[float]] = field(default_factory=dict)
     strategy_weights: dict[str, float] = field(default_factory=dict)
 
@@ -39,20 +42,25 @@ def _position_result(
     position: int,
     strategy_weights: dict[str, float] | None,
 ) -> PositionResult:
-    components = statistical_components(history, position)
-    active_weights = normalize_strategy_weights(strategy_weights, components)
-    profile = position_quality_profile(
+    profile = build_position_profile(
         history,
         position,
-        strategy_weights=active_weights,
+        fallback_weights=strategy_weights,
     )
-    probabilities, guarded = regularize_recent_copy(
+    probabilities, guarded = regularize_continual_recent_copy(
         profile.probabilities,
         history,
         position,
-        strategy_weights=active_weights,
+        strategy_weights=profile.strategy_weights,
     )
     ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
+    average_log_loss = profile.average_log_loss
+    evidence_passed = bool(
+        profile.walk_forward_samples >= 24
+        and profile.walk_forward_hit_rate >= 0.615
+        and average_log_loss <= math.log(10.0) * 1.01
+        and profile.max_miss_streak <= 8
+    )
     return PositionResult(
         position=position,
         probabilities=probabilities,
@@ -63,8 +71,12 @@ def _position_result(
         walk_forward_hit_rate=profile.walk_forward_hit_rate,
         validation_score=profile.validation_score,
         copy_guard_applied=guarded,
-        strategy_probabilities=components,
-        strategy_weights=active_weights,
+        average_log_loss=average_log_loss,
+        excess_hit_rate=profile.excess_hit_rate,
+        max_miss_streak=profile.max_miss_streak,
+        evidence_passed=evidence_passed,
+        strategy_probabilities=profile.strategy_probabilities,
+        strategy_weights=profile.strategy_weights,
     )
 
 
@@ -87,32 +99,46 @@ def predict(
     selected = max(
         positions,
         key=lambda item: (
+            int(item.evidence_passed),
             item.validation_score,
             item.walk_forward_hit_rate,
             item.boundary_margin,
+            -item.max_miss_streak,
         ),
     )
     hit_percent = selected.walk_forward_hit_rate * 100.0
+    edge_percent = selected.excess_hit_rate * 100.0
     margin_percent = selected.boundary_margin * 100.0
     leaders = sorted(
         selected.strategy_weights.items(),
         key=lambda item: item[1],
         reverse=True,
-    )[:3]
-    leader_text = "、".join(f"{name} {weight * 100:.1f}%" for name, weight in leaders)
+    )[:4]
+    leader_text = "、".join(
+        f"{name} {weight * 100:.1f}%" for name, weight in leaders
+    )
+    evidence_text = (
+        "已通过最低外样本优势门槛"
+        if selected.evidence_passed
+        else "尚未通过强信号门槛，本期仅作为观察候选"
+    )
     analysis = (
-        f"自适应云端引擎对十个名次分别执行滚动前向验证后选择第 {selected.position + 1} 名；"
-        f"验证样本 {selected.walk_forward_samples} 期，收缩命中率约 {hit_percent:.1f}%，"
+        "持续学习引擎对十个名次分别建立独立策略权重，并使用留出样本做前向验证后选择第 "
+        f"{selected.position + 1} 名；验证 {selected.walk_forward_samples} 期，"
+        f"收缩六码命中率约 {hit_percent:.1f}%，相对随机六码基准的超额约 "
+        f"{edge_percent:+.1f} 个百分点，最长连续未中 {selected.max_miss_streak} 期，"
         f"当前六码边界差约 {margin_percent:.2f} 个百分点。"
-        f"策略权重由每期开奖后的真实损失在线更新，当前主要策略：{leader_text}。"
+        "系统同时学习频率、遗漏、转移、趋势、稳定性、012 路、奇偶、大小和万能码结构，"
+        f"每期开奖后按真实损失重新分配该名次的策略权重；当前主要策略：{leader_text}。"
+        f"{evidence_text}。"
         + (
-            " 检测到结果过度贴近最近六码，已使用隐藏近期窗口和边界正则重新排序。"
+            " 检测到结果过度贴近最近六码，已隐藏近期样本并重新排序。"
             if selected.copy_guard_applied
             else ""
         )
     )
     risk_note = (
-        "随机开奖没有可保证的可预测规律；在线学习只会根据真实前向结果调整策略权重，"
-        "不能把随机波动变成确定规律。候选结果不得理解为必中或真实中奖概率。"
+        "这是可持续更新的前向学习系统，不是保证越来越准的神经网络。随机开奖可能长期没有稳定优势；"
+        "当外样本证据不足时系统会明确标记为观察候选，而不是伪造高置信度。候选号码不得理解为必中。"
     )
     return NativePrediction(selected, positions, analysis, risk_note)
