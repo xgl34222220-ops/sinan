@@ -6,14 +6,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 class PushAlertApi {
     private fun baseUrl(): String = BuildConfig.TIANJI_CLOUD_BASE_URL.trim().trimEnd('/')
 
-    fun register(
-        store: PushAlertStore,
-        preferences: PushPreferences,
-    ): PushConnectionStatus {
+    fun register(store: PushAlertStore, preferences: PushPreferences): PushConnectionStatus {
         val body = JSONObject()
             .put("installation_id", store.installationId)
             .put("secret", store.deviceSecret)
@@ -22,36 +20,27 @@ class PushAlertApi {
             .put("app_version", BuildConfig.VERSION_NAME)
             .put("device_name", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
             .put("preferences", preferences.toJson())
-        val response = request("POST", "/v1/push/devices", body, store)
-        return response.toStatus(
-            firebaseConfigured = FirebasePushBootstrap.isConfigured,
-            fcmTokenPresent = store.fcmToken.isNotBlank(),
+        return request("POST", "/v1/push/devices", body, store).toStatus(
+            FirebasePushBootstrap.isConfigured,
+            store.fcmToken.isNotBlank(),
         )
     }
 
-    fun updatePreferences(
-        store: PushAlertStore,
-        preferences: PushPreferences,
-    ): PushConnectionStatus {
-        val response = request(
+    fun updatePreferences(store: PushAlertStore, preferences: PushPreferences): PushConnectionStatus =
+        request(
             "PUT",
-            "/v1/push/devices/${store.installationId}/preferences",
+            "/v1/push/devices/${encode(store.installationId)}/preferences",
             preferences.toJson(),
             store,
-        )
-        return response.toStatus(
-            firebaseConfigured = FirebasePushBootstrap.isConfigured,
-            fcmTokenPresent = store.fcmToken.isNotBlank(),
-        )
-    }
+        ).toStatus(FirebasePushBootstrap.isConfigured, store.fcmToken.isNotBlank())
 
-    fun fetchAlerts(store: PushAlertStore): List<PushAlert> {
-        val path = "/v1/push/alerts?installation_id=${store.installationId}&limit=120"
-        val response = request("GET", path, null, store)
-        val items = response.optJSONArray("items") ?: JSONArray()
+    fun fetchAlerts(store: PushAlertStore, afterId: Long = store.lastServerAlertId): List<PushAlert> {
+        val path = "/v1/push/alerts?installation_id=${encode(store.installationId)}" +
+            "&limit=120&after_id=${afterId.coerceAtLeast(0L)}"
+        val items = request("GET", path, null, store).optJSONArray("items") ?: JSONArray()
         return buildList {
             for (index in 0 until items.length()) {
-                items.optJSONObject(index)?.toAlert()?.let(::add)
+                items.optJSONObject(index)?.let(PushPayloadParser::fromJson)?.let(::add)
             }
         }
     }
@@ -59,7 +48,7 @@ class PushAlertApi {
     fun markRead(store: PushAlertStore, alertId: Long) {
         request(
             "POST",
-            "/v1/push/alerts/$alertId/read?installation_id=${store.installationId}",
+            "/v1/push/alerts/$alertId/read?installation_id=${encode(store.installationId)}",
             JSONObject(),
             store,
         )
@@ -68,7 +57,7 @@ class PushAlertApi {
     fun markAllRead(store: PushAlertStore) {
         request(
             "POST",
-            "/v1/push/alerts/read-all?installation_id=${store.installationId}",
+            "/v1/push/alerts/read-all?installation_id=${encode(store.installationId)}",
             JSONObject(),
             store,
         )
@@ -90,11 +79,16 @@ class PushAlertApi {
             connection.useCaches = false
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("X-Tianji-Device-Secret", store.deviceSecret)
+            connection.setRequestProperty("X-Tianji-Protocol", PushProtocol.VERSION.toString())
+            connection.setRequestProperty(
+                "User-Agent",
+                "Tianji/${BuildConfig.VERSION_NAME} Android/${Build.VERSION.SDK_INT}",
+            )
             if (body != null) {
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                connection.outputStream.use { output ->
-                    output.write(body.toString().toByteArray(Charsets.UTF_8))
+                connection.outputStream.use {
+                    it.write(body.toString().toByteArray(Charsets.UTF_8))
                 }
             }
             val code = connection.responseCode
@@ -111,12 +105,9 @@ class PushAlertApi {
     }
 
     private fun PushPreferences.toJson() = JSONObject()
-        .put("enabled", enabled)
-        .put("xyft_enabled", xyftEnabled)
-        .put("azxy10_enabled", azxy10Enabled)
-        .put("ai_enabled", aiEnabled)
-        .put("native_enabled", nativeEnabled)
-        .put("escalation_enabled", escalationEnabled)
+        .put("enabled", enabled).put("xyft_enabled", xyftEnabled)
+        .put("azxy10_enabled", azxy10Enabled).put("ai_enabled", aiEnabled)
+        .put("native_enabled", nativeEnabled).put("escalation_enabled", escalationEnabled)
 
     private fun JSONObject.toStatus(
         firebaseConfigured: Boolean,
@@ -125,60 +116,29 @@ class PushAlertApi {
         val registered = optBoolean("registered", true)
         val serverConfigured = optBoolean("push_configured", false)
         val fallbackMinutes = optInt("fallback_poll_minutes", 15)
+        val notificationEnabled = PushNotificationManager.notificationsEnabled
         return PushConnectionStatus(
             registered = registered,
             firebaseConfigured = firebaseConfigured,
             serverConfigured = serverConfigured,
             fcmTokenPresent = fcmTokenPresent,
             fallbackMinutes = fallbackMinutes,
+            protocolVersion = optInt("protocol_version", 1),
+            lastSyncedAtEpochMs = System.currentTimeMillis(),
             detail = when {
+                !notificationEnabled -> "系统通知权限未开启；预警中心仍会同步"
                 registered && firebaseConfigured && serverConfigured && fcmTokenPresent ->
                     "FCM 即时推送已连接，${fallbackMinutes} 分钟后台检查作为兜底"
                 !firebaseConfigured && !serverConfigured ->
                     "当前 APK 与云端均未配置 FCM，暂用 ${fallbackMinutes} 分钟后台检查"
-                !firebaseConfigured ->
-                    "当前 APK 未注入 Firebase 客户端配置，暂用 ${fallbackMinutes} 分钟后台检查"
-                firebaseConfigured && !fcmTokenPresent ->
-                    "Firebase 客户端已配置，正在等待设备令牌"
-                !serverConfigured ->
-                    "设备令牌已取得，但云端服务账号尚未配置"
-                !registered ->
-                    "设备尚未完成云端注册"
-                else ->
-                    "FCM 正在建立连接"
+                !firebaseConfigured -> "当前 APK 未注入 Firebase 客户端配置"
+                firebaseConfigured && !fcmTokenPresent -> "正在等待设备令牌"
+                !serverConfigured -> "设备令牌已取得，但云端服务账号尚未配置"
+                !registered -> "设备尚未完成云端注册"
+                else -> "FCM 正在建立连接"
             },
         )
     }
 
-    private fun JSONObject.toAlert(): PushAlert? {
-        val id = optLong("id", -1L)
-        if (id <= 0L) return null
-        return PushAlert(
-            id = id,
-            eventKey = optString("event_key"),
-            lottery = optString("lottery"),
-            lotteryName = optString("lottery_name"),
-            source = optString("source"),
-            sourceName = optString("source_name"),
-            model = optString("model"),
-            streak = optInt("streak", 3),
-            threshold = optInt("threshold", 3),
-            latestTargetPeriod = optString("latest_target_period"),
-            recentPeriods = optJSONArray("recent_periods").toStrings(),
-            title = optString("title", "三期不中预警"),
-            body = optString("body"),
-            createdAtEpochMs = optLong("created_at_epoch_ms", System.currentTimeMillis()),
-            isRead = optBoolean("is_read", false),
-        )
-    }
-
-    private fun JSONArray?.toStrings(): List<String> = if (this == null) {
-        emptyList()
-    } else {
-        buildList {
-            for (index in 0 until length()) {
-                optString(index).takeIf(String::isNotBlank)?.let(::add)
-            }
-        }
-    }
+    private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 }
