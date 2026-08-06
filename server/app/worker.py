@@ -16,8 +16,12 @@ from .runtime_optimizations import cleanup_runtime_state, install as install_run
 
 install_runtime_optimizations()
 
+from . import push_alerts  # noqa: E402
+from .push_delivery_v3 import install as install_push_delivery  # noqa: E402
 from .runtime_config import load_ai_config  # noqa: E402
 from .service import run_all_cycles  # noqa: E402
+
+install_push_delivery(push_alerts)
 
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
