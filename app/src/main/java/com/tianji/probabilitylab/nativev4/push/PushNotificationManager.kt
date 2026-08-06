@@ -1,13 +1,16 @@
 package com.tianji.probabilitylab.nativev4.push
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.tianji.probabilitylab.nativev4.MainActivity
 import com.tianji.probabilitylab.nativev4.R
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,9 +31,7 @@ object PushNotificationManager {
 
     @Volatile private var applicationContext: Context? = null
     val notificationsEnabled: Boolean
-        get() = applicationContext?.let {
-            NotificationManagerCompat.from(it).areNotificationsEnabled()
-        } ?: true
+        get() = applicationContext?.let(::canPostNotifications) ?: true
 
     fun createChannels(context: Context) {
         applicationContext = context.applicationContext
@@ -59,7 +60,7 @@ object PushNotificationManager {
     }
 
     fun show(context: Context, alert: PushAlert) {
-        if (alert.isExpired || !notificationsEnabled) return
+        if (alert.isExpired || !canPostNotifications(context)) return
         val notificationId = alert.stableNotificationKey.hashCode()
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -105,5 +106,16 @@ object PushNotificationManager {
             .setShowWhen(true)
             .build()
         NotificationManagerCompat.from(context).notify(notificationId, notification)
+    }
+
+    private fun canPostNotifications(context: Context): Boolean {
+        val permissionGranted =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+        return permissionGranted &&
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 }
