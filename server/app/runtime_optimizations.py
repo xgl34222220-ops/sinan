@@ -119,6 +119,8 @@ def install() -> None:
     database.settle_forecasts = MethodType(_batch_settle_forecasts, database)
 
     from .push_runtime_v2 import install as install_push_runtime_v2
+    from .push_runtime_bridge import install as install_push_runtime_bridge
 
     install_push_runtime_v2()
+    install_push_runtime_bridge()
     _INSTALLED = True
