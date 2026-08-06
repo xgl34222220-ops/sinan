@@ -155,6 +155,12 @@ fun TianjiApp() {
                             showAlertCenter = true
                         },
                     )
+                    if (destination == MainDestination.HOME && state.report != null) {
+                        HomePredictionFocusStrip(
+                            state = state,
+                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 9.dp),
+                        )
+                    }
                     Box(Modifier.weight(1f)) {
                         AnimatedContent(
                             targetState = destination,
@@ -215,6 +221,13 @@ fun TianjiApp() {
                             }
                         }
 
+                        AiReviewProgressDock(
+                            state = state,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(start = 18.dp, end = 18.dp, bottom = 94.dp),
+                        )
+
                         MainBottomBar(
                             selected = destination,
                             onSelected = { destination = it },
@@ -240,7 +253,7 @@ fun TianjiApp() {
             }
 
             if (showAlertCenter) {
-                PushAlertCenterScreen(
+                RefinedPushAlertCenterScreen(
                     alerts = pushAlerts,
                     preferences = pushPreferences,
                     status = pushStatus,
