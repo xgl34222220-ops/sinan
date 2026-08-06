@@ -12,11 +12,16 @@ from typing import Any
 
 import httpx
 
+from .adaptive_learning import (
+    blend_strategy_probabilities,
+    normalize_strategy_weights,
+)
 from .forecast_quality import (
     blend_probabilities as blend_validated_probabilities,
     position_quality_profile,
     recent_copy_diagnostics,
     regularize_recent_copy,
+    statistical_components,
     statistical_probabilities,
 )
 from .models import DrawModel, compact_json
@@ -51,6 +56,8 @@ class AiEnsembleResult:
     completion_tokens: int
     reasoning_tokens: int
     cache_hit_rate: float
+    strategy_probabilities: dict[str, list[float]] = field(default_factory=dict)
+    strategy_weights: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -779,6 +786,7 @@ def analyze_ensemble(
     config: RuntimeAiConfig,
     *,
     recent_positions: list[int] | None = None,
+    strategy_weights: dict[str, float] | None = None,
 ) -> AiEnsembleResult:
     if not config.complete:
         raise RuntimeError("服务器尚未完整配置AI")
@@ -809,9 +817,20 @@ def analyze_ensemble(
     validation_scores = _normalize(
         [max(0.05, profile.validation_score) for profile in quality_profiles]
     )
+    math_weight_total = sum(
+        value for name, value in (strategy_weights or {}).items() if name != "ai_review"
+    )
+    position_mix = normalize_strategy_weights(
+        {
+            "ai_review": (strategy_weights or {}).get("ai_review", 0.35),
+            "walk_forward": math_weight_total or 0.65,
+        },
+        ("ai_review", "walk_forward"),
+    )
     position_scores = _normalize(
         [
-            ai_position_scores[index] * 0.45 + validation_scores[index] * 0.55
+            ai_position_scores[index] * position_mix["ai_review"]
+            + validation_scores[index] * position_mix["walk_forward"]
             for index in range(10)
         ]
     )
@@ -849,7 +868,8 @@ def analyze_ensemble(
         ai_position_scores = _aggregate(position_results)
         position_scores = _normalize(
             [
-                ai_position_scores[index] * 0.45 + validation_scores[index] * 0.55
+                ai_position_scores[index] * position_mix["ai_review"]
+                + validation_scores[index] * position_mix["walk_forward"]
                 for index in range(10)
             ]
         )
@@ -873,11 +893,16 @@ def analyze_ensemble(
         key=primary_ai_probabilities.__getitem__,
         reverse=True,
     )
-    objective_probabilities = statistical_probabilities(verified, selected_position)
-    primary_probabilities = blend_validated_probabilities(
-        primary_ai_probabilities,
-        objective_probabilities,
-        secondary_weight=0.45,
+    math_components = statistical_components(verified, selected_position)
+    strategy_probabilities = dict(math_components)
+    strategy_probabilities["ai_review"] = primary_ai_probabilities
+    active_strategy_weights = normalize_strategy_weights(
+        strategy_weights,
+        strategy_probabilities,
+    )
+    primary_probabilities = blend_strategy_probabilities(
+        strategy_probabilities,
+        active_strategy_weights,
     )
     probabilities = primary_probabilities
     ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
@@ -908,15 +933,16 @@ def analyze_ensemble(
         )
         number_results.extend(holdout_results)
         holdout_ai_probabilities = _aggregate(holdout_results)
-        holdout_objective = statistical_probabilities(
+        holdout_components = statistical_components(
             verified,
             selected_position,
             mask_recent=_RECENT_COPY_WINDOW,
         )
-        holdout_probabilities = blend_validated_probabilities(
-            holdout_ai_probabilities,
-            holdout_objective,
-            secondary_weight=0.55,
+        holdout_strategy_probabilities = dict(holdout_components)
+        holdout_strategy_probabilities["ai_review"] = holdout_ai_probabilities
+        holdout_probabilities = blend_strategy_probabilities(
+            holdout_strategy_probabilities,
+            active_strategy_weights,
         )
         probabilities = _blend_probabilities(
             primary_probabilities,
@@ -926,6 +952,7 @@ def analyze_ensemble(
             probabilities,
             verified,
             selected_position,
+            strategy_weights=active_strategy_weights,
         )
         ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
 
@@ -960,6 +987,18 @@ def analyze_ensemble(
             analysis
             + " 初次结果与最近6/7期集合高度重合，已增加隐藏最近7期的独立留出评审、统计前向裁决和最近集合正则，避免直接复制最新六码。"
         )[:560]
+    learning_leaders = sorted(
+        active_strategy_weights.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )[:3]
+    learning_text = "、".join(
+        f"{name} {weight * 100:.1f}%" for name, weight in learning_leaders
+    )
+    analysis = (
+        analysis
+        + f" 当前融合权重由已结算预测在线学习，主要策略：{learning_text}；不中会自动降权，不再使用固定融合比例。"
+    )[:720]
 
     usage = _merge_usage([*position_results, *number_results])
     cache_input_tokens = (
@@ -995,4 +1034,6 @@ def analyze_ensemble(
         completion_tokens=usage["completion_tokens"],
         reasoning_tokens=usage["reasoning_tokens"],
         cache_hit_rate=round(cache_hit_rate, 6),
+        strategy_probabilities=strategy_probabilities,
+        strategy_weights=active_strategy_weights,
     )

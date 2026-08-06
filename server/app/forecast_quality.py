@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
+from .adaptive_learning import (
+    blend_strategy_probabilities,
+    normalize_strategy_weights,
+    strategy_components,
+)
 from .models import DrawModel
 
 
@@ -36,7 +41,7 @@ def _normalize(values: list[float]) -> list[float]:
     return [value / total for value in safe]
 
 
-def _canonical(history: list[DrawModel], limit: int = 240) -> list[DrawModel]:
+def _canonical(history: list[DrawModel], limit: int = 3000) -> list[DrawModel]:
     return [
         draw
         for draw in history
@@ -44,12 +49,13 @@ def _canonical(history: list[DrawModel], limit: int = 240) -> list[DrawModel]:
     ][-limit:]
 
 
-def _counts(values: list[int], window: int) -> list[float]:
-    result = [0.0] * 10
-    for number in values[-window:]:
-        if 1 <= number <= 10:
-            result[number - 1] += 1.0
-    return result
+def statistical_components(
+    history: list[DrawModel],
+    position: int,
+    *,
+    mask_recent: int = 0,
+) -> dict[str, list[float]]:
+    return strategy_components(history, position, mask_recent=mask_recent)
 
 
 def statistical_probabilities(
@@ -57,86 +63,10 @@ def statistical_probabilities(
     position: int,
     *,
     mask_recent: int = 0,
+    strategy_weights: dict[str, float] | None = None,
 ) -> list[float]:
-    verified = _canonical(history)
-    if mask_recent > 0:
-        if len(verified) - mask_recent < 30:
-            raise ValueError("隐藏近期样本后不足30期")
-        verified = verified[:-mask_recent]
-    if len(verified) < 30:
-        raise ValueError("至少需要30期有效历史")
-    if position not in range(10):
-        raise ValueError("名次超出范围")
-
-    values = [draw.numbers[position] for draw in verified]
-    count18 = _counts(values, 18)
-    count45 = _counts(values, 45)
-    count120 = _counts(values, 120)
-    size18 = float(min(18, len(values)))
-    size45 = float(min(45, len(values)))
-    size120 = float(min(120, len(values)))
-
-    long_prior = _normalize([(value + 1.0) / (size120 + 10.0) for value in count120])
-
-    recency_raw = [0.0] * 10
-    for index, number in enumerate(values):
-        age = len(values) - 1 - index
-        recency_raw[number - 1] += math.exp(-age / 24.0)
-    recency = _normalize(recency_raw)
-
-    omission_raw: list[float] = []
-    for number in range(1, 11):
-        latest = -1
-        for cursor in range(len(values) - 1, -1, -1):
-            if values[cursor] == number:
-                latest = cursor
-                break
-        gap = len(values) if latest < 0 else len(values) - 1 - latest
-        omission_raw.append(0.72 + math.exp(-abs(gap - 9.0) / 9.0))
-    omission = _normalize(omission_raw)
-
-    current = values[-1]
-    successors = [0.0] * 10
-    transition_samples = 0
-    for index in range(1, len(values)):
-        if values[index - 1] == current:
-            successors[values[index] - 1] += 1.0
-            transition_samples += 1
-    transition_shrink = max(7.0, 22.0 - transition_samples)
-    transition = _normalize(
-        [successors[index] + long_prior[index] * transition_shrink for index in range(10)]
-    )
-
-    trend = _normalize(
-        [
-            math.exp(
-                (count18[index] / size18 - count45[index] / size45) * 4.2
-            )
-            for index in range(10)
-        ]
-    )
-    stability = _normalize(
-        [
-            1.0
-            / (
-                0.08
-                + abs(count18[index] / size18 - count45[index] / size45)
-                + 0.45 * abs(count45[index] / size45 - count120[index] / size120)
-            )
-            for index in range(10)
-        ]
-    )
-
-    # Recency is deliberately capped. It may contribute evidence, but cannot by itself
-    # turn the most recent distinct values into the entire Top 6.
-    weights = (0.25, 0.15, 0.12, 0.23, 0.16, 0.09)
-    factors = (long_prior, recency, omission, transition, trend, stability)
-    return _normalize(
-        [
-            sum(factors[factor][number] * weights[factor] for factor in range(6))
-            for number in range(10)
-        ]
-    )
+    components = statistical_components(history, position, mask_recent=mask_recent)
+    return blend_strategy_probabilities(components, strategy_weights)
 
 
 def blend_probabilities(
@@ -159,10 +89,15 @@ def position_quality_profile(
     position: int,
     *,
     max_samples: int = 48,
+    strategy_weights: dict[str, float] | None = None,
 ) -> PositionQuality:
     verified = _canonical(history)
     if len(verified) < 40:
-        probabilities = statistical_probabilities(verified, position)
+        probabilities = statistical_probabilities(
+            verified,
+            position,
+            strategy_weights=strategy_weights,
+        )
         ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
         return PositionQuality(
             position=position,
@@ -183,9 +118,11 @@ def position_quality_profile(
     samples = 0
     for cursor in range(start, len(verified)):
         prefix = verified[:cursor]
-        if len(prefix) < 30:
-            continue
-        probabilities = statistical_probabilities(prefix, position)
+        probabilities = statistical_probabilities(
+            prefix,
+            position,
+            strategy_weights=strategy_weights,
+        )
         ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
         actual = verified[cursor].numbers[position]
         if actual in {index + 1 for index in ranked[:6]}:
@@ -193,7 +130,11 @@ def position_quality_profile(
         losses.append(-math.log(max(1e-12, probabilities[actual - 1])))
         samples += 1
 
-    current = statistical_probabilities(verified, position)
+    current = statistical_probabilities(
+        verified,
+        position,
+        strategy_weights=strategy_weights,
+    )
     ranked = sorted(range(10), key=current.__getitem__, reverse=True)
     boundary = current[ranked[5]] - current[ranked[6]]
     posterior_hit_rate = (hits + 6.0) / (samples + 10.0)
@@ -251,6 +192,7 @@ def regularize_recent_copy(
     position: int,
     *,
     mask_recent: int = 10,
+    strategy_weights: dict[str, float] | None = None,
 ) -> tuple[list[float], bool]:
     ranked = sorted(range(10), key=probabilities.__getitem__, reverse=True)
     diagnostics = recent_copy_diagnostics(ranked, history, position)
@@ -261,7 +203,12 @@ def regularize_recent_copy(
     safe_mask = min(mask_recent, max(0, len(verified) - 30))
     adjusted = list(probabilities)
     if safe_mask > 0:
-        masked = statistical_probabilities(verified, position, mask_recent=safe_mask)
+        masked = statistical_probabilities(
+            verified,
+            position,
+            mask_recent=safe_mask,
+            strategy_weights=strategy_weights,
+        )
         adjusted = blend_probabilities(adjusted, masked, secondary_weight=0.68)
 
     recent_six = {draw.numbers[position] for draw in verified[-6:]}
@@ -271,9 +218,6 @@ def regularize_recent_copy(
             for index, value in enumerate(adjusted)
         ]
     )
-
-    # Final deterministic guard: an exact clone of six latest distinct values is not
-    # accepted when the sixth/seventh boundary is weak. Replace only the weakest edge.
     reranked = sorted(range(10), key=adjusted.__getitem__, reverse=True)
     reranked_top6 = {index + 1 for index in reranked[:6]}
     if len(recent_six) == 6 and reranked_top6 == recent_six:

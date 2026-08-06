@@ -15,7 +15,7 @@ from .predictor import predict
 from .runtime_config import RuntimeAiConfig, load_ai_config
 
 
-SERVICE_VERSION = "1.6.0"
+SERVICE_VERSION = "1.7.0"
 SAFETY_WINDOW_MS = 5_000
 AI_RETRY_AFTER_MS = 30_000
 _AI_EXECUTOR = ThreadPoolExecutor(
@@ -116,11 +116,13 @@ def _run_ai_prediction(
             for forecast in database.list_forecasts(spec.key, 20)
             if forecast.source == "ai"
         ][:12]
+        strategy_weights = database.get_strategy_weights(spec.key, "ai")
         result = ai.analyze(
             history,
             target_period,
             ai_config,
             recent_positions=recent_ai_positions,
+            strategy_weights=strategy_weights,
         )
         database.save_ai_usage(
             lottery=spec.key,
@@ -184,6 +186,13 @@ def _run_ai_prediction(
             risk_note=result.risk_note,
         )
         if inserted is not None:
+            database.save_strategy_predictions(
+                forecast_id=inserted,
+                lottery=spec.key,
+                source="ai",
+                probabilities_by_strategy=result.strategy_probabilities,
+                weights=result.strategy_weights,
+            )
             try:
                 telegram_events.process(spec.key)
                 database.delete_state(f"telegram_event_error:{spec.key}")
@@ -299,6 +308,11 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
 
     with _record_stage(stages, "settle_forecasts"):
         settled = database.settle_forecasts(lottery_key)
+        learning_summary = {
+            "native": database.strategy_learning_summary(lottery_key, "native"),
+            "ai": database.strategy_learning_summary(lottery_key, "ai"),
+        }
+        _state(f"learning:{lottery_key}", learning_summary)
 
     try:
         with _record_stage(stages, "deliver_telegram"):
@@ -355,6 +369,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         "draws": len(history),
         "sync_days": sync_days,
         "settled": settled,
+        "learning": learning_summary,
         "push": push_result,
         "telegram": telegram_result,
         "generated": generated,
@@ -371,11 +386,12 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
     _state(f"cycle:{lottery_key}", base_result)
 
     if target_candidate:
-        native_model = "tianji-native-cloud-v2"
+        native_model = "tianji-native-cloud-v3"
         if not database.has_forecast(lottery_key, next_period, "native", native_model):
             try:
                 with _record_stage(stages, "generate_native"):
-                    native = predict(history)
+                    native_weights = database.get_strategy_weights(lottery_key, "native")
+                    native = predict(history, strategy_weights=native_weights)
                     selected = native.selected
                     inserted = database.save_forecast(
                         lottery=lottery_key,
@@ -391,6 +407,13 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
                         risk_note=native.risk_note,
                     )
                     if inserted is not None:
+                        database.save_strategy_predictions(
+                            forecast_id=inserted,
+                            lottery=lottery_key,
+                            source="native",
+                            probabilities_by_strategy=selected.strategy_probabilities,
+                            weights=selected.strategy_weights,
+                        )
                         generated.append("native")
                 if inserted is not None:
                     try:
