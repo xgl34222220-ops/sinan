@@ -413,6 +413,94 @@ class Database:
             )
             return int(cursor.lastrowid) if cursor.rowcount else None
 
+    def save_forecast_with_strategies(
+        self,
+        *,
+        lottery: str,
+        target_period: str,
+        trained_through_period: str,
+        position: int,
+        top6: list[int],
+        top7: list[int],
+        probabilities: list[float],
+        source: str,
+        model: str,
+        analysis: str,
+        risk_note: str,
+        probabilities_by_strategy: dict[str, list[float]],
+        weights: dict[str, float],
+        created_at_epoch_ms: int | None = None,
+    ) -> int | None:
+        strategy_rows = [
+            (strategy, values, max(0.0, float(weights.get(strategy, 0.0))))
+            for strategy, values in probabilities_by_strategy.items()
+            if len(values) == 10
+        ]
+        if not strategy_rows:
+            raise ValueError("自适应预测缺少有效策略快照")
+        if len(strategy_rows) != len(probabilities_by_strategy):
+            raise ValueError("部分策略未输出完整10号码概率")
+
+        created_at = created_at_epoch_ms or int(time.time() * 1000)
+        with self.connection() as db:
+            cursor = db.execute(
+                """
+                INSERT OR IGNORE INTO forecasts(
+                    lottery, target_period, trained_through_period,
+                    position_index, top6_json, top7_json, probabilities_json,
+                    source, model, analysis, risk_note, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    lottery,
+                    target_period,
+                    trained_through_period,
+                    position,
+                    json.dumps(top6, separators=(",", ":")),
+                    json.dumps(top7, separators=(",", ":")),
+                    json.dumps(probabilities, separators=(",", ":")),
+                    source,
+                    model,
+                    analysis,
+                    risk_note,
+                    created_at,
+                ),
+            )
+            if not cursor.rowcount:
+                return None
+            forecast_id = int(cursor.lastrowid)
+            db.executemany(
+                """
+                INSERT INTO forecast_strategy_predictions(
+                    forecast_id, lottery, source, strategy, probabilities_json,
+                    weight_at_prediction, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        forecast_id,
+                        lottery,
+                        source,
+                        strategy,
+                        json.dumps(values, separators=(",", ":")),
+                        weight,
+                        created_at,
+                    )
+                    for strategy, values, weight in strategy_rows
+                ],
+            )
+            saved = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM forecast_strategy_predictions WHERE forecast_id = ?",
+                    (forecast_id,),
+                ).fetchone()[0]
+            )
+            if saved != len(strategy_rows):
+                raise RuntimeError(
+                    f"策略快照写入不完整：expected={len(strategy_rows)}, saved={saved}"
+                )
+            return forecast_id
+
     def get_strategy_weights(self, lottery: str, source: str) -> dict[str, float]:
         with self.connection() as db:
             rows = db.execute(

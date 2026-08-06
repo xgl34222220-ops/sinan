@@ -172,7 +172,7 @@ def _run_ai_prediction(
             )
             return
 
-        inserted = database.save_forecast(
+        inserted = database.save_forecast_with_strategies(
             lottery=spec.key,
             target_period=target_period,
             trained_through_period=trained_through_period,
@@ -184,15 +184,10 @@ def _run_ai_prediction(
             model=result.model,
             analysis=f"{result.analysis} · 云端耗时 {result.latency_ms / 1000:.1f}s",
             risk_note=result.risk_note,
+            probabilities_by_strategy=result.strategy_probabilities,
+            weights=result.strategy_weights,
         )
         if inserted is not None:
-            database.save_strategy_predictions(
-                forecast_id=inserted,
-                lottery=spec.key,
-                source="ai",
-                probabilities_by_strategy=result.strategy_probabilities,
-                weights=result.strategy_weights,
-            )
             try:
                 telegram_events.process(spec.key)
                 database.delete_state(f"telegram_event_error:{spec.key}")
@@ -393,7 +388,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
                     native_weights = database.get_strategy_weights(lottery_key, "native")
                     native = predict(history, strategy_weights=native_weights)
                     selected = native.selected
-                    inserted = database.save_forecast(
+                    inserted = database.save_forecast_with_strategies(
                         lottery=lottery_key,
                         target_period=next_period,
                         trained_through_period=latest.period,
@@ -405,15 +400,10 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
                         model=native_model,
                         analysis=native.analysis,
                         risk_note=native.risk_note,
+                        probabilities_by_strategy=selected.strategy_probabilities,
+                        weights=selected.strategy_weights,
                     )
                     if inserted is not None:
-                        database.save_strategy_predictions(
-                            forecast_id=inserted,
-                            lottery=lottery_key,
-                            source="native",
-                            probabilities_by_strategy=selected.strategy_probabilities,
-                            weights=selected.strategy_weights,
-                        )
                         generated.append("native")
                 if inserted is not None:
                     try:
