@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .db import database
+from .deployment_status import deployment_status
 from .runtime_optimizations import cleanup_runtime_state, install as install_runtime_optimizations
 
 install_runtime_optimizations()
@@ -281,6 +282,7 @@ def health_detail() -> dict[str, object]:
         "cycles": cycles,
         "backup": _decode_state("backup_status"),
         "maintenance": cleanup_runtime_state(),
+        "deployment": deployment_status(SERVICE_VERSION),
         "version": SERVICE_VERSION,
     }
 
