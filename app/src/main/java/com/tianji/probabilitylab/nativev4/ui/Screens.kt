@@ -114,7 +114,7 @@ fun ForecastScreen(
             start = 12.dp,
             end = 12.dp,
             top = 14.dp,
-            bottom = 124.dp,
+            bottom = 16.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

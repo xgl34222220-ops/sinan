@@ -150,7 +150,7 @@ private fun SettingsRootV2(
 ) {
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
+        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
@@ -253,7 +253,7 @@ private fun AiSettingsPageV2(
     var pendingDelete by remember { mutableStateOf<AiConfig?>(null) }
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
+        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { SettingsPageHeaderV2("AI 模型与接口", "同一个 Key 支持的模型可直接切换", onBack) }
@@ -670,7 +670,7 @@ private fun DataSettingsPageV2(state: AppUiState, onBack: () -> Unit, modifier: 
     val colors = LocalTianjiColors.current
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
+        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { SettingsPageHeaderV2("数据与同步", "真实历史、档案与后台状态", onBack) }
@@ -720,7 +720,7 @@ private fun AppearanceSettingsPageV2(
     val colors = LocalTianjiColors.current
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
+        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { SettingsPageHeaderV2("外观与主题", "显示模式与强调色分开设置", onBack) }
@@ -773,7 +773,7 @@ private fun AppearanceSettingsPageV2(
 private fun RecentHistoryPageV2(state: AppUiState, onBack: () -> Unit, modifier: Modifier) {
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
+        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { SettingsPageHeaderV2("最近开奖", "本机已核验的连续历史", onBack) }
@@ -791,7 +791,7 @@ private fun AboutPageV2(onBack: () -> Unit, modifier: Modifier) {
     val colors = LocalTianjiColors.current
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
+        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { SettingsPageHeaderV2("关于天机", "概率实验与真实前向验证工具", onBack) }
