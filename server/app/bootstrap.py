@@ -18,7 +18,7 @@ from .runtime_optimizations import cleanup_runtime_state, install as install_run
 
 install_runtime_optimizations()
 
-from . import push_alerts  # noqa: E402
+from . import push_alerts, telegram_events  # noqa: E402
 from .main import app, require_admin_session  # noqa: E402
 from .models import LOTTERIES  # noqa: E402
 from .push_delivery_v3 import install as install_push_delivery  # noqa: E402
@@ -268,6 +268,84 @@ def health_ready():
     return JSONResponse(status_code=200 if ready else 503, content=payload)
 
 
+def _ai_health() -> dict[str, object]:
+    jobs = {
+        lottery_key: _decode_state(f"ai_job:{lottery_key}") or {}
+        for lottery_key in LOTTERIES
+    }
+    statuses = [str(value.get("status") or "waiting") for value in jobs.values()]
+    with database.connection() as db:
+        cutoff = int(time.time() * 1000) - 86_400_000
+        row = db.execute(
+            """
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN settled_at IS NOT NULL THEN 1 ELSE 0 END) AS settled
+            FROM forecasts
+            WHERE source='ai' AND created_at>=?
+            """,
+            (cutoff,),
+        ).fetchone()
+    return {
+        "jobs": jobs,
+        "running": sum(status in {"queued", "running"} for status in statuses),
+        "completed": sum(status in {"completed", "duplicate"} for status in statuses),
+        "failed": sum(status == "error" for status in statuses),
+        "forecasts_24h": int(row["total"] or 0),
+        "settled_24h": int(row["settled"] or 0),
+    }
+
+
+def _delivery_health() -> dict[str, object]:
+    push_alerts.initialize()
+    telegram_events.initialize()
+    cutoff = int(time.time() * 1000) - 86_400_000
+    with database.connection() as db:
+        push_rows = db.execute(
+            """
+            SELECT
+                CASE WHEN installation_id LIKE 'telegram:%' THEN 'telegram' ELSE 'fcm' END AS channel,
+                status,
+                COUNT(*) AS total
+            FROM push_deliveries
+            WHERE attempted_at>=?
+            GROUP BY channel,status
+            """,
+            (cutoff,),
+        ).fetchall()
+        event_rows = db.execute(
+            """
+            SELECT status,COUNT(*) AS total
+            FROM telegram_event_deliveries
+            WHERE attempted_at>=?
+            GROUP BY status
+            """,
+            (cutoff,),
+        ).fetchall()
+        device_row = db.execute(
+            """
+            SELECT COUNT(*) AS devices,
+                   SUM(CASE WHEN fcm_token<>'' THEN 1 ELSE 0 END) AS tokens
+            FROM push_devices
+            WHERE enabled=1
+            """
+        ).fetchone()
+    channels: dict[str, dict[str, int]] = {"fcm": {}, "telegram": {}}
+    for row in push_rows:
+        channel = str(row["channel"])
+        channels.setdefault(channel, {})[str(row["status"])] = int(row["total"])
+    for row in event_rows:
+        status = str(row["status"])
+        channels.setdefault("telegram", {})[status] = (
+            channels.setdefault("telegram", {}).get(status, 0) + int(row["total"])
+        )
+    return {
+        "channels": channels,
+        "active_devices": int(device_row["devices"] or 0),
+        "fcm_tokens": int(device_row["tokens"] or 0),
+        "window_hours": 24,
+    }
+
+
 @app.get(
     "/health/detail",
     dependencies=[Depends(require_admin_session)],
@@ -287,6 +365,8 @@ def health_detail() -> dict[str, object]:
         "backup": _decode_state("backup_status"),
         "maintenance": cleanup_runtime_state(),
         "deployment": deployment_status(SERVICE_VERSION),
+        "ai_health": _ai_health(),
+        "delivery_health": _delivery_health(),
         "version": SERVICE_VERSION,
     }
 

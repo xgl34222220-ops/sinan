@@ -521,7 +521,7 @@ def materialize_warning_alerts(
 def process_prediction_alerts(lottery_key: str | None = None) -> dict[str, Any]:
     watch = prediction_miss_watch(threshold=PREALERT_THRESHOLD)
     inserted = materialize_warning_alerts(watch, lottery_filter=lottery_key)
-    delivery = deliver_pending_alerts()
+    delivery = deliver_pending_alerts(lottery_key)
     return {
         "created_alert_ids": inserted,
         "delivery": delivery,
@@ -632,6 +632,42 @@ def _delivery_allowed(
     return True
 
 
+
+def _claim_delivery(
+    *,
+    alert_id: int,
+    target_key: str,
+    attempted_at: int,
+    retry_before: int,
+) -> bool:
+    """Atomically reserve one alert/target delivery across concurrent cycles."""
+    with database.connection() as db:
+        db.execute("BEGIN IMMEDIATE")
+        previous = db.execute(
+            """
+            SELECT status,attempted_at
+            FROM push_deliveries
+            WHERE alert_id=? AND installation_id=?
+            """,
+            (alert_id, target_key),
+        ).fetchone()
+        if previous is not None:
+            if str(previous["status"]) == "sent":
+                return False
+            if int(previous["attempted_at"]) > retry_before:
+                return False
+        db.execute(
+            """
+            INSERT INTO push_deliveries(
+                alert_id,installation_id,status,response_code,message,attempted_at
+            ) VALUES(?,?,'sending',NULL,'',?)
+            ON CONFLICT(alert_id,installation_id) DO UPDATE SET
+                status='sending',response_code=NULL,message='',attempted_at=excluded.attempted_at
+            """,
+            (alert_id, target_key, attempted_at),
+        )
+    return True
+
 def _store_delivery(
     *,
     alert_id: int,
@@ -664,7 +700,7 @@ def _store_delivery(
         )
 
 
-def deliver_pending_alerts() -> dict[str, int]:
+def deliver_pending_alerts(lottery_filter: str | None = None) -> dict[str, int]:
     initialize()
     if not settings.fcm_enabled and not settings.telegram_enabled:
         return {
@@ -680,9 +716,15 @@ def deliver_pending_alerts() -> dict[str, int]:
     now = _now_ms()
     retry_before = now - 300_000
     with database.connection() as db:
-        alerts = db.execute(
-            "SELECT * FROM push_alerts ORDER BY id DESC LIMIT 100"
-        ).fetchall()
+        if lottery_filter:
+            alerts = db.execute(
+                "SELECT * FROM push_alerts WHERE lottery=? ORDER BY id DESC LIMIT 100",
+                (lottery_filter,),
+            ).fetchall()
+        else:
+            alerts = db.execute(
+                "SELECT * FROM push_alerts ORDER BY id DESC LIMIT 100"
+            ).fetchall()
         devices = (
             db.execute(
                 "SELECT * FROM push_devices WHERE fcm_token<>'' ORDER BY updated_at DESC"
@@ -690,10 +732,6 @@ def deliver_pending_alerts() -> dict[str, int]:
             if settings.fcm_enabled
             else []
         )
-        deliveries = {
-            (int(row["alert_id"]), str(row["installation_id"])): dict(row)
-            for row in db.execute("SELECT * FROM push_deliveries").fetchall()
-        }
 
     fcm_sent = fcm_failed = telegram_sent = telegram_failed = skipped = 0
 
@@ -705,10 +743,10 @@ def deliver_pending_alerts() -> dict[str, int]:
                     skipped += 1
                     continue
                 target_key = str(device["installation_id"])
-                if not _delivery_allowed(
-                    deliveries,
+                if not _claim_delivery(
                     alert_id=alert_id,
                     target_key=target_key,
+                    attempted_at=now,
                     retry_before=retry_before,
                 ):
                     continue
@@ -740,10 +778,10 @@ def deliver_pending_alerts() -> dict[str, int]:
             alert_id = int(alert["id"])
             for chat_id in settings.telegram_chat_ids:
                 target_key = telegram_alerts.delivery_key(chat_id)
-                if not _delivery_allowed(
-                    deliveries,
+                if not _claim_delivery(
                     alert_id=alert_id,
                     target_key=target_key,
+                    attempted_at=now,
                     retry_before=retry_before,
                 ):
                     continue

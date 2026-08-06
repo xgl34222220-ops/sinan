@@ -30,6 +30,17 @@ class MainActivity : ComponentActivity() {
 
     private fun handlePushIntent(intent: Intent?) {
         intent ?: return
+        val openPrediction =
+            intent.getBooleanExtra(PushNotificationManager.EXTRA_OPEN_PREDICTION, false) ||
+                intent.getStringExtra(PushNotificationManager.EXTRA_OPEN_PREDICTION)
+                    ?.toBooleanStrictOrNull() == true
+        if (openPrediction) {
+            PushAlertNavigation.openPrediction(
+                lottery = intent.getStringExtra(PushNotificationManager.EXTRA_LOTTERY).orEmpty(),
+                targetPeriod = intent.getStringExtra(PushNotificationManager.EXTRA_TARGET_PERIOD).orEmpty(),
+            )
+            return
+        }
         val openAlertCenter =
             intent.getBooleanExtra(PushNotificationManager.EXTRA_OPEN_ALERT_CENTER, false) ||
                 intent.getStringExtra(PushNotificationManager.EXTRA_OPEN_ALERT_CENTER)

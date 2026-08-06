@@ -4,8 +4,8 @@
 
 ## 当前版本
 
-- 开发版：**6.1.0-beta01 稳定化与统一推送版**
-- 最近正式版：**6.0.0**
+- 当前正式版：**6.1.1**
+- 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36

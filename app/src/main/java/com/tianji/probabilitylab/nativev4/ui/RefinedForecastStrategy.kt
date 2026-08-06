@@ -5,10 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -73,50 +75,87 @@ fun RefinedForecastScreen(
     var selectedPosition by rememberSaveable(state.report?.targetPeriod) {
         mutableIntStateOf(state.report?.selectedPosition ?: 0)
     }
+    val report = state.report
+    val hasContent = state.snapshot != null && report != null
 
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(11.dp),
-    ) {
-        item("lottery-switch") { CompactLotterySwitcher(state.lottery, onSelectLottery) }
-
-        if (state.snapshot == null || state.report == null) {
-            item("empty") {
-                EmptyState(
-                    title = if (state.isLoading) "正在同步真实开奖" else "暂时无法生成预测",
-                    detail = state.error ?: "同步完成后会执行本机模型与前向验证",
-                    loading = state.isLoading,
-                )
-            }
-        } else {
-            val report = state.report
-            item("live-summary") { RefinedLiveCard(state, onRefresh) }
-            item("tabs") {
-                SegmentedTabs(
-                    items = listOf("概览", "概率", "模型"),
-                    selectedIndex = section,
-                    onSelected = { section = it },
-                )
-            }
-            when (section) {
-                0 -> {
+    BoxWithConstraints(modifier = modifier) {
+        val wideLayout = maxWidth >= 600.dp && hasContent
+        if (wideLayout) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(11.dp),
+                ) {
+                    item("lottery-switch") { CompactLotterySwitcher(state.lottery, onSelectLottery) }
                     item("forecast") {
-                        RefinedForecastCard(report, selectedPosition) { selectedPosition = it }
+                        RefinedForecastCard(requireNotNull(report), selectedPosition) { selectedPosition = it }
                     }
-                    item("ai") {
-                        RefinedAiPanel(
-                            state = state,
-                            configs = aiConfigs,
-                            onAnalyzeAll = onAnalyzeAllAi,
-                            onCancel = onCancelAi,
+                    item("live-summary") { RefinedLiveCard(state, onRefresh) }
+                }
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(11.dp),
+                ) {
+                    item("tabs") {
+                        SegmentedTabs(
+                            items = listOf("分析", "概率", "模型"),
+                            selectedIndex = section,
+                            onSelected = { section = it },
                         )
                     }
+                    when (section) {
+                        0 -> item("ai") {
+                            RefinedAiPanel(state, aiConfigs, onAnalyzeAllAi, onCancelAi)
+                        }
+                        1 -> item("probability") {
+                            RefinedProbabilityCard(requireNotNull(report), selectedPosition) { selectedPosition = it }
+                        }
+                        else -> item("models") { RefinedModelCardV2(requireNotNull(report).models) }
+                    }
                 }
-                1 -> item("probability") {
-                    RefinedProbabilityCard(report, selectedPosition) { selectedPosition = it }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(11.dp),
+            ) {
+                item("lottery-switch") { CompactLotterySwitcher(state.lottery, onSelectLottery) }
+                if (!hasContent) {
+                    item("empty") {
+                        EmptyState(
+                            title = if (state.isLoading) "正在同步开奖数据" else "暂时无法生成预测",
+                            detail = state.error ?: "数据同步完成后会自动生成结果",
+                            loading = state.isLoading,
+                        )
+                    }
+                } else {
+                    item("forecast") {
+                        RefinedForecastCard(requireNotNull(report), selectedPosition) { selectedPosition = it }
+                    }
+                    item("live-summary") { RefinedLiveCard(state, onRefresh) }
+                    item("tabs") {
+                        SegmentedTabs(
+                            items = listOf("分析", "概率", "模型"),
+                            selectedIndex = section,
+                            onSelected = { section = it },
+                        )
+                    }
+                    when (section) {
+                        0 -> item("ai") {
+                            RefinedAiPanel(state, aiConfigs, onAnalyzeAllAi, onCancelAi)
+                        }
+                        1 -> item("probability") {
+                            RefinedProbabilityCard(requireNotNull(report), selectedPosition) { selectedPosition = it }
+                        }
+                        else -> item("models") { RefinedModelCardV2(requireNotNull(report).models) }
+                    }
                 }
-                else -> item("models") { RefinedModelCardV2(report.models) }
             }
         }
     }
@@ -175,7 +214,7 @@ private fun RefinedLiveCard(state: AppUiState, onRefresh: () -> Unit) {
                     Text(
                         "最新 ${snapshot.latest.period} · ${snapshot.latest.drawTime.ifBlank { "真实开奖已入库" }}",
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         lineHeight = 15.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -194,7 +233,7 @@ private fun RefinedLiveCard(state: AppUiState, onRefresh: () -> Unit) {
                         Text(
                             if (snapshot.sourceHealth.isFresh) "接口已同步" else "本机缓存",
                             color = sourceTint,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
@@ -217,13 +256,13 @@ private fun RefinedLiveCard(state: AppUiState, onRefresh: () -> Unit) {
                 Text(
                     snapshot.sourceHealth.message,
                     color = colors.textSoft,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     lineHeight = 15.sp,
                     modifier = Modifier.weight(1f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(syncAgeV2(snapshot.sourceHealth.syncedAtEpochMs), color = colors.textDim, fontSize = 10.sp)
+                Text(syncAgeV2(snapshot.sourceHealth.syncedAtEpochMs), color = colors.textDim, fontSize = 11.sp)
             }
         }
     }
@@ -258,9 +297,9 @@ private fun RefinedForecastCard(
                         fontWeight = FontWeight.ExtraBold,
                     )
                     Text(
-                        if (report.mode == EvidenceMode.CERTIFIED) "前向证据通过" else "观察模式 · 暂未认证",
-                        color = if (report.mode == EvidenceMode.CERTIFIED) colors.green else colors.amber,
-                        fontSize = 10.sp,
+                        "结果已生成 · 持续验证中",
+                        color = colors.textDim,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
@@ -270,7 +309,7 @@ private fun RefinedForecastCard(
             PositionSelectorV2(selectedPosition, onPosition)
             Spacer(Modifier.height(15.dp))
             Text(
-                if (report.displayUsesShadow) "影子实验六码" else "本机集成六码",
+                "预测六码",
                 color = colors.textDim,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -322,11 +361,11 @@ private fun RefinedAiPanel(
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("AI 联合分析", color = colors.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("AI 预测", color = colors.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
                     Text(
-                        "${complete.size} 个可用配置 · 独立分析后再形成共识",
+                        "${complete.size} 个 AI 模型可用 · 每个模型单独生成结果",
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                     )
                 }
                 val tint = when {
@@ -338,12 +377,12 @@ private fun RefinedAiPanel(
                 Text(
                     when {
                         state.isAiAnalyzing -> "分析中"
-                        evaluation.stable -> "已形成共识"
-                        state.aiForecasts.isNotEmpty() -> "模型有分歧"
-                        else -> "等待分析"
+                        evaluation.stable -> "结果已生成"
+                        state.aiForecasts.isNotEmpty() -> "结果需要复核"
+                        else -> "尚未生成"
                     },
                     color = tint,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -355,7 +394,8 @@ private fun RefinedAiPanel(
                         it.state == AiConnectionState.TESTING
                 }
                 val failed = statuses.count { it.state == AiConnectionState.FAILED }
-                val completed = statuses.count { it.state == AiConnectionState.CONNECTED }
+                val available = complete.size
+                val results = state.aiForecasts.size
                 Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier
@@ -367,7 +407,7 @@ private fun RefinedAiPanel(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "运行 $running · 完成 $completed · 失败 $failed",
+                        "可用 $available · 正在 $running · 本期结果 $results · 失败 $failed",
                         color = if (failed > 0) colors.red else colors.textSoft,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -377,7 +417,7 @@ private fun RefinedAiPanel(
                         Text(
                             if (showAllStatuses) "收起" else "查看全部 ${statuses.size} 项",
                             color = colors.accent,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
                                 .clip(CircleShape)
@@ -416,7 +456,7 @@ private fun RefinedAiPanel(
                             Text(
                                 "取消",
                                 color = colors.amber,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier
                                     .clip(CircleShape)
@@ -439,7 +479,7 @@ private fun RefinedAiPanel(
                         .padding(12.dp),
                 ) {
                     Text(
-                        "AI 共识 · 第${positionNameV2(consensus.position)}名",
+                        "AI 综合结果 · 第${positionNameV2(consensus.position)}名",
                         color = colors.accent,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -451,7 +491,7 @@ private fun RefinedAiPanel(
                         "${consensus.supportingProfiles}/${consensus.totalProfiles} 个独立模型支持 · " +
                             "边界 ${(consensus.confidenceMargin * 100).format2V2()}%",
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                     )
                 }
             }
@@ -478,7 +518,7 @@ private fun RefinedAiPanel(
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(
-                    if (state.isAiAnalyzing) "多个 AI 正在独立分析" else "开始全部 AI 分析",
+                    if (state.isAiAnalyzing) "正在生成本期预测" else "生成本期 AI 预测",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                 )
@@ -503,7 +543,7 @@ private fun RefinedProbabilityCard(
             Text(
                 "第${positionNameV2(selectedPosition)}名 · 只显示模型输出，不代表确定结果",
                 color = colors.textDim,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
             )
             Spacer(Modifier.height(12.dp))
             PositionSelectorV2(selectedPosition, onPosition)
@@ -516,7 +556,7 @@ private fun RefinedProbabilityCard(
                     Text(
                         (index + 1).toString(),
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         modifier = Modifier.width(22.dp),
                         textAlign = TextAlign.Center,
                     )
@@ -532,7 +572,7 @@ private fun RefinedProbabilityCard(
                     Text(
                         "${(probability * 100).format1V2()}%",
                         color = colors.textSoft,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         modifier = Modifier.width(48.dp),
                         textAlign = TextAlign.End,
                     )
@@ -551,7 +591,7 @@ internal fun RefinedModelCardV2(models: List<ModelPerformance>) {
             Text(
                 "正式权重来自时间切分验证，没有优势的模型权重为 0",
                 color = colors.textDim,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
             )
             Spacer(Modifier.height(12.dp))
             models.forEachIndexed { index, model ->
@@ -603,15 +643,15 @@ private fun RefinedStrategyCard(report: ForecastReport, state: AppUiState) {
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("七码三段观察", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("七码观察方案", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                     Text(
                         "第${positionNameV2(report.selectedPosition)}名 · 目标期 ${report.targetPeriod}",
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                     )
                 }
                 StatusChipV2(
-                    if (report.mode == EvidenceMode.CERTIFIED) "证据通过" else "观察模式",
+                    if (report.mode == EvidenceMode.CERTIFIED) "验证通过" else "持续观察",
                     if (report.mode == EvidenceMode.CERTIFIED) colors.green else colors.amber,
                 )
             }
@@ -620,7 +660,7 @@ private fun RefinedStrategyCard(report: ForecastReport, state: AppUiState) {
             Spacer(Modifier.height(14.dp))
             val excluded = (1..10).filterNot { it in selected.top7 }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("排除", color = colors.textDim, fontSize = 10.sp, modifier = Modifier.width(42.dp))
+                Text("排除", color = colors.textDim, fontSize = 11.sp, modifier = Modifier.width(42.dp))
                 excluded.forEach {
                     LotteryBall(it, size = 27.dp, muted = true)
                     Spacer(Modifier.width(6.dp))
@@ -650,7 +690,7 @@ private fun RefinedStrategyCard(report: ForecastReport, state: AppUiState) {
             Text(
                 "仅用于统计实验和证据观察，不承诺盈利或必中。",
                 color = colors.textDim,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 lineHeight = 15.sp,
             )
         }
@@ -665,7 +705,7 @@ private fun RefinedEvidenceCard(report: ForecastReport, state: AppUiState) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.QueryStats, null, tint = colors.accent, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(9.dp))
-                Text("时间切分留出验证", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                Text("历史验证", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -696,10 +736,10 @@ private fun RefinedEvidenceCard(report: ForecastReport, state: AppUiState) {
                 CompactMetricV2("LogLoss", report.averageLogLoss.format2V2(), Modifier.weight(1f))
             }
             Spacer(Modifier.height(14.dp))
-            Text("证据闸门", color = colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("验证条件", color = colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(5.dp))
             if (report.blockedReasons.isEmpty()) {
-                EvidenceRowV2("全部证据闸门已通过", true)
+                EvidenceRowV2("全部验证条件已通过", true)
             } else {
                 report.blockedReasons.forEach { EvidenceRowV2(it, false) }
             }

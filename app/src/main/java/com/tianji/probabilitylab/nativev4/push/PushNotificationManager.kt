@@ -18,18 +18,29 @@ import com.tianji.probabilitylab.nativev4.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+data class PushPredictionTarget(val lottery: String, val targetPeriod: String)
+
 object PushAlertNavigation {
     private val pending = MutableStateFlow<Long?>(null)
+    private val prediction = MutableStateFlow<PushPredictionTarget?>(null)
     val pendingAlertId = pending.asStateFlow()
+    val pendingPrediction = prediction.asStateFlow()
     fun open(alertId: Long = 0L) { pending.value = alertId }
     fun consume() { pending.value = null }
+    fun openPrediction(lottery: String, targetPeriod: String) {
+        prediction.value = PushPredictionTarget(lottery, targetPeriod)
+    }
+    fun consumePrediction() { prediction.value = null }
 }
 
 object PushNotificationManager {
     const val RISK_CHANNEL_ID = "tianji_prediction_alerts"
     const val UPDATE_CHANNEL_ID = "tianji_prediction_updates"
     const val EXTRA_OPEN_ALERT_CENTER = "open_alert_center"
+    const val EXTRA_OPEN_PREDICTION = "open_prediction"
     const val EXTRA_ALERT_ID = "alert_id"
+    const val EXTRA_LOTTERY = "lottery"
+    const val EXTRA_TARGET_PERIOD = "target_period"
     private const val CHANNEL_GROUP_ID = "tianji_prediction_group"
 
     @Volatile private var applicationContext: Context? = null
@@ -75,7 +86,11 @@ object PushNotificationManager {
         if (alert.isExpired || !canPostNotifications(context)) return
         val notificationId = alert.stableNotificationKey.hashCode()
         val groupKey = groupKey(alert)
-        val openIntent = openAlertIntent(context, alert.id, notificationId)
+        val openIntent = if (alert.eventType == PushProtocol.EVENT_PREDICTION_READY) {
+            openPredictionIntent(context, alert, notificationId)
+        } else {
+            openAlertIntent(context, alert.id, notificationId)
+        }
         val markReadIntent = markReadIntent(context, alert.id, notificationId)
         val channel = if (alert.isRiskAlert) RISK_CHANNEL_ID else UPDATE_CHANNEL_ID
         val expanded = buildString {
@@ -127,6 +142,25 @@ object PushNotificationManager {
         manager.notify(
             summaryId(groupKey),
             summaryNotification(context, alert, groupKey, openIntent, channel),
+        )
+    }
+
+    private fun openPredictionIntent(
+        context: Context,
+        alert: PushAlert,
+        requestCode: Int,
+    ): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_OPEN_PREDICTION, true)
+            putExtra(EXTRA_LOTTERY, alert.lottery)
+            putExtra(EXTRA_TARGET_PERIOD, alert.latestTargetPeriod)
+        }
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
 

@@ -40,6 +40,7 @@ FILTER_PATCH = r"""
   const age=value=>{if(!value)return'尚未执行';const diff=Math.max(0,Date.now()-Number(value));if(diff<60000)return Math.floor(diff/1000)+' 秒前';if(diff<3600000)return Math.floor(diff/60000)+' 分钟前';if(diff<86400000)return Math.floor(diff/3600000)+' 小时前';return Math.floor(diff/86400000)+' 天前'};
   const duration=value=>value===null||value===undefined?'—':Number(value)<1000?Math.round(Number(value))+' ms':(Number(value)/1000).toFixed(1)+' s';
   const commit=value=>String(value||'—').slice(0,12);
+  let lastPlatformSuccess=0;
 
   async function loadPlatform(){
     const overview=document.getElementById('panel-overview');
@@ -48,10 +49,15 @@ FILTER_PATCH = r"""
       const response=await fetch('/health/detail',{cache:'no-store'});
       if(!response.ok)return;
       const data=await response.json();
+      lastPlatformSuccess=Date.now();
       let section=document.getElementById('v510Platform');
       if(!section){section=document.createElement('section');section.id='v510Platform';section.className='section v510-platform';overview.appendChild(section)}
       const backup=data.backup||{};
       const deploy=data.deployment||{};
+      const aiHealth=data.ai_health||{};
+      const delivery=data.delivery_health||{};
+      const fcm=(delivery.channels||{}).fcm||{};
+      const telegram=(delivery.channels||{}).telegram||{};
       const cycles=Object.entries(data.cycles||{});
       const stages=cycles.flatMap(([lottery,cycle])=>(cycle?.stages||[]).map(stage=>({...stage,lottery})));
       const attention=Boolean(deploy.requires_attention);
@@ -66,6 +72,9 @@ FILTER_PATCH = r"""
           <article class="v510-platform-card"><span>最近备份</span><strong>${backup.status==='ok'?age(backup.completed_at_epoch_ms):backup.message?'失败':'等待首次备份'}</strong></article>
           <article class="v510-platform-card"><span>服务版本</span><strong>${esc(data.version||'—')}</strong></article>
           <article class="v510-platform-card"><span>运行 Commit</span><strong class="v510-commit">${esc(current)}</strong></article>
+          <article class="v510-platform-card"><span>AI 任务</span><strong>${Number(aiHealth.running||0)} 运行 · ${Number(aiHealth.failed||0)} 失败</strong></article>
+          <article class="v510-platform-card"><span>FCM 24 小时</span><strong>${Number(fcm.sent||0)} 成功 · ${Number(fcm.failed||0)} 失败</strong></article>
+          <article class="v510-platform-card"><span>Telegram 24 小时</span><strong>${Number(telegram.sent||0)} 成功 · ${Number(telegram.failed||0)} 失败</strong></article>
         </div>
         <div class="v510-deploy ${attention?'attention':''}">
           <div class="v510-deploy-main"><div class="v510-deploy-title"><i class="v510-deploy-dot"></i>${esc(deploy.label||'等待部署状态')}</div><div class="v510-deploy-message">${esc(deploy.message||'服务器完成下一次自动更新后会记录实际部署结果。')}</div></div>
@@ -74,7 +83,15 @@ FILTER_PATCH = r"""
           <div class="v510-deploy-meta"><span>最近部署 / 容器启动</span><strong>${age(deploy.updated_at_epoch_ms)} / ${age(deploy.container_started_at_epoch_ms)}</strong></div>
         </div>
         <div class="v510-stage-grid">${stages.length?stages.slice(-14).reverse().map(stage=>`<div class="v510-stage ${stage.status==='error'?'error':'ok'}"><span>${esc(stage.lottery)} · ${esc(stage.name)}</span><b>${stage.status==='error'?'失败':duration(stage.duration_ms)}</b></div>`).join(''):'<div class="v3-empty"><strong>等待任务阶段数据</strong>下一次 Worker 周期完成后自动显示</div>'}</div>`;
-    }catch(_error){}
+    }catch(_error){
+      let section=document.getElementById('v510Platform');
+      if(!section){
+        const overview=document.getElementById('panel-overview');
+        if(!overview)return;
+        section=document.createElement('section');section.id='v510Platform';section.className='section v510-platform';overview.appendChild(section);
+      }
+      section.innerHTML=`<div class="v510-deploy attention"><div class="v510-deploy-main"><div class="v510-deploy-title"><i class="v510-deploy-dot"></i>状态刷新失败</div><div class="v510-deploy-message">控制台暂时无法读取最新服务状态；页面中的旧数据不能视为当前状态，请检查网络后重试。</div></div><div class="v510-deploy-meta"><span>最后成功刷新</span><strong>${lastPlatformSuccess?new Date(lastPlatformSuccess).toLocaleTimeString('zh-CN',{hour12:false}):'尚未成功'}</strong></div></div>`;
+    }
   }
   loadPlatform();
   window.setInterval(loadPlatform,30000);

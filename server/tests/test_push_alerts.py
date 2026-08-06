@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+import time
 
 from app.db import database
 from app.push_alerts import (
     DevicePreferences,
+    _claim_delivery,
     device_status,
     initialize,
     list_alerts,
@@ -118,6 +121,23 @@ class PushAlertsTests(unittest.TestCase):
         mark_alert_read(installation_id, secret, alert_id)
         read = list_alerts(installation_id, secret)["items"]
         self.assertTrue(read[0]["is_read"])
+
+
+    def test_delivery_claim_is_atomic_across_parallel_cycles(self) -> None:
+        alert_id = materialize_warning_alerts(self.watch(streak=2, latest="202"))[0]
+        now = int(time.time() * 1000)
+
+        def claim(_index: int) -> bool:
+            return _claim_delivery(
+                alert_id=alert_id,
+                target_key="telegram:test-chat",
+                attempted_at=now,
+                retry_before=now - 300_000,
+            )
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(claim, range(8)))
+        self.assertEqual(1, sum(bool(value) for value in results))
 
 
 if __name__ == "__main__":
