@@ -47,10 +47,19 @@ def _is_native_message(text: str) -> bool:
 
 def _event_visual(streak: int, threshold: int) -> tuple[str, str]:
     if streak <= 2:
-        return "⚠️ <b>连续两期不中 · 提前预警</b>", "提前预警"
+        return (
+            "⚠️ <b>连续两期不中 · 提前预警</b>",
+            "已连续两期 Top 6 未中，请留意下一期；每期云端 AI 预测仍会正常推送。",
+        )
     if streak == threshold:
-        return "🚨🚨 <b>连续三期不中 · 加强提醒</b>", "加强提醒"
-    return f"🔴🔴 <b>连续 {streak} 期不中 · 升级提醒</b>", "升级提醒"
+        return (
+            "🚨🚨 <b>连续三期不中 · 加强提醒</b>",
+            "已达到加强提醒条件，请重点关注下一期预测；后续每期预测仍会正常推送。",
+        )
+    return (
+        f"🔴🔴 <b>连续 {streak} 期不中 · 升级提醒</b>",
+        "连续未中仍在扩大，当前处于升级提醒状态；后续每期预测仍会正常推送。",
+    )
 
 
 def format_alert_message(alert: Any) -> str:
@@ -70,24 +79,18 @@ def format_alert_message(alert: Any) -> str:
     except (TypeError, ValueError):
         recent_periods = []
 
-    heading, level = _event_visual(streak, threshold)
+    heading, notice = _event_visual(streak, threshold)
     lines = [
         heading,
-        f"<i>{level}</i>",
         "",
         f"🎯 <b>{lottery_name}</b> · {source_name}",
         f"🤖 <code>{model}</code>",
         f"📌 目标期：<code>{latest_period}</code>",
-        f"📉 连续未中：<b>{streak} 期</b>（Top 6）",
+        f"📉 <b>连续未中：</b><b>{streak} 期</b>（Top 6）",
     ]
     if recent_periods:
         lines.append(f"🕘 最近期号：{'、'.join(recent_periods)}")
-    lines.extend(
-        [
-            "",
-            "请重点关注下一期预测；命中后连续未中计数会自动清零。",
-        ]
-    )
+    lines.extend(["", notice])
     return "\n".join(lines)
 
 
