@@ -65,7 +65,7 @@ FILTER_PATCH = r"""
           <article class="v510-platform-card"><span>云端服务</span><strong class="${workerOk?'good':'warn'}">${workerOk?'运行正常':'等待恢复'}</strong><small>Worker 心跳 ${age(data.worker?.updated_at_epoch_ms)}</small></article>
           <article class="v510-platform-card"><span>AI 任务</span><strong class="${Number(aiHealth.failed||0)?'warn':'good'}">${Number(aiHealth.running||0)} 运行 · ${Number(aiHealth.failed||0)} 失败</strong><small>${Number(aiHealth.failed||0)?'有失败任务需要留意':'当前调度正常'}</small></article>
           <article class="v510-platform-card"><span>App 预警</span><strong class="${Number(fcm.failed||0)?'warn':'good'}">${Number(fcm.sent||0)} 成功 · ${Number(fcm.failed||0)} 失败</strong><small>最近 24 小时 FCM 预警</small></article>
-          <article class="v510-platform-card"><span>Telegram</span><strong class="${Number(telegram.failed||0)?'warn':'good'}">${Number(telegram.sent||0)} 成功 · ${Number(telegram.failed||0)} 失败</strong><small>最近 24 小时 · 预警优先发送</small></article>
+          <article class="v510-platform-card"><span>Telegram</span><strong class="${Number(telegram.failed||0)?'warn':'good'}">${Number(telegram.sent||0)} 成功 · ${Number(telegram.failed||0)} 失败</strong><small>最近 24 小时 · 预警与 FCM 并行投递</small></article>
         </div>`;
     }catch(_error){
       let section=document.getElementById('v510Platform');
@@ -77,7 +77,51 @@ FILTER_PATCH = r"""
       section.innerHTML=`<div class="v510-deploy attention"><div class="v510-deploy-main"><div class="v510-deploy-title"><i class="v510-deploy-dot"></i>服务状态刷新失败</div><div class="v510-deploy-message">暂时读取不到最新状态，请检查网络后刷新；后台预警与预测任务不会因为这个页面失败而停止。</div></div><div class="v510-deploy-meta"><span>最后成功刷新</span><strong>${lastPlatformSuccess?new Date(lastPlatformSuccess).toLocaleTimeString('zh-CN',{hour12:false}):'尚未成功'}</strong></div></div>`;
     }
   }
+
+  const drawCountdown=target=>{
+    if(!target)return'等待时间';
+    const diff=Number(target)-Date.now();
+    if(diff<=0)return'等待开奖';
+    const total=Math.floor(diff/1000),minutes=Math.floor(total/60),seconds=total%60;
+    return`${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+  };
+  const drawRefreshDelay=lotteries=>{
+    let delay=30000;
+    for(const item of lotteries||[]){
+      const target=Number(item.next_draw_at_epoch_ms||0);
+      if(!target)continue;
+      const remaining=target-Date.now();
+      if(remaining>=-90000&&remaining<=60000)delay=Math.min(delay,3000);
+      else if(remaining>60000&&remaining<=180000)delay=Math.min(delay,8000);
+    }
+    return delay;
+  };
+  let drawRefreshTimer=0;
+  async function refreshRealtimeDraws(){
+    window.clearTimeout(drawRefreshTimer);
+    let delay=30000;
+    try{
+      if(document.hidden){drawRefreshTimer=window.setTimeout(refreshRealtimeDraws,delay);return}
+      const response=await fetch('/admin/api/state',{cache:'no-store'});
+      if(!response.ok)throw new Error('state');
+      const data=await response.json();
+      const cards=[...document.querySelectorAll('#v3DrawGrid .v3-draw')];
+      for(const item of data.lotteries||[]){
+        const card=cards.find(node=>node.querySelector('h4')?.textContent?.trim()===String(item.name||'').trim());
+        if(!card)continue;
+        card.dataset.target=String(item.next_draw_at_epoch_ms||'');
+        const sub=card.querySelector('.sub');
+        if(sub)sub.textContent=`最新期 ${item.latest_period||'等待同步'} · 目标期 ${item.next_period||'—'}`;
+        const countdown=card.querySelector('.v3-countdown');
+        if(countdown)countdown.textContent=drawCountdown(item.next_draw_at_epoch_ms);
+      }
+      delay=drawRefreshDelay(data.lotteries||[]);
+    }catch(_error){delay=5000}
+    drawRefreshTimer=window.setTimeout(refreshRealtimeDraws,delay);
+  }
+
   loadPlatform();
+  refreshRealtimeDraws();
   window.setInterval(loadPlatform,30000);
 })();
 """
