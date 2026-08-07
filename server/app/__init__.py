@@ -44,3 +44,8 @@ from .realtime_admin import install as _install_realtime_admin
 
 _install_realtime_admin()
 del _install_realtime_admin
+
+from .console_final_polish import install as _install_console_final_polish
+
+_install_console_final_polish()
+del _install_console_final_polish
