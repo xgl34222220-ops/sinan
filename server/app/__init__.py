@@ -29,3 +29,8 @@ from .fixed_target_runtime_compat import install as _install_fixed_target_runtim
 
 _install_fixed_target_runtime_compat()
 del _install_fixed_target_runtime_compat
+
+from .ai_fixed_output_guard import install as _install_ai_fixed_output_guard
+
+_install_ai_fixed_output_guard()
+del _install_ai_fixed_output_guard
