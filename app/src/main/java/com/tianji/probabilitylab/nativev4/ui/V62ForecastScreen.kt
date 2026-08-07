@@ -203,6 +203,7 @@ private fun V62LiveHero(state: AppUiState, onRefresh: () -> Unit) {
         snapshot.sourceHealth.isFresh -> colors.green
         else -> colors.amber
     }
+    val sourceHealthy = state.error == null && snapshot.sourceHealth.isFresh
 
     SurfaceCard(radius = 24.dp) {
         Column(
@@ -216,7 +217,11 @@ private fun V62LiveHero(state: AppUiState, onRefresh: () -> Unit) {
                         Box(Modifier.size(7.dp).clip(CircleShape).background(sourceTint))
                         Spacer(Modifier.width(7.dp))
                         Text(
-                            if (snapshot.sourceHealth.isFresh) "实时开奖已同步" else "正在使用本机缓存",
+                            if (sourceHealthy) {
+                                "实时开奖已同步 · ${syncAgeV2(snapshot.sourceHealth.syncedAtEpochMs)}"
+                            } else {
+                                "正在使用本机缓存"
+                            },
                             color = sourceTint,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
@@ -258,29 +263,32 @@ private fun V62LiveHero(state: AppUiState, onRefresh: () -> Unit) {
             }
             Spacer(Modifier.height(16.dp))
             CompactNumberRowV2(snapshot.latest.numbers, size = 30, spread = true)
-            Spacer(Modifier.height(13.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(colors.surfaceStrong.copy(alpha = 0.72f))
-                    .border(1.dp, colors.line, RoundedCornerShape(14.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Rounded.Sync, null, tint = sourceTint, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    snapshot.sourceHealth.message,
-                    color = colors.textSoft,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(syncAgeV2(snapshot.sourceHealth.syncedAtEpochMs), color = colors.textDim, fontSize = 11.sp)
+
+            if (!sourceHealthy) {
+                Spacer(Modifier.height(13.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(sourceTint.copy(alpha = 0.08f))
+                        .border(1.dp, sourceTint.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Sync, null, tint = sourceTint, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        state.error ?: snapshot.sourceHealth.message,
+                        color = colors.textSoft,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(syncAgeV2(snapshot.sourceHealth.syncedAtEpochMs), color = colors.textDim, fontSize = 11.sp)
+                }
             }
         }
     }
@@ -356,12 +364,21 @@ private fun V62AiSummary(
     val complete = configs.filter(AiConfig::isComplete)
     val forecasts = state.aiForecasts
     val positionSupport = forecasts.groupingBy { it.position }.eachCount()
-    val lead = positionSupport.maxByOrNull { it.value }
+    val supportRanking = positionSupport.entries.sortedWith(
+        compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key },
+    )
+    val lead = supportRanking.firstOrNull()
     val running = state.aiStatuses.values.filter {
         it.state == AiConnectionState.ANALYZING || it.state == AiConnectionState.TESTING
     }
     val failed = state.aiStatuses.values.count { it.state == AiConnectionState.FAILED }
     val targetPeriod = state.report?.targetPeriod ?: state.snapshot?.nextPeriod ?: "—"
+    val consensusLabel = when {
+        forecasts.isEmpty() || lead == null -> "等待判断"
+        forecasts.size >= 2 && lead.value == forecasts.size -> "高度一致"
+        lead.value.toDouble() / forecasts.size.toDouble() >= 0.60 -> "主判断明确"
+        else -> "存在分歧"
+    }
 
     SurfaceCard(radius = 20.dp) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 13.dp)) {
@@ -388,12 +405,14 @@ private fun V62AiSummary(
                 StatusChipV2(
                     when {
                         state.isAiAnalyzing -> "运行中"
-                        forecasts.isNotEmpty() -> "已冻结"
+                        forecasts.isNotEmpty() -> consensusLabel
                         else -> "待生成"
                     },
                     when {
                         state.isAiAnalyzing -> colors.accent
-                        forecasts.isNotEmpty() -> colors.green
+                        forecasts.isNotEmpty() && consensusLabel == "高度一致" -> colors.green
+                        forecasts.isNotEmpty() && consensusLabel == "存在分歧" -> colors.amber
+                        forecasts.isNotEmpty() -> colors.violet
                         else -> colors.textDim
                     },
                 )
@@ -419,19 +438,50 @@ private fun V62AiSummary(
                         )
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("模型支持", color = colors.textDim, fontSize = 11.sp)
+                        Text(consensusLabel, color = colors.textDim, fontSize = 11.sp)
                         Text(
-                            "${lead.value}/${forecasts.size}",
+                            "${lead.value}/${forecasts.size} 票",
                             color = colors.text,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
                         )
                     }
                 }
-                Spacer(Modifier.height(7.dp))
-                forecasts.take(4).forEach { forecast ->
+
+                Spacer(Modifier.height(9.dp))
+                supportRanking.take(3).forEachIndexed { index, entry ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "第${positionNameV2(entry.key)}名",
+                            color = if (index == 0) colors.violet else colors.textSoft,
+                            fontSize = 11.sp,
+                            fontWeight = if (index == 0) FontWeight.ExtraBold else FontWeight.SemiBold,
+                            modifier = Modifier.width(52.dp),
+                        )
+                        LinearProgressIndicator(
+                            progress = { entry.value.toFloat() / forecasts.size.coerceAtLeast(1).toFloat() },
+                            modifier = Modifier.weight(1f).height(6.dp).clip(CircleShape),
+                            color = if (index == 0) colors.violet else colors.textDim,
+                            trackColor = colors.line,
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Text(
+                            "${entry.value}票",
+                            color = colors.textDim,
+                            fontSize = 11.sp,
+                            modifier = Modifier.width(30.dp),
+                            textAlign = TextAlign.End,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(7.dp))
+                forecasts.take(2).forEach { forecast ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.size(6.dp).clip(CircleShape).background(colors.violet))
@@ -452,13 +502,13 @@ private fun V62AiSummary(
                         )
                     }
                 }
-                if (forecasts.size > 4) {
+                if (forecasts.size > 2) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "另外 ${forecasts.size - 4} 个模型已完成 · 在 AI 对话查看完整判断",
+                        "另外 ${forecasts.size - 2} 个模型已完成 · 在 AI 对话查看完整判断",
                         color = colors.textDim,
-                        fontSize = 10.sp,
-                        lineHeight = 15.sp,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
                     )
                 }
             } else {
@@ -561,25 +611,27 @@ private fun V62ProbabilityCard(
                         modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.weight(1f).height(1.dp).background(colors.lineStrong))
+                        Box(Modifier.weight(1f).height(1.dp).background(colors.amber.copy(alpha = 0.45f)))
                         Text(
-                            "六码边界",
+                            "六码边界 · 第 7 位候补",
                             color = colors.amber,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 9.dp),
                         )
-                        Box(Modifier.weight(1f).height(1.dp).background(colors.lineStrong))
+                        Box(Modifier.weight(1f).height(1.dp).background(colors.amber.copy(alpha = 0.45f)))
                     }
                 }
+                val boundaryCandidate = index == 6
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         (index + 1).toString(),
-                        color = colors.textDim,
+                        color = if (boundaryCandidate) colors.amber else colors.textDim,
                         fontSize = 11.sp,
+                        fontWeight = if (boundaryCandidate) FontWeight.Bold else FontWeight.Normal,
                         modifier = Modifier.width(22.dp),
                         textAlign = TextAlign.Center,
                     )
@@ -588,14 +640,19 @@ private fun V62ProbabilityCard(
                     LinearProgressIndicator(
                         progress = { probability.toFloat().coerceIn(0f, 1f) },
                         modifier = Modifier.weight(1f).height(6.dp).clip(CircleShape),
-                        color = if (index < 6) colors.accent else colors.textDim,
+                        color = when {
+                            index < 6 -> colors.accent
+                            boundaryCandidate -> colors.amber
+                            else -> colors.textDim
+                        },
                         trackColor = colors.line,
                     )
                     Spacer(Modifier.width(9.dp))
                     Text(
                         "${(probability * 100).format1V2()}%",
-                        color = colors.textSoft,
+                        color = if (boundaryCandidate) colors.amber else colors.textSoft,
                         fontSize = 12.sp,
+                        fontWeight = if (boundaryCandidate) FontWeight.Bold else FontWeight.Normal,
                         modifier = Modifier.width(52.dp),
                         textAlign = TextAlign.End,
                     )
