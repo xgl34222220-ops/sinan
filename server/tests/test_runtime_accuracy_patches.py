@@ -2,12 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from app import admin_insights
-from app.runtime_patches import (
-    _requires_independence_audit,
-    _scope_streak,
-    _top6_overlap,
-)
+from app import admin_insights, runtime_patches
+from app.runtime_patches import _scope_streak
 
 
 class RuntimeAccuracyPatchTests(unittest.TestCase):
@@ -133,20 +129,10 @@ class RuntimeAccuracyPatchTests(unittest.TestCase):
         self.assertIn("streak", summary["windows"]["20"])
         self.assertEqual(summary["windows"]["20"]["streak"]["longest_miss"], 7)
 
-    def test_ai_overlap_guard_triggers_at_five_of_six(self) -> None:
-        self.assertEqual(_top6_overlap([1, 2, 3, 4, 5, 6], [2, 3, 4, 5, 6, 7]), 5)
-        self.assertTrue(
-            _requires_independence_audit(
-                [1, 2, 3, 4, 5, 6],
-                [2, 3, 4, 5, 6, 7],
-            )
-        )
-        self.assertFalse(
-            _requires_independence_audit(
-                [1, 2, 3, 4, 5, 6],
-                [3, 4, 5, 6, 7, 8],
-            )
-        )
+    def test_runtime_patch_contains_no_ai_divergence_policy(self) -> None:
+        self.assertFalse(hasattr(runtime_patches, "_top6_overlap"))
+        self.assertFalse(hasattr(runtime_patches, "_requires_independence_audit"))
+        self.assertFalse(hasattr(runtime_patches, "_analyze_with_independence"))
 
 
 if __name__ == "__main__":
