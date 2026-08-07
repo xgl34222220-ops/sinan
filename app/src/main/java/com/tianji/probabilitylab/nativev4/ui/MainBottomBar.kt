@@ -3,10 +3,12 @@ package com.tianji.probabilitylab.nativev4.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -120,13 +122,18 @@ private fun StandardNavItem(
         if (active) colors.accent.copy(alpha = 0.16f) else Color.Transparent,
         label = "main-nav-bg",
     )
+    val haptics = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        if (active) 1f else 0.985f,
+        when {
+            pressed -> 0.955f
+            active -> 1f
+            else -> 0.985f
+        },
         animationSpec = spring(dampingRatio = 0.86f, stiffness = 520f),
         label = "main-nav-scale",
     )
-    val haptics = LocalHapticFeedback.current
-    val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
             .heightIn(min = 60.dp)
@@ -136,7 +143,7 @@ private fun StandardNavItem(
             .semantics { role = Role.Tab }
             .clickable(
                 interactionSource = interaction,
-                indication = null,
+                indication = LocalIndication.current,
             ) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
@@ -179,14 +186,21 @@ private fun ChatNavItem(
     val colors = LocalTianjiColors.current
     val haptics = LocalHapticFeedback.current
     val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        if (pressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 560f),
+        label = "ai-nav-press",
+    )
     Column(
         modifier = modifier
             .heightIn(min = 60.dp)
+            .scale(pressScale)
             .clip(RoundedCornerShape(19.dp))
             .semantics { role = Role.Button }
             .clickable(
                 interactionSource = interaction,
-                indication = null,
+                indication = LocalIndication.current,
             ) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
