@@ -1,9 +1,18 @@
 """Tianji cloud backend."""
 
-from .runtime_patches import install as _install_runtime_patches
+from . import ai as _ai
+from .runtime_patches import (
+    _ORIGINAL_AI_ANALYZE as _base_ai_analyze,
+    install as _install_runtime_patches,
+)
 
 _install_runtime_patches()
-del _install_runtime_patches
+# Keep the useful admin/streak runtime fixes, but retire the old cross-source
+# "independence" rule.  Agreement with the native model is evidence, not an
+# error condition: AI must never be forced to change or discard a prediction
+# just because the two independently derived Top6 sets overlap.
+_ai.analyze = _base_ai_analyze
+del _ai, _base_ai_analyze, _install_runtime_patches
 
 # Dynamic AI v2: keep the original multi-reviewer ensemble and layer settled
 # walk-forward learning on top.  The old fixed-235780 bridges intentionally are
