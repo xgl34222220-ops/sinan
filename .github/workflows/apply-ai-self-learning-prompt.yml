@@ -1,0 +1,62 @@
+name: Apply AI self-learning prompt
+
+on:
+  push:
+    branches:
+      - feature/fixed-pool-235780-position
+    paths:
+      - tools/apply-ai-self-learning-prompt.py
+      - .github/workflows/apply-ai-self-learning-prompt.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/fixed-pool-235780-position
+          fetch-depth: 0
+
+      - name: Apply AI self-learning prompt patch
+        run: python tools/apply-ai-self-learning-prompt.py
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Run Android unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Compile release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Verify self-learning source contract
+        run: |
+          grep -q 'raw-history+ai-self-learning-v2' app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt
+          grep -q 'AI自学习证据已注入' app/src/main/java/com/tianji/probabilitylab/nativev4/ai/ContinualRemoteAiAnalyzer.kt
+          grep -q 'AI 自学习已注入 · 与本机答案隔离' app/src/main/java/com/tianji/probabilitylab/nativev4/ui/Screens.kt
+
+      - name: Commit verified patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'xgl34222220-ops'
+          git config user.email 'xgl34222220@gmail.com'
+          git add \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ai/ContinualRemoteAiAnalyzer.kt \
+            app/src/main/java/com/tianji/probabilitylab/nativev4/ui/Screens.kt \
+            app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiIndependenceContractTest.kt \
+            app/src/test/java/com/tianji/probabilitylab/nativev4/ai/ContinualRemoteAiAnalyzerTest.kt \
+            app/src/test/java/com/tianji/probabilitylab/nativev4/ai/AiSelfLearningPromptContractTest.kt
+          git commit -m 'feat(app): inject AI self-learning evidence before inference'
+          git rm tools/apply-ai-self-learning-prompt.py .github/workflows/apply-ai-self-learning-prompt.yml
+          git commit -m 'chore: remove AI self-learning patch helpers'
+          git push origin HEAD:feature/fixed-pool-235780-position
