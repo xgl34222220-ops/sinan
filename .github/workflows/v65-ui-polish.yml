@@ -26,12 +26,18 @@ jobs:
 
       - name: Apply v6.5 UI patch
         run: |
-          # Resolve literals shared by more than one visual component without weakening other guards.
-          sed -i '/replace(SEG, "val shape = RoundedCornerShape(15.dp)"/d' scripts/v65_ui_polish.py
-          sed -i 's/replace(STRATEGY, "SurfaceCard(radius = 21.dp)", "SurfaceCard(radius = 20.dp)", count=3)/replace(STRATEGY, "SurfaceCard(radius = 21.dp)", "SurfaceCard(radius = 20.dp)")/' scripts/v65_ui_polish.py
-          sed -i 's/replace(STRATEGY, "Column(Modifier.padding(15.dp))", "Column(Modifier.padding(14.dp))", count=3)/replace(STRATEGY, "Column(Modifier.padding(15.dp))", "Column(Modifier.padding(14.dp))")/' scripts/v65_ui_polish.py
-          sed -i 's/replace(CHAT, "shape = RoundedCornerShape(21.dp)", "shape = RoundedCornerShape(18.dp)", count=1)/replace(CHAT, "shape = RoundedCornerShape(21.dp)", "shape = RoundedCornerShape(18.dp)")/' scripts/v65_ui_polish.py
-          sed -i '/replace(CHAT, "shape = RoundedCornerShape(21.dp),"/d' scripts/v65_ui_polish.py
+          # Keep the important safety rule (the target must exist), but allow a shared visual
+          # literal to occur in more than one component in the same source file.
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('scripts/v65_ui_polish.py')
+          s = p.read_text(encoding='utf-8')
+          s = re.sub(r', count=\d+\)', ')', s)
+          s = '\n'.join(line for line in s.splitlines() if 'replace(SEG, "val shape = RoundedCornerShape(15.dp)"' not in line)
+          s = '\n'.join(line for line in s.splitlines() if 'replace(CHAT, "shape = RoundedCornerShape(21.dp),"' not in line)
+          p.write_text(s + '\n', encoding='utf-8')
+          PY
           python scripts/v65_ui_polish.py
 
       - name: Commit polished UI
