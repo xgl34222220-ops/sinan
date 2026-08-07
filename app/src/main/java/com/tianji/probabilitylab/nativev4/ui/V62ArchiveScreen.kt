@@ -32,8 +32,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -85,6 +88,7 @@ fun V62ArchiveScreen(
     var showFilters by rememberSaveable(state.lottery.apiKey) { mutableStateOf(false) }
     var sourceName by rememberSaveable(state.lottery.apiKey) { mutableStateOf(V62ArchiveSource.ALL.name) }
     var statusName by rememberSaveable(state.lottery.apiKey) { mutableStateOf(V62ArchiveStatus.ALL.name) }
+    var visibleCount by rememberSaveable(state.lottery.apiKey) { mutableIntStateOf(120) }
     val source = V62ArchiveSource.entries.firstOrNull { it.name == sourceName } ?: V62ArchiveSource.ALL
     val status = V62ArchiveStatus.entries.firstOrNull { it.name == statusName } ?: V62ArchiveStatus.ALL
 
@@ -174,6 +178,11 @@ fun V62ArchiveScreen(
         }
     }
 
+    LaunchedEffect(query, sourceName, statusName) {
+        visibleCount = 120
+    }
+    val shown = filtered.take(visibleCount)
+
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 18.dp),
@@ -245,14 +254,33 @@ fun V62ArchiveScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("预测档案", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                Text("${filtered.size} 条", color = colors.textDim, fontSize = 12.sp)
+                Text(
+                    if (shown.size < filtered.size) "已显示 ${shown.size} / ${filtered.size}" else "${filtered.size} 条",
+                    color = colors.textDim,
+                    fontSize = 12.sp,
+                )
             }
         }
         if (filtered.isEmpty()) {
             item("empty") { EmptyState("没有匹配的档案", "调整搜索词或筛选条件后重试", false) }
         } else {
-            filtered.take(120).forEach { item ->
+            shown.forEach { item ->
                 item(item.key) { V62ArchiveRecord(item) }
+            }
+            if (shown.size < filtered.size) {
+                item("load-more") {
+                    TextButton(
+                        onClick = { visibleCount = (visibleCount + 120).coerceAtMost(filtered.size) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Text(
+                            "继续加载 ${minOf(120, filtered.size - shown.size)} 条",
+                            color = colors.accent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                    }
+                }
             }
         }
     }
