@@ -1,5 +1,6 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -77,6 +78,7 @@ private data class V62ArchiveItem(
     val hash: String,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun V62ArchiveScreen(
     state: AppUiState,
@@ -197,8 +199,14 @@ fun V62ArchiveScreen(
                 settled = allItems.count { it.top6Hit != null },
             )
         }
-        item("search") {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        stickyHeader("search") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.page.copy(alpha = 0.97f))
+                    .padding(top = 5.dp, bottom = 7.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = query,
@@ -215,15 +223,15 @@ fun V62ArchiveScreen(
                             unfocusedBorderColor = colors.line,
                             focusedTextColor = colors.text,
                             unfocusedTextColor = colors.text,
-                            focusedContainerColor = colors.surfaceStrong.copy(alpha = 0.72f),
-                            unfocusedContainerColor = colors.surfaceStrong.copy(alpha = 0.72f),
+                            focusedContainerColor = colors.surfaceStrong.copy(alpha = 0.92f),
+                            unfocusedContainerColor = colors.surfaceStrong.copy(alpha = 0.92f),
                         ),
                     )
                     Row(
                         modifier = Modifier
                             .heightIn(min = 56.dp)
                             .clip(RoundedCornerShape(15.dp))
-                            .background(if (showFilters) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.72f))
+                            .background(if (showFilters) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.92f))
                             .border(1.dp, if (showFilters) colors.accent.copy(alpha = 0.25f) else colors.line, RoundedCornerShape(15.dp))
                             .clickable { showFilters = !showFilters }
                             .padding(horizontal = 13.dp),
@@ -290,30 +298,33 @@ fun V62ArchiveScreen(
 private fun V62ArchiveSummary(valid: Boolean, checked: Int, total: Int, settled: Int) {
     val colors = LocalTianjiColors.current
     val tint = if (valid) colors.green else colors.red
-    SurfaceCard(radius = 22.dp) {
+    SurfaceCard(radius = if (valid) 18.dp else 22.dp) {
         Row(
-            modifier = Modifier.padding(15.dp),
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = if (valid) 10.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(tint.copy(alpha = 0.11f)),
+                modifier = Modifier
+                    .size(if (valid) 34.dp else 42.dp)
+                    .clip(RoundedCornerShape(if (valid) 11.dp else 14.dp))
+                    .background(tint.copy(alpha = 0.11f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Fingerprint, null, tint = tint, modifier = Modifier.size(22.dp))
+                Icon(Icons.Rounded.Fingerprint, null, tint = tint, modifier = Modifier.size(if (valid) 18.dp else 22.dp))
             }
-            Spacer(Modifier.width(11.dp))
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("真实前向档案", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                Text("真实前向档案", color = colors.text, fontSize = if (valid) 14.sp else 16.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    if (valid) "完整性链正常 · 已核验 $checked 条" else "完整性链异常 · 暂停采用相关成绩",
+                    if (valid) "完整性正常 · 已核验 $checked 条" else "完整性链异常 · 暂停采用相关成绩",
                     color = tint,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("$settled / $total", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
-                Text("已结算 / 总档案", color = colors.textDim, fontSize = 11.sp)
+                Text("$settled / $total", color = colors.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                Text("已结算 / 总档案", color = colors.textDim, fontSize = 10.sp)
             }
         }
     }
@@ -339,12 +350,12 @@ private fun <T> V62ArchiveFilterRow(
                 fontSize = 12.sp,
                 fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium,
                 modifier = Modifier
-                    .heightIn(min = 44.dp)
+                    .heightIn(min = 42.dp)
                     .clip(CircleShape)
-                    .background(if (active) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.64f))
+                    .background(if (active) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.82f))
                     .border(1.dp, if (active) colors.accent.copy(alpha = 0.22f) else colors.line, CircleShape)
                     .clickable { onSelected(item) }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
             )
         }
     }
