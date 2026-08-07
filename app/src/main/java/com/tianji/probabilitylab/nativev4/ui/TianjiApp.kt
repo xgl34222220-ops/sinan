@@ -33,7 +33,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
-import com.tianji.probabilitylab.nativev4.refreshCurrentLottery
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
 import com.tianji.probabilitylab.nativev4.push.PushAlertNavigation
@@ -235,7 +234,7 @@ fun TianjiApp() {
                                     onSelectLottery = controller::selectLottery,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                MainDestination.ARCHIVE -> RefinedArchiveScreen(
+                                MainDestination.ARCHIVE -> V62ArchiveScreen(
                                     state = state,
                                     onSelectLottery = controller::selectLottery,
                                     modifier = Modifier.fillMaxSize(),
@@ -287,7 +286,7 @@ fun TianjiApp() {
             }
 
             if (showAlertCenter) {
-                RefinedPushAlertCenterScreen(
+                V62PushAlertCenterScreen(
                     alerts = pushAlerts,
                     preferences = pushPreferences,
                     status = pushStatus,
