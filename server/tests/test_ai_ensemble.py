@@ -176,7 +176,7 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertTrue(needs_collapse_review([0, 0, 0], 0))
         self.assertFalse(needs_collapse_review([0, 0, 1, 0], 0))
 
-    @patch("app.fixed_target_bridge._target_position_review")
+    @patch("app.ai_position_autonomy_guard._autonomous_review")
     def test_fixed_target_mode_never_generates_dynamic_six_numbers(
         self,
         target_review: object,
@@ -193,10 +193,10 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertEqual(result.position_reviewers, 3)
         self.assertFalse(result.recent_copy_reviewed)
         self.assertIn("固定目标六码235780", result.analysis)
-        self.assertIn("随机命中基准就是60%", result.risk_note)
+        self.assertIn("随机命中基准为60%", result.risk_note)
 
-    @patch("app.fixed_target_bridge._target_position_review")
-    def test_final_prediction_combines_forward_evidence_with_fixed_target_ai(
+    @patch("app.ai_position_autonomy_guard._autonomous_review")
+    def test_final_prediction_is_direct_ai_consensus_for_fixed_target(
         self,
         target_review: object,
     ) -> None:
@@ -216,11 +216,16 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertEqual(result.top6, [2, 3, 5, 7, 8, 10])
         self.assertEqual(result.number_reviewers, 0)
         self.assertTrue(result.strategy_probabilities)
-        self.assertTrue(all(name.startswith("ai_fixed_235780_position_") for name in result.strategy_probabilities))
-        self.assertIn("数学证据权重68%", result.analysis)
-        self.assertIn("固定目标只有235780", result.risk_note)
+        self.assertTrue(
+            all(
+                name.startswith("ai_fixed_235780_autonomy_position_")
+                for name in result.strategy_probabilities
+            )
+        )
+        self.assertIn("最终名次由3路AI独立复核后的共识直接决定", result.analysis)
+        self.assertIn("固定235780覆盖10个位置中的6个", result.risk_note)
 
-    @patch("app.fixed_target_bridge._target_position_review", side_effect=RuntimeError("provider down"))
+    @patch("app.ai_position_autonomy_guard._autonomous_review", side_effect=RuntimeError("provider down"))
     def test_provider_failure_does_not_forge_a_statistical_ai_prediction(
         self,
         _target_review: object,

@@ -163,7 +163,7 @@ class PrefixCacheTests(unittest.TestCase):
         self.assertEqual(usage["prompt_cache_miss_tokens"], 200)
         self.assertEqual(usage["reasoning_tokens"], 20)
 
-    @patch("app.fixed_target_bridge._target_position_review")
+    @patch("app.ai_position_autonomy_guard._autonomous_review")
     def test_fixed_target_ensemble_aggregates_usage_without_number_reviewers(
         self,
         target_review: object,
