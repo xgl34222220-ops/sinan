@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -163,12 +164,14 @@ class PrefixCacheTests(unittest.TestCase):
         self.assertEqual(usage["prompt_cache_miss_tokens"], 200)
         self.assertEqual(usage["reasoning_tokens"], 20)
 
-    @patch("app.ai_position_autonomy_guard._final_judge")
-    @patch("app.ai_position_autonomy_guard._autonomous_review")
-    def test_fixed_target_ensemble_aggregates_specialists_and_arbiter_usage_without_number_reviewers(
+    @patch("app.ai_ensemble.recent_copy_diagnostics")
+    @patch("app.ai_ensemble._number_review")
+    @patch("app.ai_continual_bridge._ORIGINAL_POSITION_REVIEW")
+    def test_dynamic_v2_aggregates_position_and_number_reviewer_usage(
         self,
-        target_review: object,
-        final_judge: object,
+        position_review: object,
+        number_review: object,
+        recent_copy: object,
     ) -> None:
         usage = {
             "request_count": 1,
@@ -178,23 +181,34 @@ class PrefixCacheTests(unittest.TestCase):
             "completion_tokens": 10,
             "reasoning_tokens": 2,
         }
-        target_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=[0.1] * 10,
-            analysis="固定目标走势专家",
+        position_scores = [0.01] * 10
+        position_scores[0] = 0.91
+        number_scores = [10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+        position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=position_scores,
+            analysis="动态名次评审",
             usage=usage,
         )
-        final_judge.return_value = _ReviewerResult(
-            scores=[0.1] * 10,
-            analysis="最终走势裁判",
+        number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=number_scores,
+            analysis="动态号码评审",
             usage=usage,
         )
+        recent_copy.return_value = SimpleNamespace(
+            exact_latest_six=False,
+            triggered=False,
+        )
+
         result = analyze_ensemble(history(), "21348120", config())
         self.assertEqual(result.position_reviewers, 3)
-        self.assertEqual(result.number_reviewers, 0)
-        self.assertEqual(result.request_count, 4)
-        self.assertEqual(result.prompt_cache_hit_tokens, 240)
-        self.assertEqual(result.prompt_cache_miss_tokens, 160)
+        self.assertEqual(result.number_reviewers, 2)
+        self.assertEqual(result.request_count, 5)
+        self.assertEqual(result.prompt_cache_hit_tokens, 300)
+        self.assertEqual(result.prompt_cache_miss_tokens, 200)
         self.assertAlmostEqual(result.cache_hit_rate, 0.60)
+        self.assertTrue(
+            any("forward_statistical_prior" in name for name in result.strategy_probabilities)
+        )
 
 
 if __name__ == "__main__":
