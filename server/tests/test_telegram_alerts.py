@@ -131,14 +131,18 @@ class TelegramAlertTests(unittest.TestCase):
             telegram_enabled=True,
             telegram_bot_token="123:test-token",
             telegram_chat_ids=("987654321",),
+            push_retry_seconds=300,
+            push_delivery_workers=2,
         )
         with patch.object(push_alerts, "settings", fake_settings), patch.object(
             telegram_alerts,
             "send_alert",
             return_value=(True, 200, '{"ok":true}'),
         ) as sender:
-            first = push_alerts.deliver_pending_alerts()
-            second = push_alerts.deliver_pending_alerts()
+            # Public deliver_pending_alerts() is intentionally non-blocking now. Exercise the
+            # canonical batch itself here so transport idempotency remains deterministic.
+            first = push_alerts._run_delivery_batch()
+            second = push_alerts._run_delivery_batch()
 
         self.assertEqual(1, first["telegram_sent"])
         self.assertEqual(0, first["fcm_sent"])
