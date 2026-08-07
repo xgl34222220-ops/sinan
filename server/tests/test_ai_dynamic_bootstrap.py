@@ -29,11 +29,11 @@ class AiDynamicBootstrapTest(unittest.TestCase):
             ai_fixed_output_guard._guarded_save_forecast_with_strategies,
         )
 
-    def test_native_overlap_never_forces_ai_to_change_answer(self) -> None:
-        # runtime_patches still supplies the admin/streak accuracy fixes, but its
-        # legacy cross-source divergence wrapper is deliberately retired.
-        self.assertIs(ai.analyze, runtime_patches._ORIGINAL_AI_ANALYZE)
-        self.assertIsNot(ai.analyze, runtime_patches._analyze_with_independence)
+    def test_native_overlap_divergence_patch_no_longer_exists(self) -> None:
+        self.assertEqual("app.ai", ai.analyze.__module__)
+        self.assertEqual("analyze", ai.analyze.__name__)
+        self.assertFalse(hasattr(runtime_patches, "_analyze_with_independence"))
+        self.assertFalse(hasattr(runtime_patches, "_requires_independence_audit"))
 
 
 if __name__ == "__main__":
