@@ -2,6 +2,7 @@ package com.tianji.probabilitylab.nativev4
 
 import android.content.Context
 import com.tianji.probabilitylab.nativev4.ai.AiChatController
+import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
 
 /**
  * Process-scoped runtime. Activity/Compose recreation no longer closes active AI sockets.
@@ -10,6 +11,12 @@ import com.tianji.probabilitylab.nativev4.ai.AiChatController
 class TianjiRuntime private constructor(context: Context) {
     val chatController = AiChatController(context.applicationContext)
     val appController = AppController(context.applicationContext)
+
+    init {
+        PushAlertCoordinator.setRealtimeRefreshCallback {
+            appController.refresh()
+        }
+    }
 
     companion object {
         @Volatile
