@@ -23,7 +23,7 @@ class ContinualRemoteAiAnalyzerTest {
     }
 
     @Test
-    fun remoteGenericPositionCannotOverrideBestFixedTargetPosition() {
+    fun weakAiPreferenceCannotOverrideStrongForwardEvidence() {
         val plan = manualPlan(
             bestPosition = 4,
             remotePosition = 0,
@@ -33,7 +33,7 @@ class ContinualRemoteAiAnalyzerTest {
         val result = AiContinualForecastEngine.calibrate(forecast(position = 0), plan)
         assertEquals(4, result.position)
         assertEquals(AiContinualForecastEngine.TARGET_NUMBERS, result.top6)
-        assertTrue(result.analysis.contains("旁路审计"))
+        assertTrue(result.analysis.contains("前向验证68% + AI评分32%"))
     }
 
     @Test
@@ -105,7 +105,7 @@ class ContinualRemoteAiAnalyzerTest {
             top6 = ranking.take(6),
             top7 = ranking.take(7),
             probabilities = probabilities,
-            analysis = "远程AI独立原始历史分析",
+            analysis = "远程AI固定235780位置评分",
             riskNote = "随机开奖无法保证准确率",
             selfRating = 0.2,
             model = "DeepSeek · test",
