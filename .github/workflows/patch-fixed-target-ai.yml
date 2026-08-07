@@ -1,0 +1,137 @@
+name: Patch fixed 235780 AI target
+
+on:
+  push:
+    branches: [feature/fixed-pool-235780-position]
+    paths:
+      - '.github/workflows/patch-fixed-target-ai.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/fixed-pool-235780-position
+          fetch-depth: 0
+
+      - name: Patch App AI target
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  'put("task", "仅根据原始开奖历史，独立选择下一期一个名次并对号码1至10排序")',
+                  'put("task", "固定目标235780：仅根据原始开奖历史，比较十个位置下一期落入2/3/5/7/8/10的相对可能性并选出一个位置")',
+              ),
+              (
+                  '"compare all ten positions before selecting one unless evidence is genuinely weak",',
+                  '"compare all ten positions for next-draw membership in fixed set 2/3/5/7/8/10 before selecting one",',
+              ),
+              (
+                  '"produce your own ten-number score vector; natural agreement with another model is allowed but copying is not",',
+                  '"produce your own ten-position score vector for the fixed target; never generate or replace the target numbers",',
+              ),
+              (
+                  '"只输出position和scores紧凑JSON；不要输出隐藏思维链、Markdown、逐期复述或额外字段。",',
+                  '"只输出position和scores紧凑JSON；scores按位置1至10排列，表示下一期进入固定235780的相对评分；不要输出隐藏思维链、Markdown、逐期复述或额外字段。",',
+              ),
+              (
+                  '.put("scores", "按号码1至10排列的10项非负原始评分，不得全部相同"),',
+                  '.put("scores", "按位置1至10排列的10项非负原始评分，表示各位置下一期落入2/3/5/7/8/10的相对证据，不得全部相同"),',
+              ),
+              (
+                  '"预测核心已完整，正在本机校验概率矩阵并生成六码/七码",',
+                  '"固定235780位置评分已完整，正在本机执行前向证据融合",',
+              ),
+              (
+                  '"不要重新分析或复述过程。立即只输出紧凑JSON：{\\"position\\":1至10整数,\\"scores\\":[号码1至10对应的10项非负评分]}。"',
+                  '"不要重新分析或复述过程。立即只输出紧凑JSON：{\\"position\\":1至10整数,\\"scores\\":[位置1至10进入固定235780的10项非负评分]}。"',
+              ),
+              (
+                  'const val SYSTEM_PROMPT = """你是与客户端本机模型严格隔离的概率排序模型。你只会收到按时间排序的真实开奖原始记录、目标期和必要元数据；客户端不会提供本机选择的名次、候选、概率矩阵、预计算频次/遗漏/转移统计或本机因子权重。你必须从原始记录自行决定分析方法，先比较十个名次，再选择证据相对充分的一个名次，并按号码1至10给出10项非负评分。不得猜测、迎合或复制本机答案，也不得为了显得不同而故意反选；独立分析后自然重合是允许的。小样本和细微差异必须降权。正式预测有严格时间预算：禁止输出隐藏思维链、解释、Markdown或逐期复述；只输出position与scores的紧凑JSON。不得承诺准确率、盈利或必中。"""',
+                  'const val SYSTEM_PROMPT = """你是与客户端本机模型严格隔离的固定目标位置预测模型。固定目标永远是235780，其中0在1至10赛制中表示10，即内部集合2/3/5/7/8/10；绝对禁止生成、替换或优化这组六码。你只会收到按时间排序的真实开奖原始记录、目标期和必要元数据。唯一任务是比较第1至第10位置，判断下一期各位置的号码落入固定集合2/3/5/7/8/10的相对可能性，position返回最有证据的位置，scores按位置1至10给出10项非负原始评分。每个位置在随机排列下的固定六码命中基准是60%，短期高于60%不代表稳定优势；必须重视时序、状态转移、近期与长期一致性并对小样本降权。不得猜测、迎合或复制本机答案。正式预测有严格时间预算：禁止输出隐藏思维链、解释、Markdown或逐期复述；只输出position与scores的紧凑JSON。不得承诺准确率、盈利或必中。"""',
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit('missing AiAnalysis replacement: ' + old[:100])
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+          path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ai/ContinualRemoteAiAnalyzer.kt')
+          text = path.read_text(encoding='utf-8')
+          old = '''        val selected = plan.best
+        val remoteEvidence = plan.evidence(forecast.position)
+        val remoteAgrees = forecast.position == selected.position
+        val probabilities = if (remoteAgrees) {
+            blendInsideFixedGroups(
+                base = selected.currentProbabilities,
+                remote = forecast.probabilities,
+                targetProbability = selected.targetProbability,
+                remoteWeight = 0.22,
+            )
+        } else {
+            selected.currentProbabilities
+        }
+'''
+          new = '''        val mathScores = normalize(plan.positions.map { evidence ->
+            evidence.validationScore.coerceAtLeast(1e-9)
+        })
+        val remoteScores = if (forecast.probabilities.size == 10) {
+            normalize(forecast.probabilities)
+        } else {
+            List(10) { 0.1 }
+        }
+        val combinedScores = (0 until 10).map { position ->
+            mathScores[position] * 0.68 + remoteScores[position] * 0.32
+        }
+        val selectedPosition = combinedScores.indices.maxBy { combinedScores[it] }
+        val selected = plan.evidence(selectedPosition)
+        val probabilities = selected.currentProbabilities
+        val remoteBest = remoteScores.indices.maxBy { remoteScores[it] }
+'''
+          if old not in text:
+              raise SystemExit('missing continual selection block')
+          text = text.replace(old, new, 1)
+          old = '''        val remoteText = if (remoteAgrees) {
+            "远端AI旁路评审与固定目标学习器同选第${selected.position + 1}名。"
+        } else {
+            "远端AI旧通用评审偏向第${remoteEvidence.position + 1}名，仅作为旁路审计，不覆盖固定目标决策。"
+        }
+'''
+          new = '''        val remoteText = if (remoteBest == selected.position) {
+            "远端AI固定235780评审与前向学习融合后同选第${selected.position + 1}名。"
+        } else {
+            "远端AI固定235780评审首选第${remoteBest + 1}名；最终按前向验证68% + AI评分32%融合后选择第${selected.position + 1}名。"
+        }
+'''
+          if old not in text:
+              raise SystemExit('missing continual remote text block')
+          text = text.replace(old, new, 1)
+          old = '            analysis = (forecast.analysis + learningSummary).take(1_700),'
+          new = '            analysis = learningSummary.trim().take(1_700),'
+          if old not in text:
+              raise SystemExit('missing continual analysis block')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'xgl34222220-ops'
+          git config user.email 'xgl34222220@gmail.com'
+          git add app/src/main/java/com/tianji/probabilitylab/nativev4/ai/AiAnalysis.kt app/src/main/java/com/tianji/probabilitylab/nativev4/ai/ContinualRemoteAiAnalyzer.kt
+          git commit -m 'feat: aim app AI directly at fixed 235780 target'
+          git rm .github/workflows/patch-fixed-target-ai.yml
+          git commit -m 'chore: remove temporary fixed target patch workflow'
+          git push origin HEAD:feature/fixed-pool-235780-position
