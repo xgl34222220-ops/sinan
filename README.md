@@ -4,25 +4,25 @@
 
 ## 当前版本
 
-- 当前正式版：**6.2.0**
+- 当前正式版：**6.3.0**
 - 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 正式应用 ID：`com.tianji.probabilitylab.nativev5`
 
-## v6.2 UI / 体验重构重点
+## v6.3 UI / 体验完善重点
 
-- 首页重排为“实时开奖 / 倒计时 → 本期预测 → AI 状态 → 深度分析”，减少重复卡片与视觉噪音。
-- 手机继续使用悬浮液态 Dock，宽屏和平板自动切换侧边 Navigation Rail，并接入 Material 3 Adaptive。
-- 通知中心改为按日期分组并收起高级筛选；档案页简化筛选与信息密度，设置页统一分组式信息层级。
-- 统一浅色 / 深色 / OLED 系统栏表现、字号、触摸区域与组件圆角，提升可读性和无障碍体验。
-- 删除当前彩种实时刷新的 Java 反射桥，改为 `AppController.refreshCurrentLottery()` 正式 API，避免 R8 下退化为全量刷新。
-- 服务端管理台新增实时链路延迟卡片，直接展示开奖发现延迟、探测请求耗时、结算耗时、EMA 与历史最慢值。
-- 服务端版本、Runtime Revision 与 Git Commit 统一展示，并加入受保护的手动 VPS 部署工作流。
-- Android CI 新增 Compose Preview Screenshot 基线渲染，持续校验首页、导航、设置等关键界面的视觉回归。
-- 保留 v6.1.4 的实时开奖快通道、异步 FCM / Telegram、当前彩种快速刷新与固定 `235780` 输出保护。
-- 合并主线最新 AI 走势体系：读取最多 240 期真实数据，使用 24 / 60 / 120 / 240 窗口、前向验证和自身实战结果，由多路专家与最终 AI 裁判给出正式名次；本地 native 模型继续保持原逻辑。
+- 首页继续以“实时开奖 / 倒计时 → 本期预测 → AI 判断 → 概率 / 模型详情”为主层级，减少重复选择和卡片噪音。
+- AI 摘要明确剩余模型结果，不再静默截断；目标期使用当前真实期号动态显示。
+- 手机保留悬浮液态 Dock，宽屏和平板使用 Navigation Rail；导航按压、触觉反馈和系统安全区保持一致。
+- 通知中心使用日期分组、轻量连接状态、筛选与 Bottom Sheet 设置，并支持预测、风险和恢复事件直接跳到对应页面。
+- 档案页支持搜索、来源 / 状态筛选、渐进加载与完整性状态；长列表中筛选控件保持可访问。
+- 服务端管理台把系统健康与实时开奖链路放到首要位置，异常彩种优先展示，并区分开奖发现、探测请求与写库结算耗时。
+- 控制台针对手机重新收紧信息密度、底部安全区和导航高度，避免单项指标占满首屏或被悬浮 Dock 遮挡。
+- 服务端版本、Runtime Revision 与 Git Commit 统一展示，并保留受保护的手动 VPS 部署工作流。
+- Android CI 持续执行 Compose Preview Screenshot 基线渲染，服务端 CI 校验管理台与实时链路契约。
+- 保留 v6.1.4 以来的实时开奖快通道、异步 FCM / Telegram、当前彩种快速刷新与固定 `235780` AI 输出保护；本地 native 动态预测逻辑保持不变。
 
 ## v6.1 稳定化基础
 
