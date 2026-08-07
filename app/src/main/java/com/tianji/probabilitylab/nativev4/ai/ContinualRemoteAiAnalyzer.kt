@@ -179,7 +179,7 @@ object AiContinualForecastEngine {
             probabilities = probabilities,
             analysis = (forecast.analysis + learningSummary).take(1_700),
             riskNote = (
-                "固定六码$TARGET_LABEL在每期开奖中恰好覆盖10个位置里的6个位置，因此任取一个名次随机命中基准就是60%。" +
+                "固定六码${TARGET_LABEL}在每期开奖中恰好覆盖10个位置里的6个位置，因此任取一个名次随机命中基准就是60%。" +
                     "系统只允许用开奖前历史做滚动验证；短期高于60%不等于存在可持续规律。"
                 ).take(900),
             selfRating = fixedConfidence,
