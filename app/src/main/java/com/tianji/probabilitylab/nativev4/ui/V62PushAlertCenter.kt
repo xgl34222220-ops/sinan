@@ -1,5 +1,6 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,8 +35,11 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -71,6 +76,7 @@ private enum class V62AlertLottery(val label: String, val key: String) {
     ALL("全部彩种", ""), XYFT("幸运飞艇", "xyft"), AZXY10("澳洲幸运10", "azxy10"),
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun V62PushAlertCenterScreen(
     alerts: List<PushAlert>,
@@ -80,6 +86,7 @@ fun V62PushAlertCenterScreen(
     onPreferencesChange: (PushPreferences) -> Unit,
     onRead: (Long) -> Unit,
     onReadAll: () -> Unit,
+    onOpenAlert: (PushAlert) -> Unit,
     onRefresh: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -91,6 +98,10 @@ fun V62PushAlertCenterScreen(
     var showPreferences by rememberSaveable { mutableStateOf(false) }
     val filter = V62AlertFilter.entries.firstOrNull { it.name == filterName } ?: V62AlertFilter.ALL
     val lottery = V62AlertLottery.entries.firstOrNull { it.name == lotteryName } ?: V62AlertLottery.ALL
+    val activeFilterCount = listOf(
+        filter != V62AlertFilter.ALL,
+        lottery != V62AlertLottery.ALL,
+    ).count { it }
 
     val filtered = remember(alerts, filter, lottery, focusAlertId) {
         alerts.asSequence()
@@ -141,11 +152,8 @@ fun V62PushAlertCenterScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            IconButton(onClick = { showPreferences = !showPreferences }, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Rounded.Settings, contentDescription = "通知设置", tint = if (showPreferences) colors.accent else colors.textSoft)
-            }
-            IconButton(onClick = onRefresh, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Rounded.Refresh, contentDescription = "刷新通知", tint = colors.textSoft)
+            IconButton(onClick = { showPreferences = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Rounded.Settings, contentDescription = "通知设置", tint = colors.textSoft)
             }
         }
 
@@ -158,7 +166,6 @@ fun V62PushAlertCenterScreen(
                 V62AlertConnectionStrip(
                     status = status,
                     preferences = preferences,
-                    expanded = showPreferences,
                     onPreferencesChange = onPreferencesChange,
                 )
             }
@@ -177,21 +184,37 @@ fun V62PushAlertCenterScreen(
                             )
                         }
                         if (alerts.any { !it.isRead }) {
-                            TextButton(onClick = onReadAll) { Text("全部已读", color = colors.accent, fontWeight = FontWeight.Bold) }
+                            TextButton(onClick = onReadAll) {
+                                Text("全部已读", color = colors.accent, fontWeight = FontWeight.Bold)
+                            }
                         }
                         Row(
                             modifier = Modifier
                                 .heightIn(min = 44.dp)
                                 .clip(CircleShape)
-                                .background(if (showFilters) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.7f))
-                                .border(1.dp, if (showFilters) colors.accent.copy(alpha = 0.22f) else colors.line, CircleShape)
+                                .background(if (showFilters || activeFilterCount > 0) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.7f))
+                                .border(
+                                    1.dp,
+                                    if (showFilters || activeFilterCount > 0) colors.accent.copy(alpha = 0.22f) else colors.line,
+                                    CircleShape,
+                                )
                                 .clickable { showFilters = !showFilters }
                                 .padding(horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Rounded.FilterList, contentDescription = "筛选通知", tint = if (showFilters) colors.accent else colors.textSoft, modifier = Modifier.size(18.dp))
+                            Icon(
+                                Icons.Rounded.FilterList,
+                                contentDescription = "筛选通知",
+                                tint = if (showFilters || activeFilterCount > 0) colors.accent else colors.textSoft,
+                                modifier = Modifier.size(18.dp),
+                            )
                             Spacer(Modifier.width(5.dp))
-                            Text("筛选", color = if (showFilters) colors.accent else colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (activeFilterCount > 0) "筛选 · $activeFilterCount" else "筛选",
+                                color = if (showFilters || activeFilterCount > 0) colors.accent else colors.textSoft,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
                     if (showFilters) {
@@ -206,26 +229,45 @@ fun V62PushAlertCenterScreen(
                 }
             } else {
                 sections.forEach { (label, sectionAlerts) ->
-                    item("section-$label") {
-                        Text(
-                            label,
-                            color = colors.textDim,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 3.dp, top = 5.dp, end = 3.dp, bottom = 1.dp),
-                        )
+                    stickyHeader("section-$label") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(colors.page.copy(alpha = 0.96f))
+                                .padding(horizontal = 3.dp, vertical = 7.dp),
+                        ) {
+                            Text(label, color = colors.textDim, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                     sectionAlerts.forEach { alert ->
                         item("alert-${alert.id}") {
                             V62AlertCard(
                                 alert = alert,
                                 focused = alert.id == focusAlertId,
-                                onRead = { onRead(alert.id) },
+                                onOpen = {
+                                    if (!alert.isRead) onRead(alert.id)
+                                    onOpenAlert(alert)
+                                },
                             )
                         }
                     }
                 }
             }
+        }
+    }
+
+    if (showPreferences) {
+        ModalBottomSheet(
+            onDismissRequest = { showPreferences = false },
+            containerColor = colors.surface,
+            contentColor = colors.text,
+        ) {
+            V62NotificationSettingsSheet(
+                preferences = preferences,
+                status = status,
+                onPreferencesChange = onPreferencesChange,
+                onRefresh = onRefresh,
+            )
         }
     }
 }
@@ -234,55 +276,90 @@ fun V62PushAlertCenterScreen(
 private fun V62AlertConnectionStrip(
     status: PushConnectionStatus,
     preferences: PushPreferences,
-    expanded: Boolean,
     onPreferencesChange: (PushPreferences) -> Unit,
 ) {
     val colors = LocalTianjiColors.current
     val tint = if (status.instantReady) colors.green else if (status.registered) colors.accent else colors.amber
     SurfaceCard(radius = 20.dp) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(tint.copy(alpha = 0.11f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        if (status.instantReady) Icons.Rounded.CloudDone else Icons.Rounded.NotificationsActive,
-                        contentDescription = null,
-                        tint = tint,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(v62ConnectionTitle(status), color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        if (status.instantReady) "FCM 即时到达 · 后台增量检查兜底" else status.detail,
-                        color = colors.textDim,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Switch(
-                    checked = preferences.enabled,
-                    onCheckedChange = { onPreferencesChange(preferences.copy(enabled = it)) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = colors.accent,
-                        uncheckedTrackColor = colors.lineStrong,
-                    ),
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(tint.copy(alpha = 0.11f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (status.instantReady) Icons.Rounded.CloudDone else Icons.Rounded.NotificationsActive,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(20.dp),
                 )
             }
-            if (expanded) {
-                Spacer(Modifier.size(8.dp))
-                V62PreferenceRow("幸运飞艇", preferences.xyftEnabled) { onPreferencesChange(preferences.copy(xyftEnabled = it)) }
-                V62PreferenceRow("澳洲幸运10", preferences.azxy10Enabled) { onPreferencesChange(preferences.copy(azxy10Enabled = it)) }
-                V62PreferenceRow("云端 AI", preferences.aiEnabled) { onPreferencesChange(preferences.copy(aiEnabled = it)) }
-                V62PreferenceRow("云端本地", preferences.nativeEnabled) { onPreferencesChange(preferences.copy(nativeEnabled = it)) }
-                V62PreferenceRow("升级预警", preferences.escalationEnabled) { onPreferencesChange(preferences.copy(escalationEnabled = it)) }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(v62ConnectionTitle(status), color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (status.instantReady) "FCM 即时到达 · 后台增量检查兜底" else status.detail,
+                    color = colors.textDim,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+            Switch(
+                checked = preferences.enabled,
+                onCheckedChange = { onPreferencesChange(preferences.copy(enabled = it)) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = colors.accent,
+                    uncheckedTrackColor = colors.lineStrong,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun V62NotificationSettingsSheet(
+    preferences: PushPreferences,
+    status: PushConnectionStatus,
+    onPreferencesChange: (PushPreferences) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val colors = LocalTianjiColors.current
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text("通知设置", color = colors.text, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+        Text(
+            "${v62ConnectionTitle(status)} · 按需要选择接收范围",
+            color = colors.textDim,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+        )
+        Spacer(Modifier.height(10.dp))
+        V62PreferenceRow("启用天机推送", preferences.enabled) { onPreferencesChange(preferences.copy(enabled = it)) }
+        V62PreferenceRow("幸运飞艇", preferences.xyftEnabled) { onPreferencesChange(preferences.copy(xyftEnabled = it)) }
+        V62PreferenceRow("澳洲幸运10", preferences.azxy10Enabled) { onPreferencesChange(preferences.copy(azxy10Enabled = it)) }
+        V62PreferenceRow("云端 AI", preferences.aiEnabled) { onPreferencesChange(preferences.copy(aiEnabled = it)) }
+        V62PreferenceRow("云端本地", preferences.nativeEnabled) { onPreferencesChange(preferences.copy(nativeEnabled = it)) }
+        V62PreferenceRow("升级预警", preferences.escalationEnabled) { onPreferencesChange(preferences.copy(escalationEnabled = it)) }
+        Spacer(Modifier.height(10.dp))
+        Button(
+            onClick = onRefresh,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = RoundedCornerShape(15.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = colors.surfaceStrong,
+                contentColor = colors.textSoft,
+            ),
+        ) {
+            Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("立即同步通知状态", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -291,10 +368,10 @@ private fun V62AlertConnectionStrip(
 private fun V62PreferenceRow(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
     val colors = LocalTianjiColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(label, color = colors.textSoft, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         Switch(
             checked = checked,
             onCheckedChange = onChecked,
@@ -334,7 +411,7 @@ private fun <T> V62AlertChipRow(values: List<T>, selected: T, label: (T) -> Stri
 }
 
 @Composable
-private fun V62AlertCard(alert: PushAlert, focused: Boolean, onRead: () -> Unit) {
+private fun V62AlertCard(alert: PushAlert, focused: Boolean, onOpen: () -> Unit) {
     val colors = LocalTianjiColors.current
     val tint = when {
         alert.severity == PushProtocol.SEVERITY_CRITICAL -> colors.red
@@ -347,68 +424,88 @@ private fun V62AlertCard(alert: PushAlert, focused: Boolean, onRead: () -> Unit)
         alert.eventType == PushProtocol.EVENT_HIT_RECOVERY -> Icons.Rounded.CheckCircle
         else -> Icons.Rounded.AutoAwesome
     }
-    Column(
+    val severityLabel = when {
+        alert.severity == PushProtocol.SEVERITY_CRITICAL -> "严重"
+        alert.eventType == PushProtocol.EVENT_HIT_RECOVERY -> "恢复"
+        alert.isRiskAlert -> "风险"
+        alert.eventType == PushProtocol.EVENT_PREDICTION_READY -> "预测"
+        else -> "通知"
+    }
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(19.dp))
             .background(if (focused) tint.copy(alpha = 0.11f) else colors.surface.copy(alpha = 0.82f))
             .border(1.dp, if (focused) tint.copy(alpha = 0.28f) else colors.line, RoundedCornerShape(19.dp))
-            .clickable {
-                if (!alert.isRead) onRead()
-            }
-            .padding(14.dp),
+            .clickable(onClick = onOpen),
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Box(
-                modifier = Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(tint.copy(alpha = 0.11f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        alert.title,
-                        color = colors.text,
-                        fontSize = 14.sp,
-                        fontWeight = if (alert.isRead) FontWeight.Bold else FontWeight.ExtraBold,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (!alert.isRead) {
-                        Spacer(Modifier.width(7.dp))
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(tint))
-                    }
-                }
-                Text(
-                    listOf(alert.lotteryName, alert.sourceName).filter(String::isNotBlank).joinToString(" · "),
-                    color = tint,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        }
-        Spacer(Modifier.size(9.dp))
-        Text(
-            alert.body,
-            color = colors.textSoft,
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis,
+        Box(
+            modifier = Modifier
+                .width(if (alert.isRead) 3.dp else 4.dp)
+                .height(118.dp)
+                .background(if (alert.isRead) colors.lineStrong else tint),
         )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (alert.latestTargetPeriod.isNotBlank()) {
-                Text("目标 ${alert.latestTargetPeriod}", color = colors.textDim, fontSize = 11.sp, modifier = Modifier.weight(1f))
-            } else {
-                Spacer(Modifier.weight(1f))
+        Column(Modifier.weight(1f).padding(14.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Box(
+                    modifier = Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(tint.copy(alpha = 0.11f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            alert.title,
+                            color = colors.text,
+                            fontSize = 14.sp,
+                            fontWeight = if (alert.isRead) FontWeight.Bold else FontWeight.ExtraBold,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            severityLabel,
+                            color = tint,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(tint.copy(alpha = 0.11f))
+                                .border(1.dp, tint.copy(alpha = 0.20f), CircleShape)
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                        )
+                    }
+                    Text(
+                        listOf(alert.lotteryName, alert.sourceName).filter(String::isNotBlank).joinToString(" · "),
+                        color = tint,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
-            Text(formatTimeV2(alert.createdAtEpochMs), color = colors.textDim, fontSize = 11.sp)
+            Spacer(Modifier.size(9.dp))
+            Text(
+                alert.body,
+                color = colors.textSoft,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (alert.latestTargetPeriod.isNotBlank()) {
+                    Text("目标 ${alert.latestTargetPeriod}", color = colors.textDim, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                Text(formatTimeV2(alert.createdAtEpochMs), color = colors.textDim, fontSize = 11.sp)
+            }
         }
     }
 }
