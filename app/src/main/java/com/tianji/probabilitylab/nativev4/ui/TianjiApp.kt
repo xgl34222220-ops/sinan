@@ -36,6 +36,7 @@ import com.tianji.probabilitylab.nativev4.TianjiRuntime
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
 import com.tianji.probabilitylab.nativev4.push.PushAlertNavigation
+import com.tianji.probabilitylab.nativev4.push.PushProtocol
 import com.tianji.probabilitylab.nativev4.service.AiForegroundService
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceMode
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceStore
@@ -294,6 +295,21 @@ fun TianjiApp() {
                     onPreferencesChange = PushAlertCoordinator::updatePreferences,
                     onRead = PushAlertCoordinator::markRead,
                     onReadAll = PushAlertCoordinator::markAllRead,
+                    onOpenAlert = { alert ->
+                        LotteryType.entries.firstOrNull { it.apiKey == alert.lottery }
+                            ?.let(controller::selectLottery)
+                        focusedAlertId = null
+                        when {
+                            alert.eventType == PushProtocol.EVENT_PREDICTION_READY -> {
+                                destination = MainDestination.HOME
+                                showAlertCenter = false
+                            }
+                            alert.isRiskAlert || alert.eventType == PushProtocol.EVENT_HIT_RECOVERY -> {
+                                destination = MainDestination.ARCHIVE
+                                showAlertCenter = false
+                            }
+                        }
+                    },
                     onRefresh = PushAlertCoordinator::refresh,
                     onClose = {
                         showAlertCenter = false
