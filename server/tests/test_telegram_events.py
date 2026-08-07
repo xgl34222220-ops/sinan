@@ -71,7 +71,7 @@ class TelegramEventTests(unittest.TestCase):
     def create_three_misses(self) -> None:
         for target in ("100", "101", "102"):
             self.save_forecast(target=target)
-            self.settle(target, 10)
+            self.settle(target, 4)
 
     def fake_settings(self) -> SimpleNamespace:
         return SimpleNamespace(
@@ -90,7 +90,7 @@ class TelegramEventTests(unittest.TestCase):
         message = telegram_events.format_prediction_message(row, 0)
         self.assertIn("新一期云端 AI 预测", message)
         self.assertIn("deepseek&lt;pro&gt;", message)
-        self.assertIn("01、02、03、04、05、06", message)
+        self.assertIn("02、03、05、07、08、10", message)
         self.assertIn("连续未中计数为 0", message)
         self.assertIn("每期推送", message)
 
