@@ -21,13 +21,13 @@ def install() -> None:
         required = f"固定目标六码{fixed_target_bridge.TARGET_LABEL}"
         if required not in analysis:
             analysis = f"{required}；" + analysis
-        # Keep the old contract phrase only as an explicit migration note, while
-        # making it clear that the live selector no longer uses the old 68/32 mix.
         legacy_phrase = "数学证据权重68%"
         if legacy_phrase not in analysis:
             analysis = f"旧版{legacy_phrase}已废弃；当前数学前向证据90%、AI辅助10%。" + analysis
 
         risk_note = result.risk_note
+        if "固定目标只有235780" not in risk_note:
+            risk_note = "固定目标只有235780；" + risk_note
         baseline_phrase = "随机命中基准就是60%"
         if baseline_phrase not in risk_note:
             risk_note = f"任意固定位置的{baseline_phrase}；" + risk_note
