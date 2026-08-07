@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,8 +30,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
@@ -243,44 +240,34 @@ fun TianjiApp() {
                                     onSelectLottery = controller::selectLottery,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                MainDestination.SETTINGS -> {
-                                    val density = LocalDensity.current
-                                    CompositionLocalProvider(
-                                        LocalDensity provides Density(
-                                            density = density.density,
-                                            fontScale = density.fontScale * 1.12f,
-                                        ),
-                                    ) {
-                                        SettingsHubScreen(
-                                            state = state,
-                                            paletteMode = paletteMode,
-                                            appearanceMode = appearanceMode,
-                                            aiConfigs = controller.aiConfigs,
-                                            aiAvailableModels = controller.aiAvailableModels,
-                                            onPaletteChanged = { mode ->
-                                                scope.launch { appearanceStore.setPalette(mode) }
-                                            },
-                                            onAppearanceChanged = { mode ->
-                                                scope.launch { appearanceStore.setAppearance(mode) }
-                                            },
-                                            onSaveAiConfig = controller::saveAiConfig,
-                                            onDeleteAiConfig = controller::deleteAiConfig,
-                                            onTestAiConnection = controller::testAiConnection,
-                                            onLoadAiModels = controller::loadAiModels,
-                                            onSelectAiModel = controller::selectAiModel,
-                                            onSelectAiMode = controller::selectAiAnalysisMode,
-                                            onSelectAiReasoningMode = controller::selectAiReasoningMode,
-                                            onAiConcurrencyChanged = controller::setAiConcurrency,
-                                            onAnalyzeAi = { id -> controller.analyzeWithAi(id) },
-                                            pushUnreadCount = pushAlerts.count { !it.isRead },
-                                            onOpenPushAlerts = {
-                                                focusedAlertId = null
-                                                showAlertCenter = true
-                                            },
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                    }
-                                }
+                                MainDestination.SETTINGS -> SettingsHubScreen(
+                                    state = state,
+                                    paletteMode = paletteMode,
+                                    appearanceMode = appearanceMode,
+                                    aiConfigs = controller.aiConfigs,
+                                    aiAvailableModels = controller.aiAvailableModels,
+                                    onPaletteChanged = { mode ->
+                                        scope.launch { appearanceStore.setPalette(mode) }
+                                    },
+                                    onAppearanceChanged = { mode ->
+                                        scope.launch { appearanceStore.setAppearance(mode) }
+                                    },
+                                    onSaveAiConfig = controller::saveAiConfig,
+                                    onDeleteAiConfig = controller::deleteAiConfig,
+                                    onTestAiConnection = controller::testAiConnection,
+                                    onLoadAiModels = controller::loadAiModels,
+                                    onSelectAiModel = controller::selectAiModel,
+                                    onSelectAiMode = controller::selectAiAnalysisMode,
+                                    onSelectAiReasoningMode = controller::selectAiReasoningMode,
+                                    onAiConcurrencyChanged = controller::setAiConcurrency,
+                                    onAnalyzeAi = { id -> controller.analyzeWithAi(id) },
+                                    pushUnreadCount = pushAlerts.count { !it.isRead },
+                                    onOpenPushAlerts = {
+                                        focusedAlertId = null
+                                        showAlertCenter = true
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             }
                         }
                     }
