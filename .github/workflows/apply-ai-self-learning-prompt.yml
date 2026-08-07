@@ -14,7 +14,7 @@ permissions:
 jobs:
   patch-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
         with:
@@ -29,13 +29,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
       - name: Run Android unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:testReleaseUnitTest
 
-      - name: Compile release APK
-        run: ./gradlew assembleRelease --stacktrace
+      - name: Lint and compile release APK
+        run: gradle --no-daemon --stacktrace :app:lintDebug :app:assembleRelease
 
       - name: Verify self-learning source contract
         run: |
