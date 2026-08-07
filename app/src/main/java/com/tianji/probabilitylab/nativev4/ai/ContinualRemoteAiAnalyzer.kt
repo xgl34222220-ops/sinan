@@ -4,6 +4,8 @@ import android.content.Context
 import com.tianji.probabilitylab.nativev4.model.Draw
 import com.tianji.probabilitylab.nativev4.model.DrawSnapshot
 import com.tianji.probabilitylab.nativev4.model.ForecastReport
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.max
@@ -47,9 +49,20 @@ class ContinualRemoteAiAnalyzer(context: Context) {
             )
         }
         val plan = AiContinualForecastEngine.buildPlan(snapshot.history, profiles)
-        val remote = delegate.analyze(config, snapshot, report, onProgress)
+        val selfLearningEvidence = AiContinualForecastEngine.promptEvidence(plan)
         onProgress(
-            "AI旁路评审已返回，正在按固定六码真实前向成绩确定最终名次",
+            "AI自学习证据已注入：仅使用该AI自己的十名次结算证据，不包含本机预测答案",
+            System.currentTimeMillis() - started,
+        )
+        val remote = delegate.analyze(
+            config = config,
+            snapshot = snapshot,
+            report = report,
+            onProgress = onProgress,
+            selfLearningEvidence = selfLearningEvidence,
+        )
+        onProgress(
+            "AI自学习评审已返回，正在按固定六码真实前向成绩做二次校准",
             System.currentTimeMillis() - started,
         )
         return AiContinualForecastEngine.calibrate(remote, plan)
@@ -119,6 +132,54 @@ object AiContinualForecastEngine {
         return AiContinualForecastPlan(history.size, positions)
     }
 
+    /**
+     * Evidence sent to the remote AI. It is deliberately restricted to the same AI profile's
+     * settled outcomes plus leakage-free walk-forward statistics. Native-model selections,
+     * candidates and probability matrices are never included.
+     */
+    fun promptEvidence(plan: AiContinualForecastPlan): JSONObject = JSONObject()
+        .put("schema", "tianji-ai-self-learning-v1")
+        .put("target_pool", TARGET_LABEL)
+        .put("target_numbers_internal", JSONArray(TARGET_NUMBERS))
+        .put("random_baseline", RANDOM_TARGET_RATE)
+        .put("history_size", plan.historySize)
+        .put("gate_passed_positions", plan.passedCount)
+        .put(
+            "positions",
+            JSONArray(plan.positions.map { evidence ->
+                JSONObject()
+                    .put("position", evidence.position + 1)
+                    .put("validation_samples", evidence.validationSamples)
+                    .put("target_hits", evidence.targetHits)
+                    .put("shrinkage_target_hit_rate", evidence.targetHitRate)
+                    .put("excess_over_random", evidence.excessOverRandom)
+                    .put("average_binary_log_loss", evidence.averageBinaryLogLoss)
+                    .put("max_miss_streak", evidence.maxMissStreak)
+                    .put("current_miss_streak", evidence.currentMissStreak)
+                    .put("current_target_probability", evidence.targetProbability)
+                    .put("validation_score", evidence.validationScore)
+                    .put("gate_passed", evidence.gatePassed)
+                    .put("own_settled_samples", evidence.learningProfile.settled)
+                    .put("own_settled_hit_rate", evidence.learningProfile.top6Rate)
+                    .put(
+                        "own_recent20_hit_rate",
+                        evidence.learningProfile.recent20Top6Rate ?: JSONObject.NULL,
+                    )
+                    .put("own_profile_miss_streak", evidence.learningProfile.missStreak)
+                    .put(
+                        "own_long_term_factor_weights",
+                        JSONArray(evidence.learningProfile.weights),
+                    )
+                    .put("own_last_learned_period", evidence.learningProfile.lastLearnedPeriod)
+            }),
+        )
+        .put(
+            "policy",
+            "这是该AI自身真实结算与开奖前滚动验证形成的弱先验，不是本机模型答案。" +
+                "当前最新原始开奖历史优先级最高；短期高于60%不得当作稳定规律，" +
+                "连续未中、对数损失变差或样本不足时必须主动降权。",
+        )
+
     fun calibrate(
         forecast: AiForecast,
         plan: AiContinualForecastPlan,
@@ -187,7 +248,8 @@ object AiContinualForecastEngine {
             selfRating = fixedConfidence,
             executionNote = (
                 forecast.executionNote +
-                    " · 固定六码$TARGET_LABEL · 十名次二分类前向学习 · 最终第${selected.position + 1}名"
+                    " · AI自学习证据已注入 · 与本机答案隔离 · 固定六码$TARGET_LABEL · " +
+                    "十名次二分类前向学习 · 最终第${selected.position + 1}名"
                 ).take(520),
         )
     }

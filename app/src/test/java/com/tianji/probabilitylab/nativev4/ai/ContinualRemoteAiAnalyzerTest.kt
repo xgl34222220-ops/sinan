@@ -3,6 +3,7 @@ package com.tianji.probabilitylab.nativev4.ai
 import com.tianji.probabilitylab.nativev4.model.Draw
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -37,6 +38,31 @@ class ContinualRemoteAiAnalyzerTest {
     }
 
     @Test
+    fun promptEvidenceContainsOwnLearningButNeverNativeAnswer() {
+        val plan = manualPlan(
+            bestPosition = 4,
+            remotePosition = 0,
+            remoteScore = 0.30,
+        )
+        val json = AiContinualForecastEngine.promptEvidence(plan)
+
+        assertEquals("tianji-ai-self-learning-v1", json.getString("schema"))
+        assertEquals("235780", json.getString("target_pool"))
+        assertEquals(0.60, json.getDouble("random_baseline"), 1e-9)
+        assertEquals(10, json.getJSONArray("positions").length())
+        val first = json.getJSONArray("positions").getJSONObject(0)
+        assertTrue(first.has("validation_samples"))
+        assertTrue(first.has("average_binary_log_loss"))
+        assertTrue(first.has("own_long_term_factor_weights"))
+        assertFalse(json.has("native_position"))
+        assertFalse(json.has("native_top6"))
+        assertFalse(json.has("native_top7"))
+        assertFalse(json.has("native_probabilities"))
+        assertFalse(first.has("native_position"))
+        assertFalse(first.has("native_top6"))
+    }
+
+    @Test
     fun acceptedForecastUsesFixed235780PoolAndBinaryLearningSummary() {
         val plan = manualPlan(
             bestPosition = 4,
@@ -52,6 +78,8 @@ class ContinualRemoteAiAnalyzerTest {
         assertTrue(result.analysis.contains("固定目标预测"))
         assertTrue(result.analysis.contains("随机基准60%"))
         assertTrue(result.riskNote.contains("随机命中基准就是60%"))
+        assertTrue(result.executionNote.contains("AI自学习证据已注入"))
+        assertTrue(result.executionNote.contains("与本机答案隔离"))
         assertTrue(result.executionNote.contains("固定六码235780"))
     }
 

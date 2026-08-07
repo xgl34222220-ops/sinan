@@ -519,7 +519,7 @@ private fun AiAnalysisPanel(
                 eyebrow = "MULTI-PROVIDER AI",
                 title = "多 AI 独立分析",
                 icon = Icons.Rounded.AutoAwesome,
-                detail = "每次分析先强制同步开奖接口历史；首次有效结果开奖前冻结，目标期开奖后自动验证。",
+                detail = "每次先同步真实开奖；AI会读取自己的已结算学习证据再预测，与本机最终答案严格隔离。",
             )
             Spacer(Modifier.height(14.dp))
             if (configs.isEmpty()) {
@@ -942,6 +942,24 @@ private fun AiForecastCard(result: com.tianji.probabilitylab.nativev4.ai.AiForec
             fontSize = 7.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (result.executionNote.contains("AI自学习证据已注入")) {
+                "AI 自学习已注入 · 与本机答案隔离"
+            } else {
+                "AI 独立历史分析 · 未注入自学习证据"
+            },
+            color = if (result.executionNote.contains("AI自学习证据已注入")) colors.green else colors.amber,
+            fontSize = 7.2.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(
+                    (if (result.executionNote.contains("AI自学习证据已注入")) colors.green else colors.amber)
+                        .copy(alpha = 0.08f),
+                )
+                .padding(horizontal = 9.dp, vertical = 6.dp),
         )
         Spacer(Modifier.height(8.dp))
         ReasoningBadge(result.reasoningState, result.reasoningTokens)

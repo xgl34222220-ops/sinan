@@ -11,15 +11,18 @@ class AiIndependenceContractTest {
     ).readText()
 
     @Test
-    fun formalPredictionUsesRawHistoryWithoutNativeStatistics() {
+    fun formalPredictionUsesRawHistoryAndOwnLearningWithoutNativeAnswers() {
         val source = source("AiAnalysis.kt")
         val payload = source.substringAfter("private fun analysisPayload(")
             .substringBefore("private fun isRetriableModelOutput")
         assertTrue(payload.contains("raw_draws_oldest_to_newest"))
-        assertTrue(payload.contains("raw-history-v1"))
+        assertTrue(payload.contains("raw-history+ai-self-learning-v2"))
+        assertTrue(payload.contains("ai_self_learning_evidence"))
+        assertTrue(payload.contains("self_learning_policy"))
         assertFalse(payload.contains("verified_position_statistics"))
         assertFalse(payload.contains("report.selectedPosition"))
         assertFalse(payload.contains("report.selected.top6"))
+        assertFalse(payload.contains("native_model_reference"))
     }
 
     @Test
