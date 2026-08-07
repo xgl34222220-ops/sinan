@@ -212,7 +212,7 @@ fun V62PushAlertCenterScreen(
                             color = colors.textDim,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 3.dp, top = 5.dp, bottom = 1.dp),
+                            modifier = Modifier.padding(start = 3.dp, top = 5.dp, end = 3.dp, bottom = 1.dp),
                         )
                     }
                     sectionAlerts.forEach { alert ->
