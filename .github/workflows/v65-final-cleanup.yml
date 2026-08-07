@@ -34,11 +34,9 @@ jobs:
           .tianji-console-v620 .v620-realtime-card{border-radius:var(--v65-card-radius)}
           .tianji-console-v620 .v630-health-pill{font-size:11px}
           '''
-          # Remove accidental duplicate if present.
-          if token + token in s:
+          while token + token in s:
               s = s.replace(token + token, token, 1)
-          mobile_anchor = '''@media(max-width:520px){
-          '''
+          mobile_anchor = '@media(max-width:520px){\n'
           mobile_density = '''@media(max-width:520px){
             .tianji-console-v620 .section{margin-top:10px}
             .tianji-console-v620 .card-pad{padding:14px}
@@ -50,7 +48,7 @@ jobs:
             .tianji-console-v620 .provider-mark{width:38px;height:38px;border-radius:13px;background:linear-gradient(145deg,var(--ai),var(--primary2))}
             .tianji-console-v620 .quick-current{font-size:16px}
           '''
-          if mobile_density not in s:
+          if '.tianji-console-v620 .model-choice{min-height:54px' not in s:
               if mobile_anchor not in s:
                   raise SystemExit('mobile media anchor missing')
               s = s.replace(mobile_anchor, mobile_density, 1)
@@ -58,20 +56,9 @@ jobs:
 
           push = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/V62PushAlertCenter.kt')
           p = push.read_text(encoding='utf-8')
-          old = '''                Text(
-                    "${alerts.size} 条历史通知 · ${alerts.count { !it.isRead }} 条未读",
-                    color = colors.textDim,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                )'''
-          new = '''                Text(
-                    "预测、预警与恢复",
-                    color = colors.textDim,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                )'''
+          old = '"${alerts.size} 条历史通知 · ${alerts.count { !it.isRead }} 条未读"'
           if old in p:
-              p = p.replace(old, new, 1)
+              p = p.replace(old, '"预测、预警与恢复"', 1)
           elif '"预测、预警与恢复"' not in p:
               raise SystemExit('notification subtitle target missing')
           push.write_text(p, encoding='utf-8')
