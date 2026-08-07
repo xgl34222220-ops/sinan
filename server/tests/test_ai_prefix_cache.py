@@ -163,29 +163,37 @@ class PrefixCacheTests(unittest.TestCase):
         self.assertEqual(usage["prompt_cache_miss_tokens"], 200)
         self.assertEqual(usage["reasoning_tokens"], 20)
 
+    @patch("app.ai_position_autonomy_guard._final_judge")
     @patch("app.ai_position_autonomy_guard._autonomous_review")
-    def test_fixed_target_ensemble_aggregates_usage_without_number_reviewers(
+    def test_fixed_target_ensemble_aggregates_specialists_and_arbiter_usage_without_number_reviewers(
         self,
         target_review: object,
+        final_judge: object,
     ) -> None:
+        usage = {
+            "request_count": 1,
+            "prompt_tokens": 100,
+            "prompt_cache_hit_tokens": 60,
+            "prompt_cache_miss_tokens": 40,
+            "completion_tokens": 10,
+            "reasoning_tokens": 2,
+        }
         target_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
             scores=[0.1] * 10,
-            analysis="固定目标名次",
-            usage={
-                "request_count": 1,
-                "prompt_tokens": 100,
-                "prompt_cache_hit_tokens": 60,
-                "prompt_cache_miss_tokens": 40,
-                "completion_tokens": 10,
-                "reasoning_tokens": 2,
-            },
+            analysis="固定目标走势专家",
+            usage=usage,
+        )
+        final_judge.return_value = _ReviewerResult(
+            scores=[0.1] * 10,
+            analysis="最终走势裁判",
+            usage=usage,
         )
         result = analyze_ensemble(history(), "21348120", config())
         self.assertEqual(result.position_reviewers, 3)
         self.assertEqual(result.number_reviewers, 0)
-        self.assertEqual(result.request_count, 3)
-        self.assertEqual(result.prompt_cache_hit_tokens, 180)
-        self.assertEqual(result.prompt_cache_miss_tokens, 120)
+        self.assertEqual(result.request_count, 4)
+        self.assertEqual(result.prompt_cache_hit_tokens, 240)
+        self.assertEqual(result.prompt_cache_miss_tokens, 160)
         self.assertAlmostEqual(result.cache_hit_rate, 0.60)
 
 
