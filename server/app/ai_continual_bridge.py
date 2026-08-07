@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import math
 from typing import Any
 
@@ -17,6 +17,7 @@ from .continual_learning import ContinualPositionProfile, build_position_profile
 _INSTALLED = False
 _ORIGINAL_ANALYZE_ENSEMBLE = ai_ensemble.analyze_ensemble
 _ORIGINAL_BUILD_POSITION_EVIDENCE = ai_ensemble.build_position_evidence
+_ORIGINAL_POSITION_REVIEW = ai_ensemble._position_review
 _ORIGINAL_AGGREGATE = ai_ensemble._aggregate
 _POSITION_PROFILES: ContextVar[tuple[ContinualPositionProfile, ...] | None] = ContextVar(
     "tianji_ai_position_profiles",
@@ -25,6 +26,14 @@ _POSITION_PROFILES: ContextVar[tuple[ContinualPositionProfile, ...] | None] = Co
 _AI_POSITION_WEIGHT = 0.38
 _LEARNED_POSITION_WEIGHT = 0.62
 _STATISTICAL_PRIOR_SUFFIX = "forward_statistical_prior"
+
+
+@dataclass(frozen=True)
+class _TaggedPositionReview:
+    scores: list[float]
+    analysis: str
+    usage: dict[str, int]
+    _tianji_position_review: bool = True
 
 
 def _profile_passed(profile: ContinualPositionProfile) -> bool:
@@ -167,8 +176,30 @@ def _build_position_evidence_with_learning(
     ]
 
 
+def _position_review_with_learning_tag(*args: Any, **kwargs: Any) -> _TaggedPositionReview:
+    result = _ORIGINAL_POSITION_REVIEW(*args, **kwargs)
+    return _TaggedPositionReview(
+        scores=list(result.scores),
+        analysis=str(result.analysis),
+        usage=dict(result.usage),
+    )
+
+
 def _aggregate_with_position_learning(results: list[Any]) -> list[float]:
+    """Calibrate position votes only; number votes must remain number votes.
+
+    The old bridge keyed solely on vector length. Position scores and number
+    scores both contain ten values, so number aggregation was silently polluted
+    by position-level forward profiles. Position reviews are now explicitly
+    tagged at their source and only those tagged reviews receive position
+    calibration.
+    """
     ai_scores = _ORIGINAL_AGGREGATE(results)
+    if not results or not all(
+        bool(getattr(result, "_tianji_position_review", False))
+        for result in results
+    ):
+        return ai_scores
     profiles = _POSITION_PROFILES.get()
     if profiles is None:
         return ai_scores
@@ -405,6 +436,7 @@ def install() -> None:
     if _INSTALLED:
         return
     ai_ensemble.build_position_evidence = _build_position_evidence_with_learning
+    ai_ensemble._position_review = _position_review_with_learning_tag
     ai_ensemble._aggregate = _aggregate_with_position_learning
     ai_ensemble.analyze_ensemble = _analyze_ensemble_with_continual_learning
     _INSTALLED = True
