@@ -40,6 +40,20 @@ def _recent_ai_decisions(history: list[Any], model: str, limit: int = 12) -> lis
     return result
 
 
+def _ai_consensus(reviews: list[Any]) -> tuple[list[float], int, list[int]]:
+    if not reviews:
+        raise ValueError("AI名次评审为空")
+    for review in reviews:
+        if len(list(getattr(review, "scores", []) or [])) != 10:
+            raise ValueError("AI名次评审未返回完整10位置评分")
+    scores = fixed_target_runtime_guard._normalize_scores([
+        sum(float(review.scores[position]) for review in reviews) / len(reviews)
+        for position in range(10)
+    ])
+    ranking = sorted(range(10), key=lambda index: scores[index], reverse=True)
+    return scores, ranking[0], ranking
+
+
 def _autonomous_review(
     config: Any,
     *,
@@ -141,12 +155,7 @@ def _analyze_ai_autonomy(
             recent_decisions=recent_decisions,
         ),
     )
-    ai_scores = fixed_target_runtime_guard._normalize_scores([
-        sum(review.scores[position] for review in reviews) / len(reviews)
-        for position in range(10)
-    ])
-    selected_index = max(range(10), key=lambda index: ai_scores[index])
-    ranking = sorted(range(10), key=lambda index: ai_scores[index], reverse=True)
+    ai_scores, selected_index, ranking = _ai_consensus(reviews)
     selected = profiles[selected_index]
     runner_up = profiles[ranking[1]]
     ai_support = sum(
