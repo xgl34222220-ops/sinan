@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from types import MethodType
 from typing import Any
 
@@ -13,13 +12,7 @@ _INSTALLED = False
 
 
 def _batch_settle_forecasts(self: Database, lottery: str) -> int:
-    """Delegate to the canonical learning-aware settlement implementation.
-
-    This hook used to replace ``Database.settle_forecasts`` with a faster legacy
-    query that only settled the forecast row. That silently skipped strategy
-    snapshots and prevented online learning. Keep the hook for compatibility,
-    but make the canonical database method the single source of truth.
-    """
+    """Delegate to the canonical learning-aware settlement implementation."""
     return Database.settle_forecasts(self, lottery)
 
 
@@ -78,19 +71,15 @@ def cleanup_runtime_state(max_job_age_days: int = 30) -> dict[str, Any]:
 
 
 def install() -> None:
+    """Install only database/runtime primitives.
+
+    Push Protocol v2 is now implemented directly by app.push_alerts. Older runtime bridge/fix
+    modules remain importable for historical tests and rollback inspection, but production no
+    longer replaces push functions at runtime.
+    """
     global _INSTALLED
     if _INSTALLED:
         return
     run_migrations()
     database.settle_forecasts = MethodType(_batch_settle_forecasts, database)
-
-    from .push_runtime_v2 import install as install_push_runtime_v2
-    from .push_runtime_bridge import install as install_push_runtime_bridge
-    from .push_runtime_fixes import install as install_push_runtime_fixes
-    from .push_freshness_guard import install as install_push_freshness_guard
-
-    install_push_runtime_v2()
-    install_push_runtime_bridge()
-    install_push_runtime_fixes()
-    install_push_freshness_guard()
     _INSTALLED = True

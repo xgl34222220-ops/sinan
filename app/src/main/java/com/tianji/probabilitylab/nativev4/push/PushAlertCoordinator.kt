@@ -16,12 +16,17 @@ object PushAlertCoordinator {
     }
     private val api = PushAlertApi()
     @Volatile private var initialized = false
+    @Volatile private var realtimeRefreshCallback: (() -> Unit)? = null
     private lateinit var appContext: Context
     private lateinit var store: PushAlertStore
 
     val alerts: StateFlow<List<PushAlert>> get() = store.alerts
     val preferences: StateFlow<PushPreferences> get() = store.settings
     val status: StateFlow<PushConnectionStatus> get() = store.status
+
+    fun setRealtimeRefreshCallback(callback: (() -> Unit)?) {
+        realtimeRefreshCallback = callback
+    }
 
     fun initialize(context: Context) {
         if (initialized) return
@@ -85,6 +90,9 @@ object PushAlertCoordinator {
         if (new.isNotEmpty() && store.settings.value.accepts(alert) && !alert.isExpired) {
             PushNotificationManager.show(appContext, alert)
         }
+        if (new.isNotEmpty() && alert.requestsRealtimeRefresh()) {
+            requestRealtimeRefresh()
+        }
     }
 
     private fun syncNow(notifyNew: Boolean): Boolean = runCatching {
@@ -96,6 +104,9 @@ object PushAlertCoordinator {
             newAlerts.filter(store.settings.value::accepts)
                 .filterNot(PushAlert::isExpired)
                 .forEach { PushNotificationManager.show(appContext, it) }
+        }
+        if (newAlerts.any { it.requestsRealtimeRefresh() }) {
+            requestRealtimeRefresh()
         }
         store.initialSyncComplete = true
         store.updateStatus(
@@ -124,6 +135,12 @@ object PushAlertCoordinator {
         )
         false
     }
+
+    private fun requestRealtimeRefresh() {
+        runCatching { realtimeRefreshCallback?.invoke() }
+    }
+
+    private fun PushAlert.requestsRealtimeRefresh(): Boolean = eventType in REALTIME_REFRESH_EVENTS
 
     private fun fetchIncrementalBatches(): List<PushAlert> {
         val collected = mutableListOf<PushAlert>()
@@ -155,6 +172,13 @@ object PushAlertCoordinator {
         )
     }
 
+    private val REALTIME_REFRESH_EVENTS = setOf(
+        PushProtocol.EVENT_PREDICTION_READY,
+        PushProtocol.EVENT_MISS_PREALERT,
+        PushProtocol.EVENT_MISS_ALERT,
+        PushProtocol.EVENT_MISS_ESCALATION,
+        PushProtocol.EVENT_HIT_RECOVERY,
+    )
     private const val ALERT_BATCH_SIZE = 120
     private const val MAX_SYNC_BATCHES = 5
 }

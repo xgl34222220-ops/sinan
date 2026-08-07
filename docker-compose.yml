@@ -18,7 +18,7 @@ services:
     env_file:
       - .env
     environment:
-      TIANJI_RUNTIME_REVISION: "1.8.0-multiscale-independent-ai"
+      TIANJI_RUNTIME_REVISION: "1.9.0-realtime-split-lane"
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups:ro
@@ -31,11 +31,11 @@ services:
     build:
       context: ./server
     restart: unless-stopped
-    command: ["python", "-m", "app.worker"]
+    command: ["python", "-m", "app.realtime_worker"]
     env_file:
       - .env
     environment:
-      TIANJI_RUNTIME_REVISION: "1.8.0-multiscale-independent-ai"
+      TIANJI_RUNTIME_REVISION: "1.9.0-realtime-split-lane"
     volumes:
       - ./data:/app/data
     depends_on:

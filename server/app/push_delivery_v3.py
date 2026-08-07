@@ -84,7 +84,12 @@ def message_data(alert: Any) -> dict[str, str]:
 
 
 def send_data_message(push_alerts_module: Any, token: str, alert: Any) -> tuple[bool, int | None, str]:
-    credentials = push_alerts_module._credentials()  # noqa: SLF001 - compatibility patch
+    """Compatibility helper kept for unit tests and older callers.
+
+    Production delivery now lives directly in app.push_alerts and does not install runtime
+    overrides from this module.
+    """
+    credentials = push_alerts_module._credentials()  # noqa: SLF001 - compatibility helper
     if credentials is None or not credentials.token:
         return False, None, "FCM 尚未配置"
 
@@ -93,9 +98,6 @@ def send_data_message(push_alerts_module: Any, token: str, alert: Any) -> tuple[
     payload = {
         "message": {
             "token": token,
-            # Deliberately data-only. Android always passes this through
-            # TianjiMessagingService, so the App selects the correct normal/risk
-            # channel instead of Firebase rendering every event as a risk alert.
             "data": data,
             "android": {
                 "priority": "HIGH",
@@ -126,11 +128,10 @@ def send_data_message(push_alerts_module: Any, token: str, alert: Any) -> tuple[
 
 
 def install(push_alerts_module: Any) -> None:
-    if getattr(push_alerts_module, "_tianji_data_only_fcm", False):
-        return
+    """Deprecated no-op.
 
-    def _send(token: str, alert: Any) -> tuple[bool, int | None, str]:
-        return send_data_message(push_alerts_module, token, alert)
-
-    push_alerts_module._send_fcm = _send  # noqa: SLF001 - intentional runtime compatibility
-    push_alerts_module._tianji_data_only_fcm = True
+    bootstrap.py and the legacy worker still call this entry point for compatibility, but the
+    canonical push module now owns data-only FCM delivery itself. Keeping this as a no-op removes
+    the last production monkey patch without forcing a risky bootstrap rewrite.
+    """
+    del push_alerts_module
