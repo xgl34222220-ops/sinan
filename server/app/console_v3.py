@@ -10,14 +10,25 @@ from .public_v4 import enhance_public_html
 V510_STYLE = r"""
 :where(button,a,input,select,summary):focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
 #recordsPro .v3-controls{position:sticky;top:64px;z-index:18;background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-.v510-platform{margin-top:14px}.v510-platform-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.v510-platform-card{padding:14px;border:1px solid var(--line);border-radius:19px;background:var(--surface);box-shadow:var(--shadow2)}.v510-platform-card span{display:block;color:var(--muted);font-size:11px}.v510-platform-card strong{display:block;margin-top:6px;font-size:15px;overflow-wrap:anywhere}.v510-platform-card small{display:block;margin-top:4px;color:var(--muted);font-size:11px;line-height:1.45}.v510-stage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}.v510-stage{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:13px;border:1px solid var(--line);background:var(--soft);font-size:11px}.v510-stage b{font-size:12px}.v510-stage.error{color:var(--bad);background:var(--bad-soft)}.v510-stage.ok b{color:var(--good)}
+.v510-platform{margin-top:10px}.v510-platform-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.v510-platform-card{padding:14px;border:1px solid var(--line);border-radius:19px;background:var(--surface);box-shadow:var(--shadow2)}.v510-platform-card span{display:block;color:var(--muted);font-size:11px}.v510-platform-card strong{display:block;margin-top:6px;font-size:15px;overflow-wrap:anywhere}.v510-platform-card small{display:block;margin-top:4px;color:var(--muted);font-size:11px;line-height:1.45}.v510-stage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}.v510-stage{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:13px;border:1px solid var(--line);background:var(--soft);font-size:11px}.v510-stage b{font-size:12px}.v510-stage.error{color:var(--bad);background:var(--bad-soft)}.v510-stage.ok b{color:var(--good)}
 .v510-deploy{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,.7fr));gap:10px;align-items:center;margin-top:10px;padding:14px 15px;border:1px solid var(--line);border-radius:19px;background:linear-gradient(135deg,var(--primary-soft),var(--surface));box-shadow:var(--shadow2)}.v510-deploy.attention{background:linear-gradient(135deg,var(--bad-soft),var(--surface));border-color:color-mix(in srgb,var(--bad) 22%,var(--line))}.v510-deploy-main{min-width:0}.v510-deploy-title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:820}.v510-deploy-dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 5px color-mix(in srgb,var(--good) 13%,transparent)}.v510-deploy.attention .v510-deploy-dot{background:var(--bad);box-shadow:0 0 0 5px color-mix(in srgb,var(--bad) 12%,transparent)}.v510-deploy-message{margin-top:4px;color:var(--muted);font-size:11px;line-height:1.55}.v510-deploy-meta span{display:block;color:var(--muted);font-size:11px}.v510-deploy-meta strong{display:block;margin-top:4px;font-size:12px;overflow-wrap:anywhere}.v510-commit{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
-.v630-healthbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.v630-health-pill{display:flex;align-items:center;gap:7px;min-height:35px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font-size:11px;font-weight:760}.v630-health-pill i{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 4px color-mix(in srgb,var(--good) 12%,transparent)}.v630-health-pill.warn i{background:var(--warn);box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 12%,transparent)}.v630-health-pill.bad i{background:var(--bad);box-shadow:0 0 0 4px color-mix(in srgb,var(--bad) 12%,transparent)}.v630-health-details{margin-top:10px}.v630-health-details>summary{cursor:pointer;list-style:none;color:var(--muted);font-size:11px;font-weight:760;padding:7px 2px}.v630-health-details>summary::-webkit-details-marker{display:none}.v630-health-details>summary:after{content:'展开详情';margin-left:7px;color:var(--primary)}.v630-health-details[open]>summary:after{content:'收起详情'}
-.v620-realtime{margin-top:14px}.v620-realtime-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:11px}.v620-realtime-card{padding:16px;border:1px solid var(--line);border-radius:21px;background:linear-gradient(145deg,color-mix(in srgb,var(--primary-soft) 42%,var(--surface)),var(--surface));box-shadow:var(--shadow2)}.v620-realtime.stale .v620-realtime-card{opacity:.72}.v620-realtime-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.v620-realtime-head strong{font-size:15px}.v620-realtime-head span{font-size:11px;color:var(--muted)}.v620-latency-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.v620-latency{padding:10px;border-radius:14px;background:var(--soft);border:1px solid var(--line)}.v620-latency span{display:block;font-size:11px;color:var(--muted)}.v620-latency strong{display:block;margin-top:4px;font-size:17px;letter-spacing:-.03em}.v620-latency em{display:block;margin-top:3px;font-style:normal;font-size:11px;color:var(--muted)}.v620-realtime-foot{display:flex;justify-content:space-between;gap:10px;margin-top:10px;color:var(--muted);font-size:11px;line-height:1.5}.v620-realtime-foot b{color:var(--text);font-weight:760}.v620-build{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted)}.v620-fresh{display:inline-flex;align-items:center;min-height:25px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:760;background:var(--good-soft);color:var(--good);margin-left:7px}.v620-fresh.warn{background:var(--warn-soft);color:var(--warn)}
+.v630-health-summary{display:flex;align-items:center;justify-content:space-between;gap:10px}.v630-health-summary strong{display:block;font-size:14px}.v630-health-summary small{display:block;margin-top:2px;color:var(--muted);font-size:10px;line-height:1.45}.v630-healthbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}.v630-health-pill{display:flex;align-items:center;gap:7px;min-height:35px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font-size:11px;font-weight:760}.v630-health-pill i{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 4px color-mix(in srgb,var(--good) 12%,transparent)}.v630-health-pill.warn i{background:var(--warn);box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 12%,transparent)}.v630-health-pill.bad i{background:var(--bad);box-shadow:0 0 0 4px color-mix(in srgb,var(--bad) 12%,transparent)}.v630-health-details{margin-top:8px}.v630-health-details>summary{cursor:pointer;list-style:none;color:var(--muted);font-size:11px;font-weight:760;padding:7px 2px}.v630-health-details>summary::-webkit-details-marker{display:none}.v630-health-details>summary:after{content:'展开详情';margin-left:7px;color:var(--primary)}.v630-health-details[open]>summary:after{content:'收起详情'}
+.v620-realtime{margin-top:11px}.v620-realtime-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:10px}.v620-realtime-card{padding:15px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(145deg,color-mix(in srgb,var(--primary-soft) 34%,var(--surface)),var(--surface));box-shadow:var(--shadow2)}.v620-realtime-card.bad{border-color:color-mix(in srgb,var(--bad) 30%,var(--line));background:linear-gradient(145deg,color-mix(in srgb,var(--bad-soft) 58%,var(--surface)),var(--surface))}.v620-realtime-card.warn{border-color:color-mix(in srgb,var(--warn) 26%,var(--line));background:linear-gradient(145deg,color-mix(in srgb,var(--warn-soft) 54%,var(--surface)),var(--surface))}.v620-realtime.stale .v620-realtime-card{opacity:.72}.v620-realtime-head{display:flex;align-items:center;justify-content:space-between;gap:9px}.v620-realtime-title{display:flex;align-items:center;gap:7px;min-width:0}.v620-realtime-title strong{font-size:15px}.v620-card-state{display:inline-flex;align-items:center;min-height:23px;padding:0 8px;border-radius:999px;background:var(--good-soft);color:var(--good);font-size:10px;font-weight:820}.v620-card-state.warn{background:var(--warn-soft);color:var(--warn)}.v620-card-state.bad{background:var(--bad-soft);color:var(--bad)}.v620-realtime-head>span{font-size:11px;color:var(--muted);white-space:nowrap}.v620-latency-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:11px}.v620-latency{padding:10px;border-radius:14px;background:var(--soft);border:1px solid var(--line)}.v620-latency span{display:block;font-size:11px;color:var(--muted)}.v620-latency strong{display:block;margin-top:4px;font-size:17px;letter-spacing:-.03em}.v620-latency em{display:block;margin-top:3px;font-style:normal;font-size:11px;color:var(--muted)}.v620-realtime-foot{display:flex;justify-content:space-between;gap:10px;margin-top:9px;color:var(--muted);font-size:11px;line-height:1.5}.v620-realtime-foot b{color:var(--text);font-weight:760}.v620-build{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted)}.v620-fresh{display:inline-flex;align-items:center;min-height:25px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:760;background:var(--good-soft);color:var(--good);margin-left:7px}.v620-fresh.warn{background:var(--warn-soft);color:var(--warn)}
 .tianji-console-v620 .metric-label,.tianji-console-v620 .section-head p,.tianji-console-v620 .panel-head p,.tianji-console-v620 .card-head p,.tianji-console-v620 .sub,.tianji-console-v620 .quick-meta,.tianji-console-v620 .quick-note,.tianji-console-v620 .profile-model,.tianji-console-v620 .profile-endpoint{font-size:max(11px,1em)}.tianji-console-v620 .metric-foot,.tianji-console-v620 .badge,.tianji-console-v620 .target,.tianji-console-v620 .empty,.tianji-console-v620 .disclaimer{font-size:11px}.tianji-console-v620 .nav-tail,.tianji-console-v620 .side-label{font-size:10px}
 @media(max-width:1040px){.v510-platform-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.v510-deploy{grid-template-columns:repeat(3,minmax(0,1fr))}.v510-deploy-main{grid-column:1/-1}}
 @media(max-width:760px){.v510-platform-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v510-stage-grid{grid-template-columns:1fr}.v510-deploy{grid-template-columns:1fr 1fr}#recordsPro .v3-controls{top:57px}.v620-realtime-grid{grid-template-columns:1fr}}
-@media(max-width:520px){.v510-platform-grid,.v510-deploy{grid-template-columns:1fr}.v510-deploy-main{grid-column:auto}.v620-latency-grid{grid-template-columns:1fr}.v630-health-pill{flex:1 1 calc(50% - 8px);justify-content:flex-start}}
+@media(max-width:520px){
+  .tianji-console-v620 .shell{padding-bottom:calc(108px + env(safe-area-inset-bottom))!important}
+  .tianji-console-v620 .topbar{min-height:52px;margin-bottom:8px;padding:5px 7px;border-radius:17px}
+  .tianji-console-v620 .topbar .mark{width:34px;height:34px;flex-basis:34px;border-radius:12px}
+  .tianji-console-v620 .topbar .brand h1{font-size:15px}.tianji-console-v620 .topbar .brand p{display:none}
+  .tianji-console-v620 .topbar .icon-btn{width:36px;height:36px;min-height:36px;border-radius:12px}
+  .tianji-console-v620 .panel-head{margin-bottom:7px;align-items:center}.tianji-console-v620 .panel-head h2{font-size:20px}.tianji-console-v620 .panel-head p{display:none}.tianji-console-v620 #runBtn{min-height:36px;padding:0 11px}
+  .v510-platform-grid,.v510-deploy{grid-template-columns:1fr}.v510-deploy-main{grid-column:auto}.v630-health-pill{flex:1 1 calc(50% - 8px);justify-content:flex-start;min-height:32px;padding:0 9px;font-size:10px}.v630-health-summary small{display:none}.v630-health-details{margin-top:5px}
+  .v620-realtime{margin-top:8px}.v620-realtime .v3-head{align-items:center;margin-bottom:0}.v620-realtime .v3-head p,.v620-build{display:none}.v620-realtime-card{padding:12px;border-radius:17px}.v620-realtime-title strong{font-size:14px}.v620-realtime-head>span{font-size:10px}.v620-card-state{min-height:21px;padding:0 7px;font-size:9px}
+  .v620-latency-grid{grid-template-columns:minmax(0,1.45fr) minmax(0,.78fr) minmax(0,.78fr);gap:6px;margin-top:9px}.v620-latency{padding:8px 7px;border-radius:12px;min-width:0}.v620-latency span{font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v620-latency strong{font-size:14px}.v620-latency:first-child strong{font-size:22px}.v620-latency em{font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v620-latency:not(:first-child) em{display:none}.v620-realtime-foot{margin-top:7px;font-size:9.5px;gap:6px;flex-wrap:wrap}
+  .tianji-console-v620 .mobile-nav{left:12px!important;right:12px!important;bottom:calc(11px + env(safe-area-inset-bottom))!important;padding:4px!important;border-radius:21px!important}.tianji-console-v620 .mobile-nav .nav-btn{min-height:43px!important;border-radius:15px!important;font-size:9.5px!important}.tianji-console-v620 .mobile-nav .nav-tail{display:none!important}
+}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 """
 
@@ -39,6 +50,9 @@ FILTER_PATCH = r"""
       .catch(()=>{});
   }
 
+  const compact=window.matchMedia('(max-width:520px)').matches;
+  const runButton=document.getElementById('runBtn');
+  if(compact&&runButton)runButton.textContent='同步';
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const age=value=>{if(!value)return'尚未执行';const diff=Math.max(0,Date.now()-Number(value));if(diff<60000)return Math.floor(diff/1000)+' 秒前';if(diff<3600000)return Math.floor(diff/60000)+' 分钟前';if(diff<86400000)return Math.floor(diff/3600000)+' 小时前';return Math.floor(diff/86400000)+' 天前'};
   const duration=value=>value===null||value===undefined?'—':Number(value)<1000?Math.round(Number(value))+' ms':(Number(value)/1000).toFixed(1)+' s';
@@ -71,6 +85,11 @@ FILTER_PATCH = r"""
     pill.className=`v630-health-pill ${state||''}`.trim();
     pill.innerHTML=`<i></i>Realtime ${esc(text)}`;
   };
+  const installAfterPanelHead=section=>{
+    const overview=document.getElementById('panel-overview');
+    const anchor=overview?.querySelector('.panel-head');
+    if(anchor&&section&&anchor.nextElementSibling!==section)anchor.insertAdjacentElement('afterend',section);
+  };
   let lastPlatformSuccess=0;
   let lastRealtimeSuccess=0;
 
@@ -83,7 +102,8 @@ FILTER_PATCH = r"""
       const data=await response.json();
       lastPlatformSuccess=Date.now();
       let section=document.getElementById('v510Platform');
-      if(!section){section=document.createElement('section');section.id='v510Platform';section.className='section v510-platform';overview.appendChild(section)}
+      if(!section){section=document.createElement('section');section.id='v510Platform';section.className='section v510-platform'}
+      installAfterPanelHead(section);
       const aiHealth=data.ai_health||{};
       const delivery=data.delivery_health||{};
       const fcm=(delivery.channels||{}).fcm||{};
@@ -95,10 +115,10 @@ FILTER_PATCH = r"""
       const fcmOk=Number(fcm.failed||0)===0;
       const telegramOk=Number(telegram.failed||0)===0;
       section.innerHTML=`
-        <div class="v3-head"><div><h3>运行总览</h3><p>正常时只看这一行；出现异常再展开详细卡片定位服务、AI 或投递渠道。</p></div><span class="badge ${healthy?'good':'warn'}">${healthy?'运行正常':'需要检查'}</span></div>
+        <div class="v630-health-summary"><div><strong>系统健康</strong><small>正常时只看状态胶囊；异常时再展开详细运行指标。</small></div><span class="badge ${healthy?'good':'warn'}">${healthy?'运行正常':'需要检查'}</span></div>
         <div class="v630-healthbar">
           <span class="v630-health-pill ${workerOk?'':'warn'}"><i></i>服务 ${workerOk?'正常':'待恢复'}</span>
-          <span id="v630RealtimePill" class="v630-health-pill"><i></i>Realtime ${lastRealtimeSuccess?'正常':'等待'}</span>
+          <span id="v630RealtimePill" class="v630-health-pill"><i></i>Realtime ${lastRealtimeSuccess?'已连接':'等待'}</span>
           <span class="v630-health-pill ${aiOk?'':'warn'}"><i></i>AI ${aiOk?'正常':Number(aiHealth.failed||0)+' 失败'}</span>
           <span class="v630-health-pill ${fcmOk?'':'warn'}"><i></i>FCM ${fcmOk?'正常':Number(fcm.failed||0)+' 失败'}</span>
           <span class="v630-health-pill ${telegramOk?'':'warn'}"><i></i>Telegram ${telegramOk?'正常':Number(telegram.failed||0)+' 失败'}</span>
@@ -112,14 +132,10 @@ FILTER_PATCH = r"""
             <article class="v510-platform-card"><span>Telegram</span><strong class="${telegramOk?'good':'warn'}">${Number(telegram.sent||0)} 成功 · ${Number(telegram.failed||0)} 失败</strong><small>最近 24 小时 · 与 FCM 并行投递</small></article>
           </div>
         </details>`;
-      if(lastRealtimeSuccess)updateRealtimePill('', '正常');
     }catch(_error){
       let section=document.getElementById('v510Platform');
-      if(!section){
-        const overview=document.getElementById('panel-overview');
-        if(!overview)return;
-        section=document.createElement('section');section.id='v510Platform';section.className='section v510-platform';overview.appendChild(section);
-      }
+      if(!section){section=document.createElement('section');section.id='v510Platform';section.className='section v510-platform'}
+      installAfterPanelHead(section);
       section.innerHTML=`<div class="v510-deploy attention"><div class="v510-deploy-main"><div class="v510-deploy-title"><i class="v510-deploy-dot"></i>服务状态刷新失败</div><div class="v510-deploy-message">暂时读取不到最新状态，请检查网络后刷新；后台预警与预测任务不会因为这个页面失败而停止。</div></div><div class="v510-deploy-meta"><span>最后成功刷新</span><strong>${lastPlatformSuccess?new Date(lastPlatformSuccess).toLocaleTimeString('zh-CN',{hour12:false}):'尚未成功'}</strong></div></div>`;
     }
   }
@@ -137,24 +153,37 @@ FILTER_PATCH = r"""
       const data=await response.json();
       lastRealtimeSuccess=Date.now();
       let section=document.getElementById('v620Realtime');
-      if(!section){section=document.createElement('section');section.id='v620Realtime';section.className='section v620-realtime';overview.appendChild(section)}
+      if(!section){section=document.createElement('section');section.id='v620Realtime';section.className='section v620-realtime'}
+      const health=document.getElementById('v510Platform');
+      if(health&&health.nextElementSibling!==section)health.insertAdjacentElement('afterend',section);
+      else if(!health)installAfterPanelHead(section);
       section.classList.remove('stale');
-      const cards=(data.lotteries||[]).map(item=>{
+      const lotteries=[...(data.lotteries||[])].sort((a,b)=>{
+        const av=Number(a.detection_delay_ms??a.detection_delay_ema_ms??-1);
+        const bv=Number(b.detection_delay_ms??b.detection_delay_ema_ms??-1);
+        return bv-av;
+      });
+      const cards=lotteries.map(item=>{
         const current=item.detection_delay_ms;
         const average=item.detection_delay_ema_ms;
         const shown=current===null||current===undefined?average:current;
-        return `<article class="v620-realtime-card">
-          <div class="v620-realtime-head"><strong>${esc(item.name||item.key)}</strong><span>更新 ${age(item.updated_at_epoch_ms)}</span></div>
+        const state=latencyClass(shown);
+        return `<article class="v620-realtime-card ${state}">
+          <div class="v620-realtime-head"><div class="v620-realtime-title"><strong>${esc(item.name||item.key)}</strong><span class="v620-card-state ${state}">${latencyLabel(shown)}</span></div><span>更新 ${age(item.updated_at_epoch_ms)}</span></div>
           <div class="v620-latency-grid">
-            <div class="v620-latency"><span>API 出结果 → 天机发现</span><strong class="${latencyClass(shown)}">${duration(shown)}</strong><em>${latencyLabel(shown)} · ${trend(current,average)}</em></div>
-            <div class="v620-latency"><span>单次探测请求</span><strong>${duration(item.probe_latency_ms)}</strong><em>${latencyLabel(item.probe_latency_ms)}</em></div>
-            <div class="v620-latency"><span>写库 + 结算</span><strong>${duration(item.settlement_latency_ms)}</strong><em>${latencyLabel(item.settlement_latency_ms)}</em></div>
+            <div class="v620-latency"><span>开奖发现延迟</span><strong class="${state}">${duration(shown)}</strong><em>${trend(current,average)}</em></div>
+            <div class="v620-latency"><span>探测请求</span><strong>${duration(item.probe_latency_ms)}</strong><em>${latencyLabel(item.probe_latency_ms)}</em></div>
+            <div class="v620-latency"><span>写库结算</span><strong>${duration(item.settlement_latency_ms)}</strong><em>${latencyLabel(item.settlement_latency_ms)}</em></div>
           </div>
           <div class="v620-realtime-foot"><span>EMA <b>${duration(average)}</b> · 历史最慢 <b>${duration(item.max_detection_delay_ms)}</b></span><span>样本 <b>${Number(item.draw_detection_samples||0)}</b></span></div>
         </article>`;
       }).join('');
-      section.innerHTML=`<div class="v3-head"><div><h3>实时开奖链路 <span class="v620-fresh">实时</span></h3><p>直接显示开奖后的实际检测和结算耗时；状态标签用于快速判断瓶颈来自上游、探测还是本机结算。</p></div><span class="v620-build">service ${esc(data.service_version||'—')} · ${esc(data.runtime_revision||'runtime —')}</span></div><div class="v620-realtime-grid">${cards||'<div class="empty">等待实时 Worker 写入首个延迟样本</div>'}</div>`;
-      updateRealtimePill('', '正常');
+      section.innerHTML=`<div class="v3-head"><div><h3>实时开奖链路 <span class="v620-fresh">实时</span></h3><p>异常彩种自动排到最前，主指标看开奖发现延迟，探测与写库耗时用于定位瓶颈。</p></div><span class="v620-build">service ${esc(data.service_version||'—')} · ${esc(data.runtime_revision||'runtime —')}</span></div><div class="v620-realtime-grid">${cards||'<div class="empty">等待实时 Worker 写入首个延迟样本</div>'}</div>`;
+      const observed=lotteries.map(item=>Number(item.detection_delay_ms??item.detection_delay_ema_ms)).filter(Number.isFinite);
+      if(observed.length){
+        const worst=Math.max(...observed);
+        updateRealtimePill(latencyClass(worst), `${latencyLabel(worst)} ${duration(worst)}`);
+      }else updateRealtimePill('', '等待样本');
       const targets=(data.lotteries||[]).map(item=>Number(item.next_draw_at_epoch_ms||0)).filter(Boolean);
       if(targets.some(target=>target-Date.now()>=-90000&&target-Date.now()<=180000))delay=3000;
     }catch(_error){
@@ -245,7 +274,7 @@ def enhance_console_html(value: str) -> str:
             'content="width=device-width,initial-scale=1,viewport-fit=cover">'
         )
     style = (
-        f"<style>/* Tianji Cloud Console V6.2 | canonical console compatibility */"
+        f"<style>/* Tianji Cloud Console V6.3 density / hierarchy compatibility */"
         f"{style_text}{V510_STYLE}</style>"
     )
     script = f"<script>{script_text}</script><script>{FILTER_PATCH}</script>"

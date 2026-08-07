@@ -42,6 +42,15 @@ fun SettingsEntry(
     badge: String? = null,
 ) {
     val colors = LocalTianjiColors.current
+    val tint = when {
+        title.contains("AI", ignoreCase = true) -> colors.violet
+        title.contains("数据") -> Color(0xFF46A5E8)
+        title.contains("推送") || title.contains("预警") -> colors.amber
+        title.contains("外观") || title.contains("主题") -> colors.accent
+        title.contains("开奖") || title.contains("历史") -> colors.green
+        else -> colors.textSoft
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -58,10 +67,10 @@ fun SettingsEntry(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(13.dp))
-                .background(colors.accentSoft),
+                .background(tint.copy(alpha = 0.11f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = colors.accent, modifier = Modifier.size(20.dp))
+            Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -84,13 +93,13 @@ fun SettingsEntry(
         badge?.let {
             Text(
                 it,
-                color = colors.accent,
+                color = tint,
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(colors.accentSoft)
+                    .background(tint.copy(alpha = 0.10f))
                     .padding(horizontal = 8.dp, vertical = 5.dp),
             )
             Spacer(Modifier.width(5.dp))

@@ -1,5 +1,6 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +54,9 @@ import androidx.compose.ui.unit.sp
 import com.tianji.probabilitylab.nativev4.AppUiState
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 private enum class V62ArchiveStatus(val label: String) {
     ALL("全部"), PENDING("待开奖"), HIT("已命中"), MISSED("未命中"),
@@ -77,6 +81,7 @@ private data class V62ArchiveItem(
     val hash: String,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun V62ArchiveScreen(
     state: AppUiState,
@@ -91,6 +96,10 @@ fun V62ArchiveScreen(
     var visibleCount by rememberSaveable(state.lottery.apiKey) { mutableIntStateOf(120) }
     val source = V62ArchiveSource.entries.firstOrNull { it.name == sourceName } ?: V62ArchiveSource.ALL
     val status = V62ArchiveStatus.entries.firstOrNull { it.name == statusName } ?: V62ArchiveStatus.ALL
+    val activeFilterCount = listOf(
+        source != V62ArchiveSource.ALL,
+        status != V62ArchiveStatus.ALL,
+    ).count { it }
 
     val allItems = remember(
         state.aiConsensusRecords,
@@ -182,6 +191,13 @@ fun V62ArchiveScreen(
         visibleCount = 120
     }
     val shown = filtered.take(visibleCount)
+    val shownSections = remember(shown) {
+        val grouped = linkedMapOf<String, MutableList<V62ArchiveItem>>()
+        shown.forEach { item ->
+            grouped.getOrPut(v62ArchiveDayLabel(item.createdAtEpochMs)) { mutableListOf() }.add(item)
+        }
+        grouped
+    }
 
     LazyColumn(
         modifier = modifier,
@@ -197,8 +213,14 @@ fun V62ArchiveScreen(
                 settled = allItems.count { it.top6Hit != null },
             )
         }
-        item("search") {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        stickyHeader("search") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.page.copy(alpha = 0.97f))
+                    .padding(top = 5.dp, bottom = 7.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = query,
@@ -215,23 +237,37 @@ fun V62ArchiveScreen(
                             unfocusedBorderColor = colors.line,
                             focusedTextColor = colors.text,
                             unfocusedTextColor = colors.text,
-                            focusedContainerColor = colors.surfaceStrong.copy(alpha = 0.72f),
-                            unfocusedContainerColor = colors.surfaceStrong.copy(alpha = 0.72f),
+                            focusedContainerColor = colors.surfaceStrong.copy(alpha = 0.92f),
+                            unfocusedContainerColor = colors.surfaceStrong.copy(alpha = 0.92f),
                         ),
                     )
                     Row(
                         modifier = Modifier
                             .heightIn(min = 56.dp)
                             .clip(RoundedCornerShape(15.dp))
-                            .background(if (showFilters) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.72f))
-                            .border(1.dp, if (showFilters) colors.accent.copy(alpha = 0.25f) else colors.line, RoundedCornerShape(15.dp))
+                            .background(if (showFilters || activeFilterCount > 0) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.92f))
+                            .border(
+                                1.dp,
+                                if (showFilters || activeFilterCount > 0) colors.accent.copy(alpha = 0.25f) else colors.line,
+                                RoundedCornerShape(15.dp),
+                            )
                             .clickable { showFilters = !showFilters }
                             .padding(horizontal = 13.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.FilterList, contentDescription = "筛选档案", tint = if (showFilters) colors.accent else colors.textSoft, modifier = Modifier.size(19.dp))
+                        Icon(
+                            Icons.Rounded.FilterList,
+                            contentDescription = "筛选档案",
+                            tint = if (showFilters || activeFilterCount > 0) colors.accent else colors.textSoft,
+                            modifier = Modifier.size(19.dp),
+                        )
                         Spacer(Modifier.width(6.dp))
-                        Text("筛选", color = if (showFilters) colors.accent else colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (activeFilterCount > 0) "筛选 · $activeFilterCount" else "筛选",
+                            color = if (showFilters || activeFilterCount > 0) colors.accent else colors.textSoft,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
                 if (showFilters) {
@@ -245,6 +281,17 @@ fun V62ArchiveScreen(
                         selected = status,
                         label = V62ArchiveStatus::label,
                     ) { statusName = it.name }
+                    if (activeFilterCount > 0) {
+                        TextButton(
+                            onClick = {
+                                sourceName = V62ArchiveSource.ALL.name
+                                statusName = V62ArchiveStatus.ALL.name
+                            },
+                            modifier = Modifier.align(Alignment.End),
+                        ) {
+                            Text("清除筛选", color = colors.textDim, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
@@ -264,8 +311,20 @@ fun V62ArchiveScreen(
         if (filtered.isEmpty()) {
             item("empty") { EmptyState("没有匹配的档案", "调整搜索词或筛选条件后重试", false) }
         } else {
-            shown.forEach { item ->
-                item(item.key) { V62ArchiveRecord(item) }
+            shownSections.forEach { (label, items) ->
+                stickyHeader("archive-day-$label") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.page.copy(alpha = 0.96f))
+                            .padding(horizontal = 3.dp, vertical = 6.dp),
+                    ) {
+                        Text(label, color = colors.textDim, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                items.forEach { item ->
+                    item(item.key) { V62ArchiveRecord(item) }
+                }
             }
             if (shown.size < filtered.size) {
                 item("load-more") {
@@ -290,30 +349,33 @@ fun V62ArchiveScreen(
 private fun V62ArchiveSummary(valid: Boolean, checked: Int, total: Int, settled: Int) {
     val colors = LocalTianjiColors.current
     val tint = if (valid) colors.green else colors.red
-    SurfaceCard(radius = 22.dp) {
+    SurfaceCard(radius = if (valid) 18.dp else 22.dp) {
         Row(
-            modifier = Modifier.padding(15.dp),
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = if (valid) 10.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(tint.copy(alpha = 0.11f)),
+                modifier = Modifier
+                    .size(if (valid) 34.dp else 42.dp)
+                    .clip(RoundedCornerShape(if (valid) 11.dp else 14.dp))
+                    .background(tint.copy(alpha = 0.11f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Fingerprint, null, tint = tint, modifier = Modifier.size(22.dp))
+                Icon(Icons.Rounded.Fingerprint, null, tint = tint, modifier = Modifier.size(if (valid) 18.dp else 22.dp))
             }
-            Spacer(Modifier.width(11.dp))
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("真实前向档案", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                Text("真实前向档案", color = colors.text, fontSize = if (valid) 14.sp else 16.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    if (valid) "完整性链正常 · 已核验 $checked 条" else "完整性链异常 · 暂停采用相关成绩",
+                    if (valid) "完整性正常 · 已核验 $checked 条" else "完整性链异常 · 暂停采用相关成绩",
                     color = tint,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("$settled / $total", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
-                Text("已结算 / 总档案", color = colors.textDim, fontSize = 11.sp)
+                Text("$settled / $total", color = colors.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                Text("已结算 / 总档案", color = colors.textDim, fontSize = 10.sp)
             }
         }
     }
@@ -339,12 +401,12 @@ private fun <T> V62ArchiveFilterRow(
                 fontSize = 12.sp,
                 fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium,
                 modifier = Modifier
-                    .heightIn(min = 44.dp)
+                    .heightIn(min = 42.dp)
                     .clip(CircleShape)
-                    .background(if (active) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.64f))
+                    .background(if (active) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.82f))
                     .border(1.dp, if (active) colors.accent.copy(alpha = 0.22f) else colors.line, CircleShape)
                     .clickable { onSelected(item) }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
             )
         }
     }
@@ -397,14 +459,17 @@ private fun V62ArchiveRecord(item: V62ArchiveItem) {
                 Text(item.detail, color = colors.textSoft, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(formatTimeV2(item.createdAtEpochMs), color = colors.textDim, fontSize = 11.sp)
             }
-            if (item.hash.isNotBlank()) {
-                Text(
-                    item.hash.take(12),
-                    color = colors.textDim,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
         }
+    }
+}
+
+private fun v62ArchiveDayLabel(epochMs: Long): String {
+    val zone = ZoneId.systemDefault()
+    val date = Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+    val today = LocalDate.now(zone)
+    return when (date) {
+        today -> "今天"
+        today.minusDays(1) -> "昨天"
+        else -> "%02d-%02d".format(date.monthValue, date.dayOfMonth)
     }
 }
