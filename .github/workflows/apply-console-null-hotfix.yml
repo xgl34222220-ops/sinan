@@ -1,0 +1,60 @@
+name: Apply console null hotfix
+
+on:
+  push:
+    branches: [hotfix/console-null-innerhtml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: hotfix/console-null-innerhtml
+          fetch-depth: 0
+      - name: Patch hidden legacy diagnostics safely
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          js_path = Path('server/app/console_v594.js')
+          js = js_path.read_text(encoding='utf-8')
+          old = "q('#diagnostics')?.closest('.card')?.remove();"
+          new = "const legacyDiagnosticsCard=q('#diagnostics')?.closest('.card');if(legacyDiagnosticsCard){legacyDiagnosticsCard.setAttribute('hidden','hidden');legacyDiagnosticsCard.setAttribute('aria-hidden','true')}"
+          if old not in js:
+              raise SystemExit('expected diagnostics removal statement not found')
+          js = js.replace(old, new, 1)
+          js_path.write_text(js, encoding='utf-8')
+
+          test_path = Path('server/tests/test_console_delivery_simplification.py')
+          test = test_path.read_text(encoding='utf-8')
+          anchor = '    assert "内部任务名、数据库细节与毫秒耗时已隐藏" in py\n'
+          addition = (
+              '    assert ".closest(\\\'.card\\\')?.remove()" not in js\n'
+              '    assert "legacyDiagnosticsCard.setAttribute(\\\'hidden\\\',\\\'hidden\\\')" in js\n'
+              '    assert "legacyDiagnosticsCard.setAttribute(\\\'aria-hidden\\\',\\\'true\\\')" in js\n'
+          )
+          if addition not in test:
+              if anchor not in test:
+                  raise SystemExit('test anchor not found')
+              test = test.replace(anchor, anchor + addition, 1)
+              test_path.write_text(test, encoding='utf-8')
+
+          assert old not in js
+          assert "setAttribute('hidden','hidden')" in js
+          assert "$('diagnostics').innerHTML=diagnostics(d)" in Path('server/app/web_console.py').read_text(encoding='utf-8')
+          PY
+      - name: Commit hotfix and remove helper workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'xgl34222220-ops'
+          git config user.email 'xgl34222220@gmail.com'
+          git rm .github/workflows/apply-console-null-hotfix.yml
+          git add server/app/console_v594.js server/tests/test_console_delivery_simplification.py
+          git commit -m 'fix(console): preserve hidden diagnostics render target'
+          git push origin HEAD:hotfix/console-null-innerhtml
