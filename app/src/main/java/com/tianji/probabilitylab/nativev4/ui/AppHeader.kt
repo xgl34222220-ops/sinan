@@ -22,18 +22,18 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,71 +56,61 @@ fun CompactAppHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(70.dp)
+            .height(62.dp)
             .background(
                 Brush.verticalGradient(
-                    listOf(colors.header, colors.page.copy(alpha = 0.96f)),
+                    listOf(colors.header, colors.page.copy(alpha = 0.94f)),
                 ),
             )
             .border(0.5.dp, colors.line)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (canGoBack && onBack != null) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+            HeaderActionButton(onClick = onBack, contentDescription = "返回") {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "返回",
+                    contentDescription = null,
                     tint = colors.textSoft,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(21.dp),
                 )
             }
-            Spacer(Modifier.width(3.dp))
-        } else {
+            Spacer(Modifier.width(7.dp))
+        } else if (destination == MainDestination.HOME) {
             Image(
                 painter = painterResource(R.drawable.tianji_original_icon),
                 contentDescription = "天机",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(42.dp)
-                    .shadow(
-                        elevation = if (colors.isOled) 0.dp else 4.dp,
-                        shape = RoundedCornerShape(15.dp),
-                        ambientColor = colors.accent.copy(alpha = 0.18f),
-                        spotColor = colors.accent.copy(alpha = 0.18f),
-                    )
-                    .clip(RoundedCornerShape(15.dp))
-                    .border(1.dp, colors.accent.copy(alpha = 0.30f), RoundedCornerShape(15.dp)),
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .border(1.dp, colors.accent.copy(alpha = 0.24f), RoundedCornerShape(13.dp)),
             )
             Spacer(Modifier.width(10.dp))
         }
 
         Column(Modifier.weight(1f)) {
             Text(
-                destination.title,
+                if (destination == MainDestination.HOME) "天机" else destination.title,
                 color = colors.text,
-                fontSize = 19.sp,
-                lineHeight = 23.sp,
+                fontSize = 18.sp,
+                lineHeight = 22.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(1.dp))
             Text(
-                destination.subtitle,
+                if (destination == MainDestination.HOME) "实时开奖 · 前向验证" else destination.subtitle,
                 color = colors.textDim,
-                fontSize = 11.sp,
-                lineHeight = 15.sp,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
 
-        HeaderActionButton(
-            onClick = onAlerts,
-            contentDescription = "打开预警中心",
-        ) {
+        HeaderActionButton(onClick = onAlerts, contentDescription = "打开通知中心") {
             Icon(
                 Icons.Rounded.Notifications,
                 contentDescription = null,
@@ -131,22 +121,22 @@ fun CompactAppHeader(
                 Text(
                     unreadAlerts.coerceAtMost(99).toString(),
                     color = Color.White,
-                    fontSize = 8.sp,
+                    fontSize = 9.sp,
+                    lineHeight = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .clip(CircleShape)
                         .background(colors.red)
-                        .padding(horizontal = 3.dp, vertical = 1.dp),
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
                 )
             }
         }
-        Spacer(Modifier.width(7.dp))
-
+        Spacer(Modifier.width(5.dp))
         HeaderActionButton(
             onClick = onRefresh,
             enabled = !isRefreshing,
-            contentDescription = "刷新",
+            contentDescription = "刷新当前彩种",
         ) {
             if (isRefreshing) {
                 CircularProgressIndicator(
@@ -177,17 +167,14 @@ private fun HeaderActionButton(
     Box(
         modifier = Modifier
             .size(48.dp)
-            .padding(2.dp)
-            .shadow(
-                elevation = if (colors.isOled) 0.dp else 2.dp,
-                shape = RoundedCornerShape(15.dp),
-                ambientColor = Color.Black.copy(alpha = 0.12f),
-                spotColor = Color.Black.copy(alpha = 0.12f),
-            )
+            .padding(3.dp)
             .clip(RoundedCornerShape(15.dp))
-            .background(Brush.linearGradient(listOf(colors.glassStrong, colors.glass)))
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(15.dp))
-            .semantics { this.contentDescription = contentDescription }
+            .background(colors.glassStrong)
+            .border(1.dp, colors.line, RoundedCornerShape(15.dp))
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            }
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
         content = content,
