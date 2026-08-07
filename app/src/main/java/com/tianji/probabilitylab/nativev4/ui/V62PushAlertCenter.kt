@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
@@ -76,7 +77,7 @@ private enum class V62AlertLottery(val label: String, val key: String) {
     ALL("全部彩种", ""), XYFT("幸运飞艇", "xyft"), AZXY10("澳洲幸运10", "azxy10"),
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun V62PushAlertCenterScreen(
     alerts: List<PushAlert>,
