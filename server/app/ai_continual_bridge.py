@@ -25,6 +25,7 @@ _POSITION_PROFILES: ContextVar[tuple[ContinualPositionProfile, ...] | None] = Co
 )
 _AI_POSITION_WEIGHT = 0.38
 _LEARNED_POSITION_WEIGHT = 0.62
+_AI_PIPELINE_NAMESPACE = "ai_v2_position"
 _STATISTICAL_PRIOR_SUFFIX = "forward_statistical_prior"
 
 
@@ -34,6 +35,10 @@ class _TaggedPositionReview:
     analysis: str
     usage: dict[str, int]
     _tianji_position_review: bool = True
+
+
+def _strategy_prefix(position: int) -> str:
+    return f"{_AI_PIPELINE_NAMESPACE}_{position + 1}:"
 
 
 def _profile_passed(profile: ContinualPositionProfile) -> bool:
@@ -211,7 +216,7 @@ def position_strategy_probabilities(
     probabilities: dict[str, list[float]],
     statistical_prior: list[float] | None = None,
 ) -> dict[str, list[float]]:
-    prefix = f"ai_position_{position + 1}:"
+    prefix = _strategy_prefix(position)
     result = {
         f"{prefix}{name.removeprefix('ai_')}": list(values)
         for name, values in probabilities.items()
@@ -226,7 +231,7 @@ def position_strategy_weights(
     probabilities: dict[str, list[float]],
     learned: dict[str, float] | None,
 ) -> dict[str, float]:
-    """Legacy reviewer-only weighting kept for compatibility and direct tests."""
+    """Reviewer-only weighting kept for direct compatibility tests."""
     namespaced = position_strategy_probabilities(position, probabilities)
     supplied = learned or {}
     active = {
@@ -234,15 +239,6 @@ def position_strategy_weights(
         for name in namespaced
         if name in supplied
     }
-    if not active:
-        prefix = f"ai_position_{position + 1}:"
-        active = {
-            namespaced_name: float(
-                supplied.get("ai_" + namespaced_name.removeprefix(prefix), 0.0)
-            )
-            for namespaced_name in namespaced
-            if "ai_" + namespaced_name.removeprefix(prefix) in supplied
-        }
     return normalize_strategy_weights(active, namespaced)
 
 
@@ -252,35 +248,29 @@ def _hybrid_strategy_weights(
     learned: dict[str, float] | None,
     profile: ContinualPositionProfile,
 ) -> dict[str, float]:
-    prefix = f"ai_position_{position + 1}:"
+    prefix = _strategy_prefix(position)
     statistical_name = f"{prefix}{_STATISTICAL_PRIOR_SUFFIX}"
     supplied = learned or {}
 
-    # Once the statistical prior has settled history, trust the same multiscale
-    # strategy learner used by the rest of Tianji. This lets a weak prior decay
-    # and a genuinely useful one gain weight without manual thresholds.
+    # v2 deliberately ignores generic/legacy AI strategy names. Old fixed-target
+    # and cross-position learning is preserved in the database for audit but is
+    # not allowed to seed the rebuilt predictor.
     if statistical_name in supplied:
-        active: dict[str, float] = {}
-        for name in probabilities_by_strategy:
-            if name in supplied:
-                active[name] = float(supplied[name])
-                continue
-            legacy_name = "ai_" + name.removeprefix(prefix)
-            if legacy_name in supplied:
-                active[name] = float(supplied[legacy_name])
+        active = {
+            name: float(supplied[name])
+            for name in probabilities_by_strategy
+            if name in supplied
+        }
         return normalize_strategy_weights(active, probabilities_by_strategy)
 
     reviewer_names = [
         name for name in probabilities_by_strategy if name != statistical_name
     ]
-    reviewer_active: dict[str, float] = {}
-    for name in reviewer_names:
-        if name in supplied:
-            reviewer_active[name] = float(supplied[name])
-            continue
-        legacy_name = "ai_" + name.removeprefix(prefix)
-        if legacy_name in supplied:
-            reviewer_active[name] = float(supplied[legacy_name])
+    reviewer_active = {
+        name: float(supplied[name])
+        for name in reviewer_names
+        if name in supplied
+    }
     reviewer_weights = normalize_strategy_weights(reviewer_active, reviewer_names)
 
     statistical_weight = statistical_prior_weight(profile)
@@ -399,9 +389,7 @@ def _analyze_ensemble_with_continual_learning(
     reviewer_text = "、".join(
         f"{name} {weight * 100:.1f}%" for name, weight in reviewer_leaders
     )
-    statistical_name = (
-        f"ai_position_{selected.position + 1}:{_STATISTICAL_PRIOR_SUFFIX}"
-    )
+    statistical_name = f"{_strategy_prefix(selected.position)}{_STATISTICAL_PRIOR_SUFFIX}"
     statistical_weight = float(result.strategy_weights.get(statistical_name, 0.0))
     evidence_text = (
         "通过外样本证据门槛"
@@ -420,14 +408,15 @@ def _analyze_ensemble_with_continual_learning(
         f"最长连续未中 {selected.max_miss_streak} 期，{evidence_text}。"
         f"号码层改为动态混合：AI匿名评审 + 该名次独立前向统计先验；"
         f"统计先验当前权重约 {statistical_weight * 100:.1f}%，之后与AI评审一样按真实结算损失自动升降。"
-        f"该名次当前主要统计策略：{leader_text}；最终号码策略：{reviewer_text}。"
-        "AI不会读取或复制本地模型最终六码，也不会为了与本地不同而强制改号。"
-    )[:1450]
+        f"该名次当前主要统计策略：{leader_text}；v2最终号码策略：{reviewer_text}。"
+        "v2使用独立学习命名空间，不继承旧固定池权重；AI不会读取或复制本地模型最终六码，"
+        "也不会为了与本地不同而强制改号。"
+    )[:1520]
     risk_note = (
-        f"{result.risk_note} AI名次评分由真实前向成绩校准；号码层的AI评审和统计先验分别保存策略快照，"
-        "开奖后按LogLoss、Brier与Top6真实结果持续调权。持续学习只能压制已观察到的弱策略，"
-        "不能把随机开奖变成可保证预测。"
-    )[:820]
+        f"{result.risk_note} AI名次评分由真实前向成绩校准；号码层的AI评审和统计先验分别保存v2策略快照，"
+        "开奖后按LogLoss、Brier与Top6真实结果持续调权。旧固定池/旧跨名次权重不进入v2融合。"
+        "持续学习只能压制已观察到的弱策略，不能把随机开奖变成可保证预测。"
+    )[:860]
     return replace(result, analysis=analysis, risk_note=risk_note)
 
 
