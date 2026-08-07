@@ -105,7 +105,7 @@ object PushAlertCoordinator {
                 .filterNot(PushAlert::isExpired)
                 .forEach { PushNotificationManager.show(appContext, it) }
         }
-        if (newAlerts.any(PushAlert::requestsRealtimeRefresh)) {
+        if (newAlerts.any { it.requestsRealtimeRefresh() }) {
             requestRealtimeRefresh()
         }
         store.initialSyncComplete = true
