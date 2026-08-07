@@ -9,7 +9,7 @@ from app.db import database
 from app.models import DrawModel
 
 
-class FixedTargetRuntimeGuardTest(unittest.TestCase):
+class RetiredFixedTargetRuntimeGuardTest(unittest.TestCase):
     def setUp(self) -> None:
         telegram_events.initialize()
         now = int(time.time() * 1000)
@@ -30,7 +30,7 @@ class FixedTargetRuntimeGuardTest(unittest.TestCase):
                 ],
             )
 
-    def save_legacy_dynamic(self, target: str) -> int:
+    def save_dynamic(self, target: str) -> int:
         forecast_id = database.save_forecast(
             lottery="xyft",
             target_period=target,
@@ -38,47 +38,50 @@ class FixedTargetRuntimeGuardTest(unittest.TestCase):
             position=7,
             top6=[2, 5, 4, 10, 1, 8],
             top7=[2, 5, 4, 10, 1, 8, 3],
-            probabilities=[0.1] * 10,
+            probabilities=[0.05, 0.12, 0.09, 0.11, 0.14, 0.04, 0.06, 0.13, 0.08, 0.18],
             source="ai",
             model="deepseek-v4-pro",
-            analysis="legacy dynamic row",
-            risk_note="legacy dynamic row",
+            analysis="dynamic AI v2 row",
+            risk_note="dynamic AI v2 row",
         )
         self.assertIsNotNone(forecast_id)
         return int(forecast_id)
 
     def settle(self, target: str, actual: int) -> None:
-        # The forecast selects position index 7 (第8名), so place the simulated
-        # actual number at that exact position instead of position 1.
         numbers = [number for number in range(1, 11) if number != actual]
         numbers.insert(7, actual)
         database.save_draws([DrawModel(lottery="xyft", period=target, numbers=numbers)])
         database.settle_forecasts("xyft")
 
-    def test_legacy_dynamic_row_is_settled_against_fixed_pool(self) -> None:
-        forecast_id = self.save_legacy_dynamic("21349990")
+    def test_legacy_fixed_runtime_guard_is_not_installed(self) -> None:
+        self.assertFalse(fixed_target_runtime_guard._INSTALLED)
+        self.assertIsNone(fixed_target_runtime_guard._ORIGINAL_SETTLE)
+        self.assertIsNone(fixed_target_runtime_guard._ORIGINAL_MATERIALIZE)
+
+    def test_dynamic_row_is_settled_against_its_original_top6(self) -> None:
+        forecast_id = self.save_dynamic("21349990")
         self.settle("21349990", 4)
         with database.connection() as db:
             row = db.execute(
                 "SELECT top6_json,top6_hit FROM forecasts WHERE id=?",
                 (forecast_id,),
             ).fetchone()
-        self.assertEqual([2, 3, 5, 7, 8, 10], json.loads(str(row["top6_json"])))
-        self.assertEqual(0, int(row["top6_hit"]))
+        self.assertEqual([2, 5, 4, 10, 1, 8], json.loads(str(row["top6_json"])))
+        self.assertEqual(1, int(row["top6_hit"]))
 
-    def test_fixed_pool_number_is_a_hit(self) -> None:
-        forecast_id = self.save_legacy_dynamic("21349991")
+    def test_number_outside_original_dynamic_top6_is_a_miss(self) -> None:
+        forecast_id = self.save_dynamic("21349991")
         self.settle("21349991", 7)
         with database.connection() as db:
             row = db.execute(
                 "SELECT top6_json,top6_hit FROM forecasts WHERE id=?",
                 (forecast_id,),
             ).fetchone()
-        self.assertEqual([2, 3, 5, 7, 8, 10], json.loads(str(row["top6_json"])))
-        self.assertEqual(1, int(row["top6_hit"]))
+        self.assertEqual([2, 5, 4, 10, 1, 8], json.loads(str(row["top6_json"])))
+        self.assertEqual(0, int(row["top6_hit"]))
 
-    def test_telegram_event_is_materialized_from_fixed_pool(self) -> None:
-        self.save_legacy_dynamic("21349992")
+    def test_telegram_event_uses_the_frozen_dynamic_prediction(self) -> None:
+        self.save_dynamic("21349992")
         telegram_events.materialize_events("xyft")
         with database.connection() as db:
             row = db.execute(
@@ -86,18 +89,8 @@ class FixedTargetRuntimeGuardTest(unittest.TestCase):
             ).fetchone()
         self.assertIsNotNone(row)
         message = str(row["message_html"])
-        self.assertIn("02、03、05、07、08、10", message)
-        self.assertNotIn("02、05、04、10、01、08", message)
-
-    def test_stable_estimator_does_not_use_miss_streak_as_rebound_bonus(self) -> None:
-        target = {2, 3, 5, 7, 8, 10}
-        mostly_hit = [2 if index % 5 else 4 for index in range(240)]
-        same_history_with_recent_misses = [*mostly_hit[:-4], 4, 6, 9, 1]
-        base = fixed_target_runtime_guard._stable_probability(mostly_hit)
-        recent_misses = fixed_target_runtime_guard._stable_probability(same_history_with_recent_misses)
-        self.assertGreater(base, 0.60)
-        self.assertLess(recent_misses, base)
-        self.assertTrue(all((number in target) == fixed_target_runtime_guard._is_target(number) for number in range(1, 11)))
+        self.assertIn("02、05、04、10、01、08", message)
+        self.assertNotIn("02、03、05、07、08、10", message)
 
 
 if __name__ == "__main__":
