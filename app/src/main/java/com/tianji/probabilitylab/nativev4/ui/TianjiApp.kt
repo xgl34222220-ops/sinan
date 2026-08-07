@@ -42,6 +42,7 @@ import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceStore
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import com.tianji.probabilitylab.nativev4.ui.theme.PaletteMode
 import com.tianji.probabilitylab.nativev4.ui.theme.TianjiTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -84,6 +85,28 @@ fun TianjiApp() {
             AiForegroundService.show(context, title, detail)
         } else {
             AiForegroundService.hide(context)
+        }
+    }
+
+    LaunchedEffect(
+        state.snapshot?.nextDrawAtEpochMs,
+        state.snapshot?.latest?.period,
+        state.isAiAnalyzing,
+        chatRunning,
+    ) {
+        while (true) {
+            val remaining = state.snapshot?.nextDrawAtEpochMs?.minus(System.currentTimeMillis())
+            val waitMs = when {
+                state.isAiAnalyzing || chatRunning -> 30_000L
+                remaining == null -> 30_000L
+                remaining in -90_000L..60_000L -> 3_000L
+                remaining in 60_001L..180_000L -> 8_000L
+                else -> 30_000L
+            }
+            delay(waitMs)
+            if (!state.isAiAnalyzing && !chatRunning) {
+                controller.refresh()
+            }
         }
     }
 
