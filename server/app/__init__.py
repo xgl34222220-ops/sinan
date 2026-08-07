@@ -34,3 +34,8 @@ from .ai_fixed_output_guard import install as _install_ai_fixed_output_guard
 
 _install_ai_fixed_output_guard()
 del _install_ai_fixed_output_guard
+
+from .ai_position_failover_guard import install as _install_ai_position_failover_guard
+
+_install_ai_position_failover_guard()
+del _install_ai_position_failover_guard
