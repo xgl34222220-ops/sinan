@@ -27,6 +27,7 @@ class LotteryApi {
     private val baseUrl = "https://api.api68.com"
     private val activeConnections = ConcurrentHashMap.newKeySet<HttpURLConnection>()
     private val cancellationGeneration = AtomicInteger(0)
+    private val verifiedHistoryCache = ConcurrentHashMap<LotteryType, List<Draw>>()
 
     fun cancelActiveRequests() {
         cancellationGeneration.incrementAndGet()
@@ -36,16 +37,45 @@ class LotteryApi {
 
     fun fetchSnapshot(lottery: LotteryType, days: Int = 14): DrawSnapshot {
         val requestToken = cancellationGeneration.get()
-        val zone = ZoneId.of("Asia/Shanghai")
-        val dates = (0 until days.coerceIn(1, MAX_RECENT_DAYS)).map {
-            LocalDate.now(zone).minusDays(it.toLong())
-        }
-        val fetched = fetchDates(lottery, dates, requestToken)
-        ensureActive(requestToken)
+
+        // Latest draw is always the first network operation. Once a full history has been verified
+        // in this process, normal 2-day refreshes reuse it and become a latest-only request.
         val latestPayload = fetchLatestWithRetry(lottery, requestToken)
             ?: error("最新开奖接口没有返回有效期号")
-        val merged = DrawMergePolicy.merge(fetched.draws + latestPayload.draw)
-            .takeLast(lottery.historyTarget)
+        ensureActive(requestToken)
+
+        val cachedHistory = verifiedHistoryCache[lottery]
+        val canUseFastHistory = days <= FAST_REFRESH_DAYS &&
+            cachedHistory != null && cachedHistory.size >= MIN_VERIFIED_HISTORY
+
+        val fetched: HistoricalFetchResult
+        val merged: List<Draw>
+        val statusMessage: String
+        if (canUseFastHistory) {
+            fetched = HistoricalFetchResult(emptyList(), emptyList())
+            merged = DrawMergePolicy.merge(cachedHistory.orEmpty() + latestPayload.draw)
+                .takeLast(lottery.historyTarget)
+            verifiedHistoryCache[lottery] = merged
+            statusMessage = "实时快刷新：已优先读取最新开奖，完整历史沿用本机本次会话已核验缓存"
+        } else {
+            val zone = ZoneId.of("Asia/Shanghai")
+            val dates = (0 until days.coerceIn(1, MAX_RECENT_DAYS)).map {
+                LocalDate.now(zone).minusDays(it.toLong())
+            }
+            fetched = fetchDates(lottery, dates, requestToken)
+            ensureActive(requestToken)
+            merged = DrawMergePolicy.merge(fetched.draws + latestPayload.draw)
+                .takeLast(lottery.historyTarget)
+            if (merged.size >= MIN_VERIFIED_HISTORY) {
+                verifiedHistoryCache[lottery] = merged
+            }
+            statusMessage = if (fetched.failedDates.isEmpty()) {
+                "已优先读取最新开奖，并核验最近 ${dates.size} 天接口历史；当前仅有一个独立上游"
+            } else {
+                "最新开奖已优先同步；历史已同步 ${dates.size - fetched.failedDates.size}/${dates.size} 天，缺失日期将重试"
+            }
+        }
+
         val newest = merged.lastOrNull() ?: error("开奖接口没有返回有效数据")
         return DrawSnapshot(
             lottery = lottery,
@@ -54,14 +84,10 @@ class LotteryApi {
             nextPeriod = latestPayload.nextPeriod.takeIf { latestPayload.draw.period == newest.period }
                 ?: incrementPeriod(newest.period),
             sourceHealth = SourceHealth(
-                label = "实时接口",
+                label = if (canUseFastHistory) "实时快刷新" else "实时接口",
                 isFresh = true,
                 independentSources = 1,
-                message = if (fetched.failedDates.isEmpty()) {
-                    "已核验最近 ${dates.size} 天接口历史；当前仅有一个独立上游"
-                } else {
-                    "已同步 ${dates.size - fetched.failedDates.size}/${dates.size} 天；缺失日期将重试，连续性仍由本机强校验"
-                },
+                message = statusMessage,
                 syncedAtEpochMs = System.currentTimeMillis(),
             ),
             serverTimeEpochMs = latestPayload.serverTimeEpochMs,
@@ -112,7 +138,7 @@ class LotteryApi {
         val failed = mutableListOf<LocalDate>()
         try {
             futures.forEach { (date, future) ->
-                runCatching { future.get(18, TimeUnit.SECONDS) }
+                runCatching { future.get(14, TimeUnit.SECONDS) }
                     .onSuccess(draws::addAll)
                     .onFailure { failed += date }
             }
@@ -132,7 +158,7 @@ class LotteryApi {
             runCatching { fetchDate(lottery, date) }
                 .onSuccess { return it }
                 .onFailure { failure = it }
-            if (attempt == 0) Thread.sleep(250)
+            if (attempt == 0) Thread.sleep(180)
         }
         throw failure ?: IllegalStateException("开奖历史同步失败：$date")
     }
@@ -144,7 +170,7 @@ class LotteryApi {
             runCatching { fetchLatest(lottery) }
                 .onSuccess { if (it != null) return it }
                 .onFailure { failure = it }
-            if (attempt == 0) Thread.sleep(250)
+            if (attempt == 0) Thread.sleep(120)
         }
         failure?.let { throw it }
         return null
@@ -174,8 +200,12 @@ class LotteryApi {
         val draw = parseDraw(value, lottery) ?: return null
         return LatestPayload(
             draw = draw,
-            nextPeriod = firstText(value, "drawIssue", "nextIssue")
-                .ifBlank { incrementPeriod(draw.period) },
+            // API68 drawIssue can lag behind during the draw transition. Match the server:
+            // nextIssue is authoritative, and a stale value is normalized forward below.
+            nextPeriod = normalizeNextPeriod(
+                draw.period,
+                firstText(value, "nextIssue", "drawIssue"),
+            ),
             serverTimeEpochMs = ApiTimeParser.parseEpochMillis(firstText(value, "serverTime")),
             nextDrawAtEpochMs = ApiTimeParser.parseEpochMillis(firstText(value, "drawTime", "nextDrawTime")),
         )
@@ -186,8 +216,8 @@ class LotteryApi {
         activeConnections += connection
         return try {
             connection.requestMethod = "GET"
-            connection.connectTimeout = 7_000
-            connection.readTimeout = 7_000
+            connection.connectTimeout = 4_000
+            connection.readTimeout = 5_000
             connection.useCaches = false
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("Cache-Control", "no-cache")
@@ -248,6 +278,17 @@ class LotteryApi {
         return ""
     }
 
+    private fun normalizeNextPeriod(latestPeriod: String, reported: String): String {
+        val candidate = reported.trim()
+        if (candidate.isNotBlank() && comparePeriods(candidate, latestPeriod) > 0) return candidate
+        return incrementPeriod(latestPeriod)
+    }
+
+    private fun comparePeriods(left: String, right: String): Int = when {
+        left.length != right.length -> left.length.compareTo(right.length)
+        else -> left.compareTo(right)
+    }
+
     private fun incrementPeriod(period: String): String {
         val match = Regex("^(.*?)(\\d+)$").matchEntire(period) ?: return "待同步"
         val prefix = match.groupValues[1]
@@ -268,5 +309,7 @@ class LotteryApi {
     private companion object {
         const val MAX_RECENT_DAYS = 14
         const val MAX_BACKFILL_DATES = 40
+        const val FAST_REFRESH_DAYS = 2
+        const val MIN_VERIFIED_HISTORY = 180
     }
 }
