@@ -29,7 +29,7 @@ class V620ExperienceContractTests(unittest.TestCase):
         self.assertIn("写库 + 结算", source)
         self.assertIn("/admin/api/realtime", source)
 
-    def test_app_realtime_refresh_no_longer_uses_java_reflection(self) -> None:
+    def test_app_realtime_refresh_is_a_direct_controller_api(self) -> None:
         controller = (
             ROOT
             / "app/src/main/java/com/tianji/probabilitylab/nativev4/AppController.kt"
@@ -37,18 +37,21 @@ class V620ExperienceContractTests(unittest.TestCase):
         bridge = (
             ROOT
             / "app/src/main/java/com/tianji/probabilitylab/nativev4/AppRealtimeRefresh.kt"
-        ).read_text(encoding="utf-8")
+        )
         self.assertIn("internal fun refreshCurrentLottery()", controller)
-        self.assertNotIn("java.lang.reflect", bridge)
-        self.assertNotIn("getDeclaredMethod", bridge)
+        self.assertFalse(bridge.exists())
+        self.assertNotIn("java.lang.reflect", controller)
+        self.assertNotIn("getDeclaredMethod", controller)
 
-    def test_v62_home_and_adaptive_navigation_are_wired(self) -> None:
+    def test_v62_home_archive_alerts_and_adaptive_navigation_are_wired(self) -> None:
         app_source = (
             ROOT
             / "app/src/main/java/com/tianji/probabilitylab/nativev4/ui/TianjiApp.kt"
         ).read_text(encoding="utf-8")
         build_source = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
         self.assertIn("V62ForecastScreen", app_source)
+        self.assertIn("V62ArchiveScreen", app_source)
+        self.assertIn("V62PushAlertCenterScreen", app_source)
         self.assertIn("V62AdaptiveScaffold", app_source)
         self.assertIn("material3.adaptive:adaptive:1.2.0", build_source)
         self.assertIn("com.android.compose.screenshot", build_source)
