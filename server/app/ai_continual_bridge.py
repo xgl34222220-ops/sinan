@@ -24,6 +24,7 @@ _POSITION_PROFILES: ContextVar[tuple[ContinualPositionProfile, ...] | None] = Co
 )
 _AI_POSITION_WEIGHT = 0.38
 _LEARNED_POSITION_WEIGHT = 0.62
+_STATISTICAL_PRIOR_SUFFIX = "forward_statistical_prior"
 
 
 def _profile_passed(profile: ContinualPositionProfile) -> bool:
@@ -102,6 +103,31 @@ def blend_position_scores(
     return _normalize(blended)
 
 
+def statistical_prior_weight(profile: ContinualPositionProfile) -> float:
+    """Seed the number-level statistical prior from out-of-sample evidence.
+
+    The value is only an initial weight. After forecasts settle the database
+    learns this strategy exactly like every AI reviewer and can raise or lower
+    it from real log-loss/Brier/Top6 performance.
+    """
+    samples = max(0, int(profile.walk_forward_samples))
+    reliability = min(1.0, samples / 60.0)
+    hit_edge = max(-0.10, min(0.10, float(profile.walk_forward_hit_rate) - 0.60))
+    loss_edge = max(
+        -0.20,
+        min(
+            0.20,
+            (UNIFORM_LOG_LOSS - float(profile.average_log_loss)) / UNIFORM_LOG_LOSS,
+        ),
+    )
+    weight = 0.24 + reliability * (hit_edge * 1.40 + loss_edge * 0.45)
+    if profile.max_miss_streak > 8:
+        weight -= min(0.08, (profile.max_miss_streak - 8) * 0.012)
+    if _profile_passed(profile):
+        weight = max(weight, 0.40)
+    return max(0.16, min(0.46, weight))
+
+
 def position_learning_payload(profile: ContinualPositionProfile) -> dict[str, Any]:
     leaders = sorted(
         profile.strategy_weights.items(),
@@ -117,6 +143,7 @@ def position_learning_payload(profile: ContinualPositionProfile) -> dict[str, An
         "max_miss_streak": profile.max_miss_streak,
         "validation_score": round(profile.validation_score, 6),
         "evidence_gate_passed": _profile_passed(profile),
+        "number_statistical_prior_seed_weight": round(statistical_prior_weight(profile), 6),
         "leading_learned_strategies": [
             {"strategy": name, "weight": round(weight, 6)}
             for name, weight in leaders
@@ -151,12 +178,16 @@ def _aggregate_with_position_learning(results: list[Any]) -> list[float]:
 def position_strategy_probabilities(
     position: int,
     probabilities: dict[str, list[float]],
+    statistical_prior: list[float] | None = None,
 ) -> dict[str, list[float]]:
     prefix = f"ai_position_{position + 1}:"
-    return {
-        f"{prefix}{name.removeprefix('ai_')}": values
+    result = {
+        f"{prefix}{name.removeprefix('ai_')}": list(values)
         for name, values in probabilities.items()
     }
+    if statistical_prior is not None and len(statistical_prior) == 10:
+        result[f"{prefix}{_STATISTICAL_PRIOR_SUFFIX}"] = list(statistical_prior)
+    return result
 
 
 def position_strategy_weights(
@@ -164,6 +195,7 @@ def position_strategy_weights(
     probabilities: dict[str, list[float]],
     learned: dict[str, float] | None,
 ) -> dict[str, float]:
+    """Legacy reviewer-only weighting kept for compatibility and direct tests."""
     namespaced = position_strategy_probabilities(position, probabilities)
     supplied = learned or {}
     active = {
@@ -183,19 +215,78 @@ def position_strategy_weights(
     return normalize_strategy_weights(active, namespaced)
 
 
+def _hybrid_strategy_weights(
+    position: int,
+    probabilities_by_strategy: dict[str, list[float]],
+    learned: dict[str, float] | None,
+    profile: ContinualPositionProfile,
+) -> dict[str, float]:
+    prefix = f"ai_position_{position + 1}:"
+    statistical_name = f"{prefix}{_STATISTICAL_PRIOR_SUFFIX}"
+    supplied = learned or {}
+
+    # Once the statistical prior has settled history, trust the same multiscale
+    # strategy learner used by the rest of Tianji. This lets a weak prior decay
+    # and a genuinely useful one gain weight without manual thresholds.
+    if statistical_name in supplied:
+        active: dict[str, float] = {}
+        for name in probabilities_by_strategy:
+            if name in supplied:
+                active[name] = float(supplied[name])
+                continue
+            legacy_name = "ai_" + name.removeprefix(prefix)
+            if legacy_name in supplied:
+                active[name] = float(supplied[legacy_name])
+        return normalize_strategy_weights(active, probabilities_by_strategy)
+
+    reviewer_names = [
+        name for name in probabilities_by_strategy if name != statistical_name
+    ]
+    reviewer_active: dict[str, float] = {}
+    for name in reviewer_names:
+        if name in supplied:
+            reviewer_active[name] = float(supplied[name])
+            continue
+        legacy_name = "ai_" + name.removeprefix(prefix)
+        if legacy_name in supplied:
+            reviewer_active[name] = float(supplied[legacy_name])
+    reviewer_weights = normalize_strategy_weights(reviewer_active, reviewer_names)
+
+    statistical_weight = statistical_prior_weight(profile)
+    remaining = max(0.0, 1.0 - statistical_weight)
+    weights = {
+        name: reviewer_weights[name] * remaining
+        for name in reviewer_names
+    }
+    weights[statistical_name] = statistical_weight
+    return weights
+
+
 def _apply_position_specific_number_learning(
     result: Any,
     learned: dict[str, float] | None,
+    profile: ContinualPositionProfile | None = None,
 ) -> Any:
+    position = int(result.position)
+    statistical_prior = profile.probabilities if profile is not None else None
     probabilities_by_strategy = position_strategy_probabilities(
-        int(result.position),
+        position,
         result.strategy_probabilities,
+        statistical_prior,
     )
-    weights = position_strategy_weights(
-        int(result.position),
-        result.strategy_probabilities,
-        learned,
-    )
+    if profile is None:
+        weights = position_strategy_weights(
+            position,
+            result.strategy_probabilities,
+            learned,
+        )
+    else:
+        weights = _hybrid_strategy_weights(
+            position,
+            probabilities_by_strategy,
+            learned,
+            profile,
+        )
     probabilities = blend_strategy_probabilities(
         probabilities_by_strategy,
         weights,
@@ -253,8 +344,12 @@ def _analyze_ensemble_with_continual_learning(
     finally:
         _POSITION_PROFILES.reset(token)
 
-    result = _apply_position_specific_number_learning(result, strategy_weights)
     selected = profiles[int(result.position)]
+    result = _apply_position_specific_number_learning(
+        result,
+        strategy_weights,
+        selected,
+    )
     passed_count = sum(_profile_passed(profile) for profile in profiles)
     selected_passed = _profile_passed(selected)
     leaders = sorted(
@@ -269,28 +364,39 @@ def _analyze_ensemble_with_continual_learning(
         result.strategy_weights.items(),
         key=lambda item: item[1],
         reverse=True,
-    )[:3]
+    )[:4]
     reviewer_text = "、".join(
         f"{name} {weight * 100:.1f}%" for name, weight in reviewer_leaders
     )
+    statistical_name = (
+        f"ai_position_{selected.position + 1}:{_STATISTICAL_PRIOR_SUFFIX}"
+    )
+    statistical_weight = float(result.strategy_weights.get(statistical_name, 0.0))
     evidence_text = (
         "通过外样本证据门槛"
         if selected_passed
         else "未通过强信号门槛，仅作为弱证据观察结果"
     )
+    base_analysis = str(result.analysis).replace(
+        " AI预测不再混入本地频率、遗漏、马尔可夫、趋势或稳定性策略。",
+        " AI评审阶段不读取本地模型最终六码。",
+    )
     analysis = (
-        f"{result.analysis} 名次决策已接入持续学习校准：十个名次分别用已结算历史做滚动前向验证，"
+        f"{base_analysis} 名次决策已接入持续学习校准：十个名次分别用已结算历史做滚动前向验证，"
         f"本轮有 {passed_count} 个名次通过门槛；第 {selected.position + 1} 名验证 "
         f"{selected.walk_forward_samples} 期，六码命中率约 {selected.walk_forward_hit_rate * 100:.1f}%，"
         f"相对随机基准超额 {selected.excess_hit_rate * 100:+.1f} 个百分点，"
         f"最长连续未中 {selected.max_miss_streak} 期，{evidence_text}。"
-        f"该名次当前主要结构策略：{leader_text}；AI号码评审按名次独立学习：{reviewer_text}。"
-        "AI未读取本地模型最终六码。"
-    )[:1150]
+        f"号码层改为动态混合：AI匿名评审 + 该名次独立前向统计先验；"
+        f"统计先验当前权重约 {statistical_weight * 100:.1f}%，之后与AI评审一样按真实结算损失自动升降。"
+        f"该名次当前主要统计策略：{leader_text}；最终号码策略：{reviewer_text}。"
+        "AI不会读取或复制本地模型最终六码，也不会为了与本地不同而强制改号。"
+    )[:1450]
     risk_note = (
-        f"{result.risk_note} AI名次评分现由真实前向成绩校准，号码评审权重按具体名次分别结算；"
-        "持续学习代表随已结算样本更新和淘汰无效策略，不代表准确率能够单调上升。"
-    )[:680]
+        f"{result.risk_note} AI名次评分由真实前向成绩校准；号码层的AI评审和统计先验分别保存策略快照，"
+        "开奖后按LogLoss、Brier与Top6真实结果持续调权。持续学习只能压制已观察到的弱策略，"
+        "不能把随机开奖变成可保证预测。"
+    )[:820]
     return replace(result, analysis=analysis, risk_note=risk_note)
 
 
