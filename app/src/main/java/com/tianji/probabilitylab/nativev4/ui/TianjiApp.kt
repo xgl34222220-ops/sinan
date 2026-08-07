@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
+import com.tianji.probabilitylab.nativev4.refreshCurrentLottery
 import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.push.PushAlertNavigation
@@ -65,7 +66,7 @@ fun TianjiApp() {
     val state = controller.state
 
     val refreshSafely: () -> Unit = {
-        if (!state.isAiAnalyzing) controller.refresh()
+        if (!state.isAiAnalyzing) controller.refreshCurrentLottery()
     }
     val chatRunning = chatController.session.isRunning
 
@@ -105,7 +106,7 @@ fun TianjiApp() {
             }
             delay(waitMs)
             if (!state.isAiAnalyzing && !chatRunning) {
-                controller.refresh()
+                controller.refreshCurrentLottery()
             }
         }
     }
