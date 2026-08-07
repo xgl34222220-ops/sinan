@@ -26,8 +26,10 @@ jobs:
 
       - name: Apply v6.5 UI patch
         run: |
-          # The lottery switcher is intentionally 15dp; only the tab used to share that literal.
+          # Resolve literals shared by more than one visual component without weakening other guards.
           sed -i '/replace(SEG, "val shape = RoundedCornerShape(15.dp)"/d' scripts/v65_ui_polish.py
+          sed -i 's/replace(STRATEGY, "SurfaceCard(radius = 21.dp)", "SurfaceCard(radius = 20.dp)", count=3)/replace(STRATEGY, "SurfaceCard(radius = 21.dp)", "SurfaceCard(radius = 20.dp)")/' scripts/v65_ui_polish.py
+          sed -i 's/replace(STRATEGY, "Column(Modifier.padding(15.dp))", "Column(Modifier.padding(14.dp))", count=3)/replace(STRATEGY, "Column(Modifier.padding(15.dp))", "Column(Modifier.padding(14.dp))")/' scripts/v65_ui_polish.py
           python scripts/v65_ui_polish.py
 
       - name: Commit polished UI
