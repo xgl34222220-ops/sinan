@@ -43,7 +43,7 @@
 
   const overview=q('#panel-overview');
   if(overview){
-    q('#diagnostics')?.closest('.card')?.remove();
+    const legacyDiagnosticsCard=q('#diagnostics')?.closest('.card');if(legacyDiagnosticsCard){legacyDiagnosticsCard.setAttribute('hidden','hidden');legacyDiagnosticsCard.setAttribute('aria-hidden','true')}
     const draw=document.createElement('section');draw.className='section v3-section';draw.id='drawWorkspace';draw.innerHTML='<div class="v3-head"><div><h3>下一期开奖与任务</h3><p>倒计时、冻结状态和当前任务放在同一处查看。</p></div></div><div class="v3-draw-grid" id="v3DrawGrid"><div class="v3-empty"><strong>正在读取任务状态</strong>请稍候</div></div>';
     q('#adminMetrics',overview)?.insertAdjacentElement('afterend',draw);
     // Internal deployment/database timeline stays available through the API, but is intentionally hidden from the daily console.
