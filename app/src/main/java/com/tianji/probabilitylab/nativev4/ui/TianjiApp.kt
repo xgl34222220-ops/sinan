@@ -240,34 +240,36 @@ fun TianjiApp() {
                                     onSelectLottery = controller::selectLottery,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                MainDestination.SETTINGS -> SettingsHubScreen(
-                                    state = state,
-                                    paletteMode = paletteMode,
-                                    appearanceMode = appearanceMode,
-                                    aiConfigs = controller.aiConfigs,
-                                    aiAvailableModels = controller.aiAvailableModels,
-                                    onPaletteChanged = { mode ->
-                                        scope.launch { appearanceStore.setPalette(mode) }
-                                    },
-                                    onAppearanceChanged = { mode ->
-                                        scope.launch { appearanceStore.setAppearance(mode) }
-                                    },
-                                    onSaveAiConfig = controller::saveAiConfig,
-                                    onDeleteAiConfig = controller::deleteAiConfig,
-                                    onTestAiConnection = controller::testAiConnection,
-                                    onLoadAiModels = controller::loadAiModels,
-                                    onSelectAiModel = controller::selectAiModel,
-                                    onSelectAiMode = controller::selectAiAnalysisMode,
-                                    onSelectAiReasoningMode = controller::selectAiReasoningMode,
-                                    onAiConcurrencyChanged = controller::setAiConcurrency,
-                                    onAnalyzeAi = { id -> controller.analyzeWithAi(id) },
-                                    pushUnreadCount = pushAlerts.count { !it.isRead },
-                                    onOpenPushAlerts = {
-                                        focusedAlertId = null
-                                        showAlertCenter = true
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
+                                MainDestination.SETTINGS -> ReadableUiScale {
+                                    SettingsHubScreen(
+                                        state = state,
+                                        paletteMode = paletteMode,
+                                        appearanceMode = appearanceMode,
+                                        aiConfigs = controller.aiConfigs,
+                                        aiAvailableModels = controller.aiAvailableModels,
+                                        onPaletteChanged = { mode ->
+                                            scope.launch { appearanceStore.setPalette(mode) }
+                                        },
+                                        onAppearanceChanged = { mode ->
+                                            scope.launch { appearanceStore.setAppearance(mode) }
+                                        },
+                                        onSaveAiConfig = controller::saveAiConfig,
+                                        onDeleteAiConfig = controller::deleteAiConfig,
+                                        onTestAiConnection = controller::testAiConnection,
+                                        onLoadAiModels = controller::loadAiModels,
+                                        onSelectAiModel = controller::selectAiModel,
+                                        onSelectAiMode = controller::selectAiAnalysisMode,
+                                        onSelectAiReasoningMode = controller::selectAiReasoningMode,
+                                        onAiConcurrencyChanged = controller::setAiConcurrency,
+                                        onAnalyzeAi = { id -> controller.analyzeWithAi(id) },
+                                        pushUnreadCount = pushAlerts.count { !it.isRead },
+                                        onOpenPushAlerts = {
+                                            focusedAlertId = null
+                                            showAlertCenter = true
+                                        },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -275,15 +277,17 @@ fun TianjiApp() {
             }
 
             if (showChat) {
-                AiChatDialog(
-                    controller = chatController,
-                    configs = controller.aiConfigs,
-                    modelCatalogs = controller.aiAvailableModels,
-                    snapshot = state.snapshot,
-                    report = state.report,
-                    onRefresh = refreshSafely,
-                    onDismiss = { showChat = false },
-                )
+                ReadableUiScale {
+                    AiChatDialog(
+                        controller = chatController,
+                        configs = controller.aiConfigs,
+                        modelCatalogs = controller.aiAvailableModels,
+                        snapshot = state.snapshot,
+                        report = state.report,
+                        onRefresh = refreshSafely,
+                        onDismiss = { showChat = false },
+                    )
+                }
             }
 
             if (showAlertCenter) {
