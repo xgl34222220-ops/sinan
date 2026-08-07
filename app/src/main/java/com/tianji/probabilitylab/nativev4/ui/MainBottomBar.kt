@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,9 +33,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,24 +56,24 @@ fun MainBottomBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 78.dp)
+            .heightIn(min = 72.dp)
             .shadow(
-                elevation = if (colors.isOled) 0.dp else 10.dp,
-                shape = RoundedCornerShape(24.dp),
-                ambientColor = Color.Black.copy(alpha = 0.20f),
-                spotColor = Color.Black.copy(alpha = 0.20f),
+                elevation = if (colors.isOled) 0.dp else 14.dp,
+                shape = RoundedCornerShape(27.dp),
+                ambientColor = Color.Black.copy(alpha = 0.18f),
+                spotColor = Color.Black.copy(alpha = 0.18f),
             )
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(27.dp))
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        colors.navSurface.copy(alpha = 0.99f),
-                        colors.surfaceStrong.copy(alpha = 0.99f),
+                        colors.navSurface.copy(alpha = 0.965f),
+                        colors.surface.copy(alpha = 0.985f),
                     ),
                 ),
             )
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(24.dp))
-            .padding(horizontal = 5.dp, vertical = 6.dp),
+            .border(1.dp, colors.lineStrong, RoundedCornerShape(27.dp))
+            .padding(horizontal = 6.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StandardNavItem(
@@ -115,55 +117,55 @@ private fun StandardNavItem(
 ) {
     val colors = LocalTianjiColors.current
     val background by animateColorAsState(
-        if (active) colors.accent.copy(alpha = 0.14f) else Color.Transparent,
+        if (active) colors.accent.copy(alpha = 0.16f) else Color.Transparent,
         label = "main-nav-bg",
     )
     val scale by animateFloatAsState(
-        if (active) 1f else 0.98f,
-        animationSpec = spring(dampingRatio = 0.84f, stiffness = 520f),
+        if (active) 1f else 0.985f,
+        animationSpec = spring(dampingRatio = 0.86f, stiffness = 520f),
         label = "main-nav-scale",
     )
     val haptics = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .heightIn(min = 64.dp)
+            .heightIn(min = 60.dp)
             .scale(scale)
-            .clip(RoundedCornerShape(17.dp))
+            .clip(RoundedCornerShape(19.dp))
             .background(background)
-            .border(
-                1.dp,
-                if (active) colors.accent.copy(alpha = 0.25f) else Color.Transparent,
-                RoundedCornerShape(17.dp),
-            )
-            .clickable {
+            .semantics { role = Role.Tab }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+            ) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .width(if (active) 24.dp else 8.dp)
-                .height(2.dp)
-                .clip(CircleShape)
-                .background(if (active) colors.accent else Color.Transparent),
-        )
-        Spacer(Modifier.height(4.dp))
         Icon(
             item.icon,
             contentDescription = item.label,
             tint = if (active) colors.accent else colors.textDim,
-            modifier = Modifier.size(if (active) 21.dp else 19.dp),
+            modifier = Modifier.size(if (active) 22.dp else 20.dp),
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.width(1.dp))
         Text(
             item.label,
             color = if (active) colors.accent else colors.textDim,
             fontSize = 11.sp,
             lineHeight = 15.sp,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+            fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium,
             maxLines = 1,
+        )
+        Spacer(Modifier.width(1.dp))
+        Box(
+            modifier = Modifier
+                .width(if (active) 20.dp else 5.dp)
+                .heightIn(min = 2.dp)
+                .clip(CircleShape)
+                .background(if (active) colors.accent else Color.Transparent),
         )
     }
 }
@@ -176,48 +178,49 @@ private fun ChatNavItem(
 ) {
     val colors = LocalTianjiColors.current
     val haptics = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .heightIn(min = 64.dp)
-            .clip(RoundedCornerShape(17.dp))
-            .padding(vertical = 1.dp)
-            .clickable {
+            .heightIn(min = 60.dp)
+            .clip(RoundedCornerShape(19.dp))
+            .semantics { role = Role.Button }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+            ) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier = Modifier.size(44.dp),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
             if (isRunning) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(44.dp),
+                    modifier = Modifier.size(47.dp),
                     color = colors.accent,
                     strokeWidth = 2.dp,
                 )
             }
             Box(
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(41.dp)
                     .shadow(
-                        elevation = if (colors.isOled) 0.dp else 6.dp,
+                        elevation = if (colors.isOled) 0.dp else 8.dp,
                         shape = CircleShape,
-                        ambientColor = colors.accent.copy(alpha = 0.28f),
-                        spotColor = colors.accent.copy(alpha = 0.28f),
+                        ambientColor = colors.accent.copy(alpha = 0.30f),
+                        spotColor = colors.accent.copy(alpha = 0.30f),
                     )
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(colors.accent, colors.violet)))
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                    .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
                     tint = Color.White,
-                    modifier = Modifier.size(19.dp),
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
@@ -226,7 +229,7 @@ private fun ChatNavItem(
             color = colors.accent,
             fontSize = 11.sp,
             lineHeight = 15.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
         )
     }
