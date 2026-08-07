@@ -4,12 +4,24 @@
 
 ## 当前版本
 
-- 当前正式版：**6.5.0**
+- 当前正式版：**6.6.0**
 - 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 正式应用 ID：`com.tianji.probabilitylab.nativev5`
+
+## v6.6 Dynamic AI v2
+
+- 正式服务端 AI 预测全面切换到 Dynamic AI v2，不再使用固定 `235780` 运行时覆盖、结算改写或输出保护。
+- 移除“AI 必须故意与本机预测不同”的旧约束；AI 与本机统计独立计算，结果一致时允许自然一致。
+- 修复名次概率与号码概率都为 10 维时被误判为同一向量类型、导致聚合串线的问题。
+- AI 继续采用匿名多 reviewer 评审，并分别对“位置排名”和“号码排名”生成动态 Top6 / Top7 候选。
+- 加入按真实已结算样本进行的 walk-forward 统计校准，位置层和号码层均有独立前向先验。
+- AI reviewer 与统计先验根据 LogLoss、Brier、Top6 等真实结算指标持续调权，不再依赖固定目标的历史权重。
+- 新学习状态隔离到 `ai_v2_position_X:*`，旧 fixed-target / legacy 权重不会继续污染 v2。
+- 服务端回归测试覆盖动态候选、冻结历史预测、AI 前缀缓存和持续学习契约。
+- v6.6.0 Release 成功后，Production 服务端会同步部署同一 `main` 提交并重建 `api + worker`，通过 `/health` 后才视为上线完成。
 
 ## v6.5 UI Final Polish
 
