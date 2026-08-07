@@ -25,7 +25,10 @@ jobs:
           python-version: '3.12'
 
       - name: Apply v6.5 UI patch
-        run: python scripts/v65_ui_polish.py
+        run: |
+          # The lottery switcher is intentionally 15dp; only the tab used to share that literal.
+          sed -i '/replace(SEG, "val shape = RoundedCornerShape(15.dp)"/d' scripts/v65_ui_polish.py
+          python scripts/v65_ui_polish.py
 
       - name: Commit polished UI
         run: |
