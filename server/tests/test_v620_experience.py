@@ -78,17 +78,16 @@ class V620ExperienceContractTests(unittest.TestCase):
         self.assertIn('stickyHeader("search")', archive)
         self.assertIn("FCM 即时推送正常", alerts)
         self.assertIn("查看预测", alerts)
-        self.assertIn("heightIn(min = 66.dp)", bottom_bar)
+        self.assertIn("heightIn(min = 62.dp)", bottom_bar)
+
+    def test_v650_mobile_polish_contract(self) -> None:
+        source = (ROOT / "server/app/console_v3.py").read_text(encoding="utf-8")
+        self.assertIn("v6.5 UI Final Polish 2", source)
+        self.assertIn(".topbar .brand h1{display:none}", source)
+        self.assertIn(".v620-card-state{min-height:23px;padding:0 8px;font-size:11px}", source)
+        self.assertIn(".v620-latency span{font-size:11px", source)
+        self.assertIn(".mobile-nav .nav-tail{display:none!important}", source)
 
 
 if __name__ == "__main__":
     unittest.main()
-
-def test_v650_mobile_polish_contract() -> None:
-    from server.app.console_v3 import V510_STYLE
-
-    assert "v6.5 UI Final Polish 2" in V510_STYLE
-    assert ".topbar .brand h1{display:none}" in V510_STYLE
-    assert ".v620-card-state{min-height:23px;padding:0 8px;font-size:11px}" in V510_STYLE
-    assert ".v620-latency span{font-size:11px" in V510_STYLE
-    assert ".mobile-nav .nav-tail{display:none!important}" in V510_STYLE
