@@ -17,9 +17,13 @@ import kotlin.math.absoluteValue
 /**
  * Read-only cloud archive client. Failure is deliberately non-fatal: AppController keeps the
  * existing direct开奖、手机直连 AI and local statistical paths when the VPS is unavailable.
+ *
+ * Cloud history is secondary UI data, so it must never hold the latest-draw path for several
+ * seconds. Successful responses are cached per lottery and reused on a timeout or transient error.
  */
 class CloudForecastApi {
     private val activeConnections = ConcurrentHashMap.newKeySet<HttpURLConnection>()
+    private val forecastCache = ConcurrentHashMap<LotteryType, List<AiForecastRecord>>()
 
     fun cancelActiveRequests() {
         activeConnections.toList().forEach(HttpURLConnection::disconnect)
@@ -27,22 +31,27 @@ class CloudForecastApi {
     }
 
     fun fetchForecasts(lottery: LotteryType, limit: Int = 120): List<AiForecastRecord> {
+        val cached = forecastCache[lottery].orEmpty()
         val baseUrl = BuildConfig.TIANJI_CLOUD_BASE_URL.trim().trimEnd('/')
-        if (!baseUrl.startsWith("https://")) return emptyList()
+        if (!baseUrl.startsWith("https://")) return cached
         val url = URL("$baseUrl/v1/forecasts/${lottery.apiKey}?limit=${limit.coerceIn(1, 500)}")
         val connection = url.openConnection() as HttpURLConnection
         activeConnections += connection
         return try {
             connection.requestMethod = "GET"
-            connection.connectTimeout = 3_000
-            connection.readTimeout = 5_000
+            connection.connectTimeout = 1_500
+            connection.readTimeout = 2_500
             connection.useCaches = false
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("Cache-Control", "no-cache")
             val code = connection.responseCode
-            if (code !in 200..299) return emptyList()
+            if (code !in 200..299) return cached
             val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            parseForecasts(JSONArray(body), lottery)
+            val parsed = parseForecasts(JSONArray(body), lottery)
+            forecastCache[lottery] = parsed
+            parsed
+        } catch (_: Exception) {
+            cached
         } finally {
             activeConnections -= connection
             connection.disconnect()
