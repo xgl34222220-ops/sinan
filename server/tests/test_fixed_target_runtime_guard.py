@@ -11,6 +11,7 @@ from app.models import DrawModel
 
 class FixedTargetRuntimeGuardTest(unittest.TestCase):
     def setUp(self) -> None:
+        telegram_events.initialize()
         now = int(time.time() * 1000)
         with database.connection() as db:
             db.execute("DELETE FROM telegram_event_deliveries")
