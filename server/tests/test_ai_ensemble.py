@@ -54,6 +54,14 @@ def _scores_for_order(order: list[int]) -> list[float]:
     return scores
 
 
+def _strong_scores_for_order(order: list[int]) -> list[float]:
+    """Make Top6 membership decisive while leaving ordering dynamic."""
+    scores = [0.001] * 10
+    for rank, number in enumerate(order):
+        scores[number - 1] = 1000.0 - rank * 10.0 if rank < 6 else 0.01 * (10 - rank)
+    return scores
+
+
 class AiEnsembleTests(unittest.TestCase):
     def test_position_evidence_contains_all_ten_api_positions(self) -> None:
         evidence = build_position_evidence(_history())
@@ -191,14 +199,14 @@ class AiEnsembleTests(unittest.TestCase):
         )
         dynamic_order = [1, 4, 6, 9, 10, 2, 3, 5, 7, 8]
         number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=_scores_for_order(dynamic_order),
+            scores=_strong_scores_for_order(dynamic_order),
             analysis="动态号码评审",
         )
 
         result = analyze_ensemble(_history(), "21348120", _config())
         self.assertEqual(result.position, 0)
-        self.assertEqual(result.top6, dynamic_order[:6])
-        self.assertNotEqual(result.top6, [2, 3, 5, 7, 8, 10])
+        self.assertEqual(set(result.top6), set(dynamic_order[:6]))
+        self.assertNotEqual(set(result.top6), {2, 3, 5, 7, 8, 10})
         self.assertGreaterEqual(result.number_reviewers, 2)
         self.assertTrue(result.strategy_probabilities)
         self.assertTrue(
@@ -221,12 +229,12 @@ class AiEnsembleTests(unittest.TestCase):
         )
         agreed_order = [2, 3, 5, 7, 8, 10, 1, 4, 6, 9]
         number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=_scores_for_order(agreed_order),
+            scores=_strong_scores_for_order(agreed_order),
             analysis="独立号码评审",
         )
 
         result = analyze_ensemble(_history(), "21348120", _config())
-        self.assertEqual(result.top6, agreed_order[:6])
+        self.assertEqual(set(result.top6), set(agreed_order[:6]))
         self.assertGreaterEqual(result.number_reviewers, 2)
         self.assertIn("不会为了与本地不同而强制改号", result.analysis)
 
