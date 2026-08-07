@@ -11,6 +11,9 @@ def test_console_hides_internal_stage_and_miss_watch_workspaces():
     assert "<h3>服务状态</h3>" in py
     assert "stage.name" not in py
     assert "内部任务名、数据库细节与毫秒耗时已隐藏" in py
+    assert ".closest(\'.card\')?.remove()" not in js
+    assert "legacyDiagnosticsCard.setAttribute(\'hidden\',\'hidden\')" in js
+    assert "legacyDiagnosticsCard.setAttribute(\'aria-hidden\',\'true\')" in js
 
 
 def test_telegram_latency_policy_is_explicit():
