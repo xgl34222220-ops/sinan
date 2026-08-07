@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -58,14 +59,14 @@ fun MainBottomBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 72.dp)
+            .heightIn(min = 66.dp)
             .shadow(
-                elevation = if (colors.isOled) 0.dp else 14.dp,
-                shape = RoundedCornerShape(27.dp),
-                ambientColor = Color.Black.copy(alpha = 0.18f),
-                spotColor = Color.Black.copy(alpha = 0.18f),
+                elevation = if (colors.isOled) 0.dp else 12.dp,
+                shape = RoundedCornerShape(25.dp),
+                ambientColor = Color.Black.copy(alpha = 0.16f),
+                spotColor = Color.Black.copy(alpha = 0.16f),
             )
-            .clip(RoundedCornerShape(27.dp))
+            .clip(RoundedCornerShape(25.dp))
             .background(
                 Brush.verticalGradient(
                     listOf(
@@ -74,8 +75,8 @@ fun MainBottomBar(
                     ),
                 ),
             )
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(27.dp))
-            .padding(horizontal = 6.dp, vertical = 5.dp),
+            .border(1.dp, colors.lineStrong, RoundedCornerShape(25.dp))
+            .padding(horizontal = 5.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StandardNavItem(
@@ -119,7 +120,7 @@ private fun StandardNavItem(
 ) {
     val colors = LocalTianjiColors.current
     val background by animateColorAsState(
-        if (active) colors.accent.copy(alpha = 0.16f) else Color.Transparent,
+        if (active) colors.accent.copy(alpha = 0.15f) else Color.Transparent,
         label = "main-nav-bg",
     )
     val haptics = LocalHapticFeedback.current
@@ -136,9 +137,9 @@ private fun StandardNavItem(
     )
     Column(
         modifier = modifier
-            .heightIn(min = 60.dp)
+            .heightIn(min = 56.dp)
             .scale(scale)
-            .clip(RoundedCornerShape(19.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(background)
             .semantics { role = Role.Tab }
             .clickable(
@@ -155,24 +156,16 @@ private fun StandardNavItem(
             item.icon,
             contentDescription = item.label,
             tint = if (active) colors.accent else colors.textDim,
-            modifier = Modifier.size(if (active) 22.dp else 20.dp),
+            modifier = Modifier.size(if (active) 21.dp else 20.dp),
         )
-        Spacer(Modifier.width(1.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             item.label,
             color = if (active) colors.accent else colors.textDim,
-            fontSize = 11.sp,
-            lineHeight = 15.sp,
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
             fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium,
             maxLines = 1,
-        )
-        Spacer(Modifier.width(1.dp))
-        Box(
-            modifier = Modifier
-                .width(if (active) 20.dp else 5.dp)
-                .heightIn(min = 2.dp)
-                .clip(CircleShape)
-                .background(if (active) colors.accent else Color.Transparent),
         )
     }
 }
@@ -194,9 +187,9 @@ private fun ChatNavItem(
     )
     Column(
         modifier = modifier
-            .heightIn(min = 60.dp)
+            .heightIn(min = 56.dp)
             .scale(pressScale)
-            .clip(RoundedCornerShape(19.dp))
+            .clip(RoundedCornerShape(18.dp))
             .semantics { role = Role.Button }
             .clickable(
                 interactionSource = interaction,
@@ -208,41 +201,41 @@ private fun ChatNavItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(43.dp), contentAlignment = Alignment.Center) {
             if (isRunning) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(47.dp),
+                    modifier = Modifier.size(43.dp),
                     color = colors.accent,
                     strokeWidth = 2.dp,
                 )
             }
             Box(
                 modifier = Modifier
-                    .size(41.dp)
+                    .size(38.dp)
                     .shadow(
-                        elevation = if (colors.isOled) 0.dp else 8.dp,
+                        elevation = if (colors.isOled) 0.dp else 7.dp,
                         shape = CircleShape,
-                        ambientColor = colors.accent.copy(alpha = 0.30f),
-                        spotColor = colors.accent.copy(alpha = 0.30f),
+                        ambientColor = colors.accent.copy(alpha = 0.27f),
+                        spotColor = colors.accent.copy(alpha = 0.27f),
                     )
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(colors.accent, colors.violet)))
-                    .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape),
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(19.dp),
                 )
             }
         }
         Text(
             if (isRunning) "运行中" else "AI",
             color = colors.accent,
-            fontSize = 11.sp,
-            lineHeight = 15.sp,
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
         )
