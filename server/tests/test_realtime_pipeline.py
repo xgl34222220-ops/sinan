@@ -55,9 +55,12 @@ class RealtimePipelineContractTests(unittest.TestCase):
         coordinator = (APP / "push" / "PushAlertCoordinator.kt").read_text(encoding="utf-8")
         runtime = (APP / "TianjiRuntime.kt").read_text(encoding="utf-8")
         ui = (APP / "ui" / "TianjiApp.kt").read_text(encoding="utf-8")
+        bridge = (APP / "AppRealtimeRefresh.kt").read_text(encoding="utf-8")
         self.assertIn("setRealtimeRefreshCallback", coordinator)
         self.assertIn("requestRealtimeRefresh()", coordinator)
-        self.assertIn("appController.refresh()", runtime)
+        self.assertIn("appController.refreshCurrentLottery()", runtime)
+        self.assertIn("fun AppController.refreshCurrentLottery()", bridge)
+        self.assertIn("controller.refreshCurrentLottery()", ui)
         self.assertIn("remaining in -90_000L..60_000L -> 3_000L", ui)
         self.assertIn("remaining in 60_001L..180_000L -> 8_000L", ui)
 
