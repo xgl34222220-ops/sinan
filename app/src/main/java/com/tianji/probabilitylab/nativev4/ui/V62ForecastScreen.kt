@@ -205,11 +205,11 @@ private fun V62LiveHero(state: AppUiState, onRefresh: () -> Unit) {
     }
     val sourceHealthy = state.error == null && snapshot.sourceHealth.isFresh
 
-    SurfaceCard(radius = 24.dp) {
+    SurfaceCard(radius = 22.dp) {
         Column(
             Modifier
                 .background(colors.accent.copy(alpha = 0.035f))
-                .padding(17.dp),
+                .padding(15.dp),
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
@@ -302,8 +302,8 @@ private fun V62ForecastHero(
 ) {
     val colors = LocalTianjiColors.current
     val position = report.positions.getOrNull(selectedPosition) ?: report.selected
-    SurfaceCard(radius = 24.dp) {
-        Column(Modifier.padding(17.dp)) {
+    SurfaceCard(radius = 22.dp) {
+        Column(Modifier.padding(15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -380,8 +380,8 @@ private fun V62AiSummary(
         else -> "存在分歧"
     }
 
-    SurfaceCard(radius = 20.dp) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 13.dp)) {
+    SurfaceCard(radius = 19.dp) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -424,8 +424,8 @@ private fun V62AiSummary(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(colors.violet.copy(alpha = 0.075f))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .background(colors.violet.copy(alpha = 0.065f))
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -433,23 +433,30 @@ private fun V62AiSummary(
                         Text(
                             "第${positionNameV2(lead.key)}名",
                             color = colors.violet,
-                            fontSize = 21.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.ExtraBold,
                         )
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(consensusLabel, color = colors.textDim, fontSize = 11.sp)
                         Text(
-                            "${lead.value}/${forecasts.size} 票",
+                            if (forecasts.size == 1) {
+                                forecasts.first().profileName.ifBlank { forecasts.first().model }
+                            } else {
+                                "${lead.value}/${forecasts.size} 票"
+                            },
                             color = colors.text,
-                            fontSize = 18.sp,
+                            fontSize = if (forecasts.size == 1) 12.sp else 17.sp,
                             fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
 
-                Spacer(Modifier.height(9.dp))
-                supportRanking.take(3).forEachIndexed { index, entry ->
+                if (forecasts.size > 1) {
+                    Spacer(Modifier.height(8.dp))
+                    supportRanking.take(3).forEachIndexed { index, entry ->
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -477,9 +484,10 @@ private fun V62AiSummary(
                         )
                     }
                 }
+                }
 
-                Spacer(Modifier.height(7.dp))
-                forecasts.take(2).forEach { forecast ->
+                Spacer(Modifier.height(if (forecasts.size > 1) 7.dp else 5.dp))
+                forecasts.take(if (forecasts.size == 1) 1 else 2).forEach { forecast ->
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -596,7 +604,7 @@ private fun V62ProbabilityCard(
         .sortedByDescending { it.second }
 
     SurfaceCard(radius = 22.dp) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(15.dp)) {
             Text("号码概率", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             Text(
                 "第${positionNameV2(selectedPosition)}名 · 跟随上方名次选择",
@@ -624,7 +632,7 @@ private fun V62ProbabilityCard(
                 }
                 val boundaryCandidate = index == 6
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(

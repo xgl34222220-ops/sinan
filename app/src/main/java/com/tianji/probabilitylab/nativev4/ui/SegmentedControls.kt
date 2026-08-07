@@ -48,17 +48,17 @@ fun CompactLotterySwitcher(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(60.dp)
+            .height(56.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 3.dp,
-                shape = RoundedCornerShape(21.dp),
+                shape = RoundedCornerShape(19.dp),
                 ambientColor = Color.Black.copy(alpha = 0.12f),
                 spotColor = Color.Black.copy(alpha = 0.12f),
             )
-            .clip(RoundedCornerShape(21.dp))
+            .clip(RoundedCornerShape(19.dp))
             .background(Brush.verticalGradient(listOf(colors.glass, colors.surface.copy(alpha = 0.98f))))
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(21.dp))
-            .padding(5.dp),
+            .border(1.dp, colors.lineStrong, RoundedCornerShape(19.dp))
+            .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         LotteryType.entries.forEach { lottery ->
@@ -77,7 +77,7 @@ fun CompactLotterySwitcher(
                 animationSpec = spring(dampingRatio = 0.84f, stiffness = 540f),
                 label = "lottery-segment-scale",
             )
-            val shape = RoundedCornerShape(16.dp)
+            val shape = RoundedCornerShape(14.dp)
             val interaction = remember { MutableInteractionSource() }
             Row(
                 modifier = Modifier
@@ -142,17 +142,17 @@ fun SegmentedTabs(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(58.dp)
+            .height(50.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 2.dp,
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(18.dp),
                 ambientColor = Color.Black.copy(alpha = 0.10f),
                 spotColor = Color.Black.copy(alpha = 0.10f),
             )
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(Brush.verticalGradient(listOf(colors.surfaceStrong, colors.glass.copy(alpha = 0.97f))))
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(20.dp))
-            .padding(5.dp),
+            .border(1.dp, colors.lineStrong, RoundedCornerShape(18.dp))
+            .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         items.forEachIndexed { index, item ->
@@ -170,7 +170,7 @@ fun SegmentedTabs(
                 animationSpec = spring(dampingRatio = 0.84f, stiffness = 540f),
                 label = "segmented-tab-scale",
             )
-            val shape = RoundedCornerShape(15.dp)
+            val shape = RoundedCornerShape(14.dp)
             val interaction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
@@ -204,7 +204,7 @@ fun SegmentedTabs(
                     Spacer(Modifier.height(3.dp))
                     Box(
                         modifier = Modifier
-                            .width(if (active) 22.dp else 8.dp)
+                            .width(if (active) 18.dp else 7.dp)
                             .height(2.dp)
                             .clip(CircleShape)
                             .background(if (active) colors.accent else Color.Transparent),

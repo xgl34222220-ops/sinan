@@ -149,7 +149,7 @@ fun TianjiTheme(
         )
     }
 
-    val tintAmount = if (isDark) 0.038f else 0.022f
+    val tintAmount = if (isDark) 0.034f else 0.012f
     val palette = TianjiColors(
         page = if (isOled) base.page else lerp(base.page, accent, tintAmount * 0.55f),
         pageSoft = if (isOled) base.pageSoft else lerp(base.pageSoft, accent, tintAmount),
@@ -158,9 +158,9 @@ fun TianjiTheme(
         surfaceStrong = lerp(base.surfaceStrong, accent, if (isOled) 0.022f else tintAmount * 1.25f)
             .copy(alpha = 1f),
         surfaceSoft = accent.copy(alpha = if (isDark) 0.055f else 0.075f),
-        glass = lerp(base.surface, accent, if (isDark) 0.04f else 0.025f)
+        glass = lerp(base.surface, accent, if (isDark) 0.035f else 0.014f)
             .copy(alpha = if (isDark) 0.93f else 0.97f),
-        glassStrong = accent.copy(alpha = if (isDark) 0.075f else 0.10f),
+        glassStrong = accent.copy(alpha = if (isDark) 0.070f else 0.075f),
         header = lerp(base.page, accent, if (isDark) 0.022f else 0.012f)
             .copy(alpha = if (isDark) 0.97f else 0.99f),
         navSurface = lerp(base.surface, accent, if (isDark) 0.05f else 0.025f)
@@ -171,7 +171,7 @@ fun TianjiTheme(
         textSoft = dynamicPalette?.onSurfaceVariant ?: base.textSoft,
         textDim = lerp(dynamicPalette?.onSurfaceVariant ?: base.textDim, base.page, if (isDark) 0.10f else 0.05f),
         accent = accent,
-        accentSoft = accent.copy(alpha = if (isDark) 0.17f else 0.12f),
+        accentSoft = accent.copy(alpha = if (isDark) 0.16f else 0.10f),
         // Semantic colors remain stable even when Monet or a lottery accent changes.
         // This prevents orange lottery themes from looking identical to warning states.
         violet = if (isDark) Color(0xFF9A8CFF) else Color(0xFF6F5BDD),

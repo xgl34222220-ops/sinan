@@ -137,7 +137,7 @@ fun V62PushAlertCenterScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .heightIn(min = 58.dp)
+                .heightIn(min = 54.dp)
                 .background(Brush.verticalGradient(listOf(colors.header, colors.page.copy(alpha = 0.95f))))
                 .border(0.5.dp, colors.line)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
@@ -149,10 +149,10 @@ fun V62PushAlertCenterScreen(
             Column(Modifier.weight(1f)) {
                 Text("通知中心", color = colors.text, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    v62ConnectionTitle(status),
-                    color = if (status.instantReady) colors.green else if (status.registered) colors.accent else colors.amber,
+                    "${alerts.size} 条历史通知 · ${alerts.count { !it.isRead }} 条未读",
+                    color = colors.textDim,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                 )
             }
             IconButton(onClick = { showPreferences = true }, modifier = Modifier.size(46.dp)) {
@@ -191,7 +191,7 @@ fun V62PushAlertCenterScreen(
                         }
                         Row(
                             modifier = Modifier
-                                .heightIn(min = 42.dp)
+                                .heightIn(min = 40.dp)
                                 .clip(CircleShape)
                                 .background(if (showFilters || activeFilterCount > 0) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.7f))
                                 .border(
@@ -218,8 +218,8 @@ fun V62PushAlertCenterScreen(
                             )
                         }
                     }
+                    V62AlertChipRow(V62AlertFilter.entries, filter, V62AlertFilter::label) { filterName = it.name }
                     if (showFilters) {
-                        V62AlertChipRow(V62AlertFilter.entries, filter, V62AlertFilter::label) { filterName = it.name }
                         V62AlertChipRow(V62AlertLottery.entries, lottery, V62AlertLottery::label) { lotteryName = it.name }
                         if (activeFilterCount > 0) {
                             TextButton(
@@ -333,7 +333,7 @@ private fun V62NotificationSettingsSheet(
 ) {
     val colors = LocalTianjiColors.current
     Column(
-        modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 24.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 18.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text("通知设置", color = colors.text, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
@@ -343,17 +343,21 @@ private fun V62NotificationSettingsSheet(
             fontSize = 12.sp,
             lineHeight = 18.sp,
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
+        Text("总开关", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         V62PreferenceRow("启用天机推送", preferences.enabled) { onPreferencesChange(preferences.copy(enabled = it)) }
+        Text("彩种", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
         V62PreferenceRow("幸运飞艇", preferences.xyftEnabled) { onPreferencesChange(preferences.copy(xyftEnabled = it)) }
         V62PreferenceRow("澳洲幸运10", preferences.azxy10Enabled) { onPreferencesChange(preferences.copy(azxy10Enabled = it)) }
+        Text("内容类型", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
         V62PreferenceRow("云端 AI", preferences.aiEnabled) { onPreferencesChange(preferences.copy(aiEnabled = it)) }
         V62PreferenceRow("云端本地", preferences.nativeEnabled) { onPreferencesChange(preferences.copy(nativeEnabled = it)) }
+        Text("高级", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
         V62PreferenceRow("升级预警", preferences.escalationEnabled) { onPreferencesChange(preferences.copy(escalationEnabled = it)) }
         Spacer(Modifier.height(10.dp))
         Button(
             onClick = onRefresh,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().height(44.dp),
             shape = RoundedCornerShape(15.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = colors.surfaceStrong,
@@ -371,7 +375,7 @@ private fun V62NotificationSettingsSheet(
 private fun V62PreferenceRow(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
     val colors = LocalTianjiColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = colors.textSoft, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))

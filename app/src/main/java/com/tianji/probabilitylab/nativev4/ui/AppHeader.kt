@@ -65,14 +65,14 @@ fun CompactAppHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp)
+            .height(54.dp)
             .background(
                 Brush.verticalGradient(
                     listOf(colors.header, colors.page.copy(alpha = 0.94f)),
                 ),
             )
             .border(0.5.dp, colors.line)
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (canGoBack && onBack != null) {
@@ -91,9 +91,9 @@ fun CompactAppHeader(
                 contentDescription = "天机",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, colors.accent.copy(alpha = 0.24f), RoundedCornerShape(12.dp)),
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .border(1.dp, colors.accent.copy(alpha = 0.20f), RoundedCornerShape(11.dp)),
             )
             Spacer(Modifier.width(9.dp))
         }
@@ -167,11 +167,11 @@ private fun HeaderActionButton(
     val colors = LocalTianjiColors.current
     Box(
         modifier = Modifier
-            .size(46.dp)
-            .padding(3.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .size(42.dp)
+            .padding(2.dp)
+            .clip(RoundedCornerShape(13.dp))
             .background(colors.glassStrong)
-            .border(1.dp, colors.line, RoundedCornerShape(14.dp))
+            .border(1.dp, colors.line, RoundedCornerShape(13.dp))
             .semantics {
                 this.contentDescription = contentDescription
                 role = Role.Button

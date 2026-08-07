@@ -243,7 +243,7 @@ fun V62ArchiveScreen(
                     )
                     Row(
                         modifier = Modifier
-                            .heightIn(min = 56.dp)
+                            .heightIn(min = 50.dp)
                             .clip(RoundedCornerShape(15.dp))
                             .background(if (showFilters || activeFilterCount > 0) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.92f))
                             .border(
@@ -302,7 +302,7 @@ fun V62ArchiveScreen(
             ) {
                 Text("预测档案", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
                 Text(
-                    if (shown.size < filtered.size) "已显示 ${shown.size} / ${filtered.size}" else "${filtered.size} 条",
+                    if (shown.size < filtered.size) "当前加载 ${shown.size} / ${filtered.size}" else "当前加载 ${filtered.size} 条",
                     color = colors.textDim,
                     fontSize = 12.sp,
                 )
@@ -374,8 +374,8 @@ private fun V62ArchiveSummary(valid: Boolean, checked: Int, total: Int, settled:
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("$settled / $total", color = colors.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Text("已结算 / 总档案", color = colors.textDim, fontSize = 10.sp)
+                Text("已结算 $settled / 总计 $total", color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                Text("档案结算进度", color = colors.textDim, fontSize = 10.sp)
             }
         }
     }
@@ -430,8 +430,8 @@ private fun V62ArchiveRecord(item: V62ArchiveItem) {
         V62ArchiveSource.ALL -> Icons.Rounded.CheckCircle
     }
     val statusTint = settlementTintV2(item.top6Hit, item.top7Hit)
-    SurfaceCard(radius = 19.dp) {
-        Column(Modifier.padding(14.dp)) {
+    SurfaceCard(radius = 18.dp) {
+        Column(Modifier.padding(13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(tint.copy(alpha = 0.11f)),

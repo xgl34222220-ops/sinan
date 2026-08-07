@@ -54,13 +54,13 @@ fun SettingsEntry(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 70.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(colors.surface.copy(alpha = 0.72f))
-            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+            .heightIn(min = 66.dp)
+            .clip(RoundedCornerShape(17.dp))
+            .background(colors.surface.copy(alpha = 0.90f))
+            .border(1.dp, colors.line, RoundedCornerShape(17.dp))
             .semantics { role = Role.Button }
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 11.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -84,8 +84,8 @@ fun SettingsEntry(
             Text(
                 detail,
                 color = colors.textDim,
-                fontSize = 12.sp,
-                lineHeight = 17.sp,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

@@ -201,8 +201,8 @@ private fun RefinedLiveCard(state: AppUiState, onRefresh: () -> Unit) {
         snapshot.sourceHealth.isFresh -> colors.green
         else -> colors.amber
     }
-    SurfaceCard(radius = 21.dp) {
-        Column(Modifier.padding(15.dp)) {
+    SurfaceCard(radius = 20.dp) {
+        Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -276,8 +276,8 @@ private fun RefinedForecastCard(
 ) {
     val colors = LocalTianjiColors.current
     val position = report.positions.getOrNull(selectedPosition) ?: report.selected
-    SurfaceCard(radius = 21.dp) {
-        Column(Modifier.padding(15.dp)) {
+    SurfaceCard(radius = 20.dp) {
+        Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -347,8 +347,8 @@ private fun RefinedAiPanel(
         AiConsensusEngine.evaluateForecasts(state.aiForecasts, state.aiProfileAudits)
     }
     var showAllStatuses by rememberSaveable { mutableStateOf(false) }
-    SurfaceCard(radius = 21.dp) {
-        Column(Modifier.padding(15.dp)) {
+    SurfaceCard(radius = 20.dp) {
+        Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -537,8 +537,8 @@ private fun RefinedProbabilityCard(
     val prediction = report.positions.getOrNull(selectedPosition) ?: report.selected
     val ranked = prediction.probabilities.mapIndexed { index, value -> index + 1 to value }
         .sortedByDescending { it.second }
-    SurfaceCard(radius = 21.dp) {
-        Column(Modifier.padding(15.dp)) {
+    SurfaceCard(radius = 20.dp) {
+        Column(Modifier.padding(14.dp)) {
             Text("号码概率", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             Text(
                 "第${positionNameV2(selectedPosition)}名 · 只显示模型输出，不代表确定结果",
@@ -585,8 +585,8 @@ private fun RefinedProbabilityCard(
 @Composable
 internal fun RefinedModelCardV2(models: List<ModelPerformance>) {
     val colors = LocalTianjiColors.current
-    SurfaceCard(radius = 21.dp) {
-        Column(Modifier.padding(15.dp)) {
+    SurfaceCard(radius = 20.dp) {
+        Column(Modifier.padding(14.dp)) {
             Text("11 模型前向竞赛", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             Text(
                 "正式权重来自时间切分验证，没有优势的模型权重为 0",
@@ -612,8 +612,8 @@ fun StrategyAndEvidenceScreen(
     val report = state.report
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
-        verticalArrangement = Arrangement.spacedBy(11.dp),
+        contentPadding = PaddingValues(12.dp, 10.dp, 12.dp, 16.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         item { CompactLotterySwitcher(state.lottery, onSelectLottery) }
         item { SegmentedTabs(listOf("策略", "验证"), tab) { tab = it } }
@@ -632,8 +632,8 @@ fun StrategyAndEvidenceScreen(
 private fun RefinedStrategyCard(report: ForecastReport, state: AppUiState) {
     val colors = LocalTianjiColors.current
     val selected = report.selected
-    SurfaceCard(radius = 21.dp) {
-        Column(Modifier.padding(15.dp)) {
+    SurfaceCard(radius = 20.dp) {
+        Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(colors.accentSoft),
@@ -656,13 +656,13 @@ private fun RefinedStrategyCard(report: ForecastReport, state: AppUiState) {
                 )
             }
             Spacer(Modifier.height(15.dp))
-            CompactNumberRowV2(selected.top7, size = 33, spread = true)
+            CompactNumberRowV2(selected.top7, size = 31, spread = true)
             Spacer(Modifier.height(14.dp))
             val excluded = (1..10).filterNot { it in selected.top7 }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("排除", color = colors.textDim, fontSize = 11.sp, modifier = Modifier.width(42.dp))
                 excluded.forEach {
-                    LotteryBall(it, size = 27.dp, muted = true)
+                    LotteryBall(it, size = 26.dp, muted = true)
                     Spacer(Modifier.width(6.dp))
                 }
             }
@@ -700,8 +700,8 @@ private fun RefinedStrategyCard(report: ForecastReport, state: AppUiState) {
 @Composable
 private fun RefinedEvidenceCard(report: ForecastReport, state: AppUiState) {
     val colors = LocalTianjiColors.current
-    SurfaceCard(radius = 21.dp) {
-        Column(Modifier.padding(15.dp)) {
+    SurfaceCard(radius = 20.dp) {
+        Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.QueryStats, null, tint = colors.accent, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(9.dp))
