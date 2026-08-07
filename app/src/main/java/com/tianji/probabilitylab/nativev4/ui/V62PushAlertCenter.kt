@@ -124,7 +124,9 @@ fun V62PushAlertCenterScreen(
     }
     val sections = remember(filtered) {
         val grouped = linkedMapOf<String, MutableList<PushAlert>>()
-        filtered.forEach { alert -> grouped.getOrPut(v62AlertDayLabel(alert.createdAtEpochMs)) { mutableListOf() }.add(alert) }
+        filtered.forEach { alert ->
+            grouped.getOrPut(v62AlertDayLabel(alert.createdAtEpochMs)) { mutableListOf() }.add(alert)
+        }
         grouped
     }
 
@@ -135,25 +137,25 @@ fun V62PushAlertCenterScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .heightIn(min = 62.dp)
+                .heightIn(min = 58.dp)
                 .background(Brush.verticalGradient(listOf(colors.header, colors.page.copy(alpha = 0.95f))))
                 .border(0.5.dp, colors.line)
-                .padding(horizontal = 6.dp, vertical = 5.dp),
+                .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
+            IconButton(onClick = onClose, modifier = Modifier.size(46.dp)) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回", tint = colors.textSoft)
             }
             Column(Modifier.weight(1f)) {
-                Text("通知中心", color = colors.text, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                Text("通知中心", color = colors.text, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
                     v62ConnectionTitle(status),
                     color = if (status.instantReady) colors.green else if (status.registered) colors.accent else colors.amber,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            IconButton(onClick = { showPreferences = true }, modifier = Modifier.size(48.dp)) {
+            IconButton(onClick = { showPreferences = true }, modifier = Modifier.size(46.dp)) {
                 Icon(Icons.Rounded.Settings, contentDescription = "通知设置", tint = colors.textSoft)
             }
         }
@@ -163,8 +165,10 @@ fun V62PushAlertCenterScreen(
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item("connection") {
-                V62AlertConnectionStrip(status = status)
+            if (!status.instantReady) {
+                item("connection") {
+                    V62AlertConnectionStrip(status = status)
+                }
             }
             item("filters") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -187,7 +191,7 @@ fun V62PushAlertCenterScreen(
                         }
                         Row(
                             modifier = Modifier
-                                .heightIn(min = 44.dp)
+                                .heightIn(min = 42.dp)
                                 .clip(CircleShape)
                                 .background(if (showFilters || activeFilterCount > 0) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.7f))
                                 .border(
@@ -217,6 +221,17 @@ fun V62PushAlertCenterScreen(
                     if (showFilters) {
                         V62AlertChipRow(V62AlertFilter.entries, filter, V62AlertFilter::label) { filterName = it.name }
                         V62AlertChipRow(V62AlertLottery.entries, lottery, V62AlertLottery::label) { lotteryName = it.name }
+                        if (activeFilterCount > 0) {
+                            TextButton(
+                                onClick = {
+                                    filterName = V62AlertFilter.ALL.name
+                                    lotteryName = V62AlertLottery.ALL.name
+                                },
+                                modifier = Modifier.align(Alignment.End),
+                            ) {
+                                Text("清除筛选", color = colors.textDim, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
