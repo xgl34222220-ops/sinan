@@ -14,3 +14,18 @@ from .fixed_target_bridge import install as _install_fixed_target_bridge
 
 _install_fixed_target_bridge()
 del _install_fixed_target_bridge
+
+from .fixed_target_runtime_guard import install as _install_fixed_target_runtime_guard
+
+_install_fixed_target_runtime_guard()
+del _install_fixed_target_runtime_guard
+
+from .fixed_target_settlement_class_guard import install as _install_fixed_target_settlement_class_guard
+
+_install_fixed_target_settlement_class_guard()
+del _install_fixed_target_settlement_class_guard
+
+from .fixed_target_runtime_compat import install as _install_fixed_target_runtime_compat
+
+_install_fixed_target_runtime_compat()
+del _install_fixed_target_runtime_compat
