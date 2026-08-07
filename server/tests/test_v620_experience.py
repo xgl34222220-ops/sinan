@@ -78,7 +78,18 @@ class V620ExperienceContractTests(unittest.TestCase):
         self.assertIn('stickyHeader("search")', archive)
         self.assertIn("FCM 即时推送正常", alerts)
         self.assertIn("查看预测", alerts)
-        self.assertIn("heightIn(min = 66.dp)", bottom_bar)
+        self.assertIn("heightIn(min = 62.dp)", bottom_bar)
+
+    def test_v650_mobile_polish_contract(self) -> None:
+        source = (ROOT / "server/app/console_v3.py").read_text(encoding="utf-8")
+        self.assertEqual(source.count("/* v6.5 UI Final Polish 2: shared density + semantic token layer */"), 1)
+        self.assertIn(".topbar .brand h1{display:none}", source)
+        self.assertIn(".v620-card-state{min-height:23px;padding:0 8px;font-size:11px}", source)
+        self.assertIn(".v620-latency span{font-size:11px", source)
+        self.assertIn(".mobile-nav .nav-tail{display:none!important}", source)
+        self.assertIn(".tianji-console-v620 .model-choice{min-height:54px", source)
+        self.assertIn(".tianji-console-v620 .profile-card{padding:10px", source)
+        self.assertIn("background:linear-gradient(145deg,var(--ai),var(--primary2))", source)
 
 
 if __name__ == "__main__":

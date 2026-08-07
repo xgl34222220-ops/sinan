@@ -69,14 +69,14 @@ fun MainBottomBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 66.dp)
+            .heightIn(min = 62.dp)
             .shadow(
-                elevation = if (colors.isOled) 0.dp else 12.dp,
-                shape = RoundedCornerShape(25.dp),
+                elevation = if (colors.isOled) 0.dp else 9.dp,
+                shape = RoundedCornerShape(23.dp),
                 ambientColor = Color.Black.copy(alpha = 0.16f),
                 spotColor = Color.Black.copy(alpha = 0.16f),
             )
-            .clip(RoundedCornerShape(25.dp))
+            .clip(RoundedCornerShape(23.dp))
             .background(
                 Brush.verticalGradient(
                     listOf(
@@ -85,7 +85,7 @@ fun MainBottomBar(
                     ),
                 ),
             )
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(25.dp))
+            .border(1.dp, colors.lineStrong, RoundedCornerShape(23.dp))
             .padding(horizontal = 5.dp, vertical = 4.dp),
     ) {
         val slotWidth = maxWidth / 5
@@ -95,7 +95,7 @@ fun MainBottomBar(
             label = "main-nav-indicator-x",
         )
         val indicatorTint by animateColorAsState(
-            targetValue = colors.accent.copy(alpha = 0.15f),
+            targetValue = colors.accent.copy(alpha = 0.12f),
             label = "main-nav-indicator-color",
         )
 
@@ -104,14 +104,14 @@ fun MainBottomBar(
                 .align(Alignment.CenterStart)
                 .offset(x = indicatorX)
                 .width(slotWidth)
-                .height(56.dp)
-                .padding(horizontal = 2.dp)
-                .clip(RoundedCornerShape(18.dp))
+                .height(50.dp)
+                .padding(horizontal = 3.dp)
+                .clip(RoundedCornerShape(17.dp))
                 .background(indicatorTint)
                 .border(
                     width = 1.dp,
                     color = colors.accent.copy(alpha = 0.10f),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(17.dp),
                 ),
         )
 
@@ -179,7 +179,7 @@ private fun StandardNavItem(
 
     Column(
         modifier = modifier
-            .heightIn(min = 56.dp)
+            .heightIn(min = 52.dp)
             .scale(scale)
             .clip(RoundedCornerShape(18.dp))
             .semantics { role = Role.Tab }
@@ -228,7 +228,7 @@ private fun ChatNavItem(
     )
     Column(
         modifier = modifier
-            .heightIn(min = 56.dp)
+            .heightIn(min = 52.dp)
             .scale(pressScale)
             .clip(RoundedCornerShape(18.dp))
             .semantics { role = Role.Button }
@@ -242,17 +242,17 @@ private fun ChatNavItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(modifier = Modifier.size(43.dp), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
             if (isRunning) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(43.dp),
+                    modifier = Modifier.size(40.dp),
                     color = colors.accent,
                     strokeWidth = 2.dp,
                 )
             }
             Box(
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(36.dp)
                     .shadow(
                         elevation = if (colors.isOled) 0.dp else 7.dp,
                         shape = CircleShape,
@@ -268,7 +268,7 @@ private fun ChatNavItem(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
                     tint = Color.White,
-                    modifier = Modifier.size(19.dp),
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }

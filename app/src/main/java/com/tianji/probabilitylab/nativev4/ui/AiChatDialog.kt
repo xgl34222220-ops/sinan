@@ -121,12 +121,12 @@ fun AiChatFloatingButton(
             .height(52.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 10.dp,
-                shape = RoundedCornerShape(19.dp),
+                shape = RoundedCornerShape(17.dp),
                 ambientColor = colors.accent.copy(alpha = 0.25f),
                 spotColor = colors.accent.copy(alpha = 0.25f),
             )
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(19.dp),
+        shape = RoundedCornerShape(17.dp),
         color = colors.accent,
         contentColor = Color.White,
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
@@ -531,7 +531,7 @@ fun AiChatDialog(
                         isRunning = session.isRunning,
                         placeholder = persona.quickPrompts.firstOrNull()
                             ?: "继续追问，或告诉它上一期哪里需要调整",
-                        suggestions = persona.quickPrompts.take(3),
+                        suggestions = persona.quickPrompts.take(2),
                         onSuggestion = ::submit,
                         onSend = { submit(input) },
                         onStop = controller::cancel,
@@ -603,7 +603,7 @@ private fun ChatTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(70.dp)
+            .height(60.dp)
             .background(
                 Brush.verticalGradient(
                     listOf(
@@ -680,8 +680,8 @@ private fun ChatTopBar(
                 Text(
                     text = selectedModel.ifBlank { "请选择模型" },
                     color = colors.accent,
-                    fontSize = 9.5.sp,
-                    lineHeight = 13.sp,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -690,13 +690,6 @@ private fun ChatTopBar(
             }
         }
 
-        ChatTopActionButton(
-            icon = Icons.Rounded.History,
-            description = "对话历史",
-            enabled = !session.isRunning,
-            onClick = onHistory,
-        )
-        Spacer(Modifier.width(5.dp))
         ChatTopActionButton(
             icon = Icons.Rounded.Add,
             description = "新建对话",
@@ -715,6 +708,16 @@ private fun ChatTopBar(
                 expanded = moreExpanded,
                 onDismissRequest = dismissMore,
             ) {
+                DropdownMenuItem(
+                    text = { Text("对话历史") },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.History, contentDescription = null)
+                    },
+                    onClick = {
+                        dismissMore()
+                        onHistory()
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text("刷新开奖历史") },
                     leadingIcon = {
@@ -804,15 +807,15 @@ private fun SessionControlCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .padding(horizontal = 14.dp, vertical = 5.dp)
             .shadow(
                 elevation = if (colors.isOled) 0.dp else 3.dp,
-                shape = RoundedCornerShape(21.dp),
+                shape = RoundedCornerShape(18.dp),
                 ambientColor = Color.Black.copy(alpha = 0.10f),
                 spotColor = Color.Black.copy(alpha = 0.10f),
             )
             .animateContentSize(),
-        shape = RoundedCornerShape(21.dp),
+        shape = RoundedCornerShape(18.dp),
         color = colors.glass,
         border = BorderStroke(1.dp, colors.lineStrong),
     ) {
@@ -821,13 +824,13 @@ private fun SessionControlCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onToggle)
-                    .padding(horizontal = 13.dp, vertical = 11.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(13.dp))
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(
                                 Brush.linearGradient(
                                     listOf(
@@ -855,7 +858,7 @@ private fun SessionControlCard(
                         Text(
                             text = selectedModel.ifBlank { "选择模型" },
                             color = colors.text,
-                            fontSize = 12.5.sp,
+                            fontSize = 12.sp,
                             lineHeight = 17.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -864,8 +867,8 @@ private fun SessionControlCard(
                         Text(
                             text = "${session.judgementMode.label} · ${persona.displayName}",
                             color = colors.textDim,
-                            fontSize = 9.5.sp,
-                            lineHeight = 14.sp,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -896,7 +899,7 @@ private fun SessionControlCard(
                         Text(
                             text = report?.targetPeriod?.let { "目标期  $it" } ?: "目标期待同步",
                             color = colors.textSoft,
-                            fontSize = 9.5.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -910,7 +913,7 @@ private fun SessionControlCard(
                         Text(
                             text = selectedConfig?.displayName ?: "未配置",
                             color = colors.accent,
-                            fontSize = 9.5.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -923,7 +926,7 @@ private fun SessionControlCard(
                     Text(
                         text = "上下文",
                         color = colors.textDim,
-                        fontSize = 9.sp,
+                        fontSize = 10.5.sp,
                     )
                     Spacer(Modifier.width(5.dp))
                     ContextUsagePill(session.contextUsagePercent)
@@ -1049,7 +1052,7 @@ private fun ContextUsagePill(percent: Int) {
         Text(
             text = "${percent.coerceIn(0, 100)}%",
             color = tint,
-            fontSize = 9.sp,
+            fontSize = 10.5.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
         )
@@ -1133,13 +1136,13 @@ private fun WelcomePanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 18.dp),
+            .padding(top = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
-                .size(54.dp)
-                .clip(RoundedCornerShape(19.dp))
+                .size(46.dp)
+                .clip(RoundedCornerShape(17.dp))
                 .background(
                     Brush.linearGradient(
                         listOf(
@@ -1151,7 +1154,7 @@ private fun WelcomePanel(
                 .border(
                     width = 1.dp,
                     color = colors.accent.copy(alpha = 0.20f),
-                    shape = RoundedCornerShape(19.dp),
+                    shape = RoundedCornerShape(17.dp),
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -1159,15 +1162,15 @@ private fun WelcomePanel(
                 imageVector = Icons.Rounded.AutoAwesome,
                 contentDescription = null,
                 tint = colors.accent,
-                modifier = Modifier.size(25.dp),
+                modifier = Modifier.size(22.dp),
             )
         }
         Spacer(Modifier.height(13.dp))
         Text(
             text = "和天机一起分析",
             color = colors.text,
-            fontSize = 19.sp,
-            lineHeight = 25.sp,
+            fontSize = 17.sp,
+            lineHeight = 23.sp,
             fontWeight = FontWeight.ExtraBold,
         )
         Text(
@@ -1175,21 +1178,21 @@ private fun WelcomePanel(
             color = colors.textDim,
             fontSize = 11.sp,
             lineHeight = 17.sp,
-            modifier = Modifier.padding(top = 5.dp, bottom = 17.dp),
+            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
         )
 
-        persona.quickPrompts.take(3).forEach { prompt ->
+        persona.quickPrompts.take(2).forEach { prompt ->
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = 3.dp)
                     .clickable(enabled = enabled) { onPrompt(prompt) },
                 shape = RoundedCornerShape(17.dp),
                 color = colors.glass,
                 border = BorderStroke(1.dp, colors.line),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
@@ -1319,8 +1322,8 @@ private fun ChatMessageBubble(
                     Text(
                         text = model.ifBlank { "AI 分析" },
                         color = colors.textDim,
-                        fontSize = 9.sp,
-                        lineHeight = 13.sp,
+                        fontSize = 10.5.sp,
+                        lineHeight = 14.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -1336,7 +1339,7 @@ private fun ChatMessageBubble(
                         Text(
                             text = "生成中",
                             color = colors.accent,
-                            fontSize = 9.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
@@ -1524,7 +1527,7 @@ private fun StreamingStatus(
         border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.14f)),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CircularProgressIndicator(
@@ -1615,7 +1618,7 @@ private fun ChatPredictionCard(record: AiChatCandidateRecord) {
                         Text(
                             text = if (it) "命中" else "未中",
                             color = if (it) colors.green else colors.amber,
-                            fontSize = 9.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                         )
@@ -1904,7 +1907,7 @@ private fun ConversationHistoryDialog(
                             ),
                         ) {
                             Column(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(

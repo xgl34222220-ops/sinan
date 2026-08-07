@@ -101,15 +101,15 @@ internal fun CompactMetricV2(label: String, value: String, modifier: Modifier = 
             .clip(RoundedCornerShape(14.dp))
             .background(colors.surfaceStrong.copy(alpha = 0.78f))
             .border(1.dp, colors.line, RoundedCornerShape(14.dp))
-            .padding(horizontal = 11.dp, vertical = 11.dp),
+            .padding(horizontal = 10.dp, vertical = 9.dp),
     ) {
-        Text(label, color = colors.textDim, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1)
+        Text(label, color = colors.textDim, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 1)
         Spacer(Modifier.size(3.dp))
         Text(
             value,
             color = colors.text,
-            fontSize = 16.sp,
-            lineHeight = 21.sp,
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
