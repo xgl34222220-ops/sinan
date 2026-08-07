@@ -24,6 +24,29 @@ jobs:
       - name: Apply AI self-learning prompt patch
         run: python tools/apply-ai-self-learning-prompt.py
 
+      - name: Tighten native-isolation regression test
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/test/java/com/tianji/probabilitylab/nativev4/ai/ContinualRemoteAiAnalyzerTest.kt')
+          text = path.read_text(encoding='utf-8')
+          old = '''        val raw = json.toString()
+                  assertFalse(raw.contains("native", ignoreCase = true))
+                  assertFalse(raw.contains("本机"))
+          '''
+          new = '''        assertFalse(json.has("native_position"))
+                  assertFalse(json.has("native_top6"))
+                  assertFalse(json.has("native_top7"))
+                  assertFalse(json.has("native_probabilities"))
+                  assertFalse(first.has("native_position"))
+                  assertFalse(first.has("native_top6"))
+          '''
+          if old not in text:
+              raise SystemExit('over-broad native-isolation assertions not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
