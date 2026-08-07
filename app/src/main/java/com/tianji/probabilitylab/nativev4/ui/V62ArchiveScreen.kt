@@ -54,6 +54,9 @@ import androidx.compose.ui.unit.sp
 import com.tianji.probabilitylab.nativev4.AppUiState
 import com.tianji.probabilitylab.nativev4.model.LotteryType
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 private enum class V62ArchiveStatus(val label: String) {
     ALL("全部"), PENDING("待开奖"), HIT("已命中"), MISSED("未命中"),
@@ -93,6 +96,10 @@ fun V62ArchiveScreen(
     var visibleCount by rememberSaveable(state.lottery.apiKey) { mutableIntStateOf(120) }
     val source = V62ArchiveSource.entries.firstOrNull { it.name == sourceName } ?: V62ArchiveSource.ALL
     val status = V62ArchiveStatus.entries.firstOrNull { it.name == statusName } ?: V62ArchiveStatus.ALL
+    val activeFilterCount = listOf(
+        source != V62ArchiveSource.ALL,
+        status != V62ArchiveStatus.ALL,
+    ).count { it }
 
     val allItems = remember(
         state.aiConsensusRecords,
@@ -184,6 +191,13 @@ fun V62ArchiveScreen(
         visibleCount = 120
     }
     val shown = filtered.take(visibleCount)
+    val shownSections = remember(shown) {
+        val grouped = linkedMapOf<String, MutableList<V62ArchiveItem>>()
+        shown.forEach { item ->
+            grouped.getOrPut(v62ArchiveDayLabel(item.createdAtEpochMs)) { mutableListOf() }.add(item)
+        }
+        grouped
+    }
 
     LazyColumn(
         modifier = modifier,
@@ -231,15 +245,29 @@ fun V62ArchiveScreen(
                         modifier = Modifier
                             .heightIn(min = 56.dp)
                             .clip(RoundedCornerShape(15.dp))
-                            .background(if (showFilters) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.92f))
-                            .border(1.dp, if (showFilters) colors.accent.copy(alpha = 0.25f) else colors.line, RoundedCornerShape(15.dp))
+                            .background(if (showFilters || activeFilterCount > 0) colors.accentSoft else colors.surfaceStrong.copy(alpha = 0.92f))
+                            .border(
+                                1.dp,
+                                if (showFilters || activeFilterCount > 0) colors.accent.copy(alpha = 0.25f) else colors.line,
+                                RoundedCornerShape(15.dp),
+                            )
                             .clickable { showFilters = !showFilters }
                             .padding(horizontal = 13.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.FilterList, contentDescription = "筛选档案", tint = if (showFilters) colors.accent else colors.textSoft, modifier = Modifier.size(19.dp))
+                        Icon(
+                            Icons.Rounded.FilterList,
+                            contentDescription = "筛选档案",
+                            tint = if (showFilters || activeFilterCount > 0) colors.accent else colors.textSoft,
+                            modifier = Modifier.size(19.dp),
+                        )
                         Spacer(Modifier.width(6.dp))
-                        Text("筛选", color = if (showFilters) colors.accent else colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (activeFilterCount > 0) "筛选 · $activeFilterCount" else "筛选",
+                            color = if (showFilters || activeFilterCount > 0) colors.accent else colors.textSoft,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
                 if (showFilters) {
@@ -253,6 +281,17 @@ fun V62ArchiveScreen(
                         selected = status,
                         label = V62ArchiveStatus::label,
                     ) { statusName = it.name }
+                    if (activeFilterCount > 0) {
+                        TextButton(
+                            onClick = {
+                                sourceName = V62ArchiveSource.ALL.name
+                                statusName = V62ArchiveStatus.ALL.name
+                            },
+                            modifier = Modifier.align(Alignment.End),
+                        ) {
+                            Text("清除筛选", color = colors.textDim, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
@@ -272,8 +311,20 @@ fun V62ArchiveScreen(
         if (filtered.isEmpty()) {
             item("empty") { EmptyState("没有匹配的档案", "调整搜索词或筛选条件后重试", false) }
         } else {
-            shown.forEach { item ->
-                item(item.key) { V62ArchiveRecord(item) }
+            shownSections.forEach { (label, items) ->
+                stickyHeader("archive-day-$label") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.page.copy(alpha = 0.96f))
+                            .padding(horizontal = 3.dp, vertical = 6.dp),
+                    ) {
+                        Text(label, color = colors.textDim, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                items.forEach { item ->
+                    item(item.key) { V62ArchiveRecord(item) }
+                }
             }
             if (shown.size < filtered.size) {
                 item("load-more") {
@@ -408,14 +459,17 @@ private fun V62ArchiveRecord(item: V62ArchiveItem) {
                 Text(item.detail, color = colors.textSoft, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(formatTimeV2(item.createdAtEpochMs), color = colors.textDim, fontSize = 11.sp)
             }
-            if (item.hash.isNotBlank()) {
-                Text(
-                    item.hash.take(12),
-                    color = colors.textDim,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
         }
+    }
+}
+
+private fun v62ArchiveDayLabel(epochMs: Long): String {
+    val zone = ZoneId.systemDefault()
+    val date = Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+    val today = LocalDate.now(zone)
+    return when (date) {
+        today -> "今天"
+        today.minusDays(1) -> "昨天"
+        else -> "%02d-%02d".format(date.monthValue, date.dayOfMonth)
     }
 }
