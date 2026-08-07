@@ -43,10 +43,10 @@
 
   const overview=q('#panel-overview');
   if(overview){
+    q('#diagnostics')?.closest('.card')?.remove();
     const draw=document.createElement('section');draw.className='section v3-section';draw.id='drawWorkspace';draw.innerHTML='<div class="v3-head"><div><h3>下一期开奖与任务</h3><p>倒计时、冻结状态和当前任务放在同一处查看。</p></div></div><div class="v3-draw-grid" id="v3DrawGrid"><div class="v3-empty"><strong>正在读取任务状态</strong>请稍候</div></div>';
     q('#adminMetrics',overview)?.insertAdjacentElement('afterend',draw);
-    const ops=document.createElement('section');ops.className='section';ops.id='opsWorkspace';ops.innerHTML='<div class="v3-head"><div><h3>云端维护</h3><p>自动更新、备份、存储、数据完整性与最近任务时间线。</p></div><button class="btn secondary" id="v3RefreshOps">刷新状态</button></div><div class="v3-ops-grid" id="v3OpsGrid"></div><div class="v3-card" id="v3Integrity"></div><div class="v3-card v3-timeline" id="v3Timeline"></div>';
-    overview.appendChild(ops);q('#v3RefreshOps')?.addEventListener('click',loadOperations);
+    // Internal deployment/database timeline stays available through the API, but is intentionally hidden from the daily console.
   }
   function countdown(target){if(!target)return'等待时间';const diff=Number(target)-Date.now();if(diff<=0)return'等待开奖';const total=Math.floor(diff/1000),minutes=Math.floor(total/60),seconds=total%60;return`${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`}
   function jobLabel(job,auto){if(!auto)return['已关闭','warn'];if(!job)return['等待调度','warn'];const map={queued:['排队中','warn'],running:['分析中','warn'],completed:['已冻结','good'],duplicate:['已冻结','good'],error:['调用失败','bad'],discarded:['封盘丢弃','bad'],skipped:['等待下期','warn']};return map[job.status]||['等待调度','warn']}
@@ -56,7 +56,7 @@
   async function loadOperations(){if(!overview)return;begin();try{const data=await api('/admin/api/operations'),update=updateLabel(data.auto_update.status),backup=data.backup.latest,integrity=data.integrity,storage=data.storage;q('#v3OpsGrid').innerHTML=`<article class="v3-card v3-op"><div class="v3-op-icon">UP</div><h4>自动更新</h4><div class="v3-op-value ${update[1]}">${update[0]}</div><p>${esc(data.auto_update.message||'—')}<br>${fmt(data.auto_update.updated_at_epoch_ms)}</p></article><article class="v3-card v3-op"><div class="v3-op-icon">BK</div><h4>数据库备份</h4><div class="v3-op-value ${backup?'good':'warn'}">${backup?'正常':'暂无'}</div><p>${backup?esc(backup.name)+' · '+bytes(backup.size_bytes):'未找到可读取的备份'}<br>${backup?fmt(backup.updated_at_epoch_ms):'—'}</p></article><article class="v3-card v3-op"><div class="v3-op-icon">DB</div><h4>数据库</h4><div class="v3-op-value">${bytes(storage.database_size_bytes)}</div><p>SQLite ${integrity.sqlite==='ok'?'完整性正常':'需要检查'}<br>磁盘剩余 ${bytes(storage.disk_free_bytes)}</p></article><article class="v3-card v3-op"><div class="v3-op-icon">DS</div><h4>磁盘使用</h4><div class="v3-op-value ${storage.disk_used_ratio>.9?'bad':storage.disk_used_ratio>.75?'warn':'good'}">${pct(storage.disk_used_ratio)}</div><p>已用 ${bytes(storage.disk_used_bytes)}<br>总计 ${bytes(storage.disk_total_bytes)}</p></article>`;q('#v3Integrity').innerHTML=`<div class="card-pad"><div class="card-head"><div><h3>数据完整性检查</h3><p>检查 SQLite、异常开奖号码、已开奖未结算和近期可能缺失期号。</p></div><span class="badge ${integrity.ok?'good':'warn'}">${integrity.ok?'检查正常':'需要留意'}</span></div><div class="v3-integrity"><div class="v3-integrity-item"><span>SQLite</span><strong>${esc(integrity.sqlite)}</strong></div><div class="v3-integrity-item"><span>异常开奖</span><strong>${integrity.invalid_draws}</strong></div><div class="v3-integrity-item"><span>结算积压</span><strong>${integrity.settlement_backlog}</strong></div><div class="v3-integrity-item"><span>近期疑似缺期</span><strong>${integrity.recent_missing_periods_estimate}</strong></div></div>${integrity.missing_examples?.length?`<div class="notice" style="margin-top:9px">${integrity.missing_examples.map(esc).join('<br>')}</div>`:''}</div>`;q('#v3Timeline').innerHTML=data.timeline.length?data.timeline.map(event=>`<div class="v3-event"><div class="v3-event-time">${fmt(event.time).slice(6)}</div><span class="v3-event-dot ${esc(event.level)}"></span><div><div class="v3-event-title">${esc(event.title)}</div><div class="v3-event-detail">${esc(event.detail)}</div></div></div>`).join(''):'<div class="v3-empty"><strong>暂无任务记录</strong>等待下一轮同步</div>'}catch(error){q('#v3OpsGrid').innerHTML=`<div class="v3-empty"><strong>维护状态读取失败</strong>${esc(error.message)}</div>`}finally{end()}}
 
   let lastScroll=window.scrollY;window.addEventListener('scroll',()=>{const nav=q('.mobile-nav');if(!nav)return;const current=window.scrollY;if(current>lastScroll+10&&current>120)nav.classList.add('compact');else if(current<lastScroll-10)nav.classList.remove('compact');lastScroll=current},{passive:true});
-  loadRecords();loadInsights();loadDraws();loadOperations();setInterval(()=>{loadDraws();loadOperations()},30000);
+  loadRecords();loadInsights();loadDraws();setInterval(loadDraws,30000);
 })();
 
 
@@ -240,42 +240,3 @@
 })();
 
 
-(()=>{
-  const overview=document.querySelector('#panel-overview');
-  if(!overview)return;
-  const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const workspace=document.createElement('section');
-  workspace.className='section v597-watch-section';
-  workspace.id='v597MissWatchWorkspace';
-  workspace.innerHTML=`<div class="v3-head"><div><h3>双彩种三期不中预警</h3><p>幸运飞艇与澳洲幸运10放在同一处；每个预测来源和模型独立计算，连续三期六码未中立即报警。</p></div><span class="badge" id="v597WatchBadge">正在检查</span></div><div class="v597-watch-grid" id="v597WatchGrid"><div class="v3-empty"><strong>正在读取预测健康</strong>请稍候</div></div>`;
-  const draw=document.querySelector('#drawWorkspace');
-  if(draw)draw.insertAdjacentElement('afterend',workspace);else overview.prepend(workspace);
-
-  const periodRow=item=>{
-    const periods=item.recent_three||[];
-    if(!periods.length)return '<div class="v597-period-empty">暂无已结算记录</div>';
-    return `<div class="v597-periods">${periods.map(record=>`<span class="v597-period ${record.hit?'hit':'miss'}"><b>${esc(record.target_period)}</b><small>${record.hit?'命中':'未中'} · 第 ${Number(record.position)+1} 名</small></span>`).join('')}</div>`;
-  };
-  const predictionCard=item=>`<article class="v597-prediction ${item.warning?'warning':'safe'}"><div class="v597-prediction-head"><div><span class="v597-source ${item.source==='ai'?'ai':'native'}">${esc(item.source_name)}</span><strong>${esc(item.model)}</strong></div><span class="v597-streak">${item.current_miss_streak} 期未中</span></div><div class="v597-status ${item.warning?'bad':'good'}">${item.warning?'已达到三期预警':'当前未触发预警'}</div>${periodRow(item)}<div class="v597-meta">已结算 ${item.settled_records} · 待开奖 ${item.pending_records}</div></article>`;
-  const lotteryCard=lottery=>`<section class="v597-lottery ${lottery.warning_count?'warning':''}"><div class="v597-lottery-head"><div><h4>${esc(lottery.name)}</h4><p>每种预测单独追踪连续未中</p></div><span class="badge ${lottery.warning_count?'bad':'good'}">${lottery.warning_count?lottery.warning_count+' 项预警':'全部正常'}</span></div><div class="v597-prediction-list">${lottery.predictions?.length?lottery.predictions.map(predictionCard).join(''):'<div class="v3-empty"><strong>暂无预测记录</strong>等待云端产生并完成结算</div>'}</div></section>`;
-
-  async function loadMissWatch(){
-    const grid=document.querySelector('#v597WatchGrid'),badge=document.querySelector('#v597WatchBadge');
-    if(!grid||!badge)return;
-    try{
-      const response=await fetch('/admin/api/operations',{cache:'no-store',headers:{'X-Tianji-Admin':'1'}});
-      if(response.status===401){location.href='/admin';return}
-      const data=await response.json();
-      if(!response.ok)throw Error(data.detail||('HTTP '+response.status));
-      const watch=data.miss_watch||{warning_count:0,lotteries:[]};
-      badge.className='badge '+(watch.warning_count?'bad':'good');
-      badge.textContent=watch.warning_count?`${watch.warning_count} 项预警`:'暂无三期预警';
-      grid.innerHTML=watch.lotteries?.length?watch.lotteries.map(lotteryCard).join(''):'<div class="v3-empty"><strong>暂无预警数据</strong>等待正式预测完成结算</div>';
-    }catch(error){
-      badge.className='badge warn';badge.textContent='读取失败';
-      grid.innerHTML=`<div class="v3-empty"><strong>预警读取失败</strong>${esc(error.message)}</div>`;
-    }
-  }
-  loadMissWatch();
-  setInterval(loadMissWatch,30000);
-})();

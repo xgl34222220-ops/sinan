@@ -10,7 +10,7 @@ from .public_v4 import enhance_public_html
 V510_STYLE = r"""
 :where(button,a,input,select,summary):focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
 #recordsPro .v3-controls{position:sticky;top:64px;z-index:18;background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-.v510-platform{margin-top:14px}.v510-platform-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}.v510-platform-card{padding:14px;border:1px solid var(--line);border-radius:19px;background:var(--surface);box-shadow:var(--shadow2)}.v510-platform-card span{display:block;color:var(--muted);font-size:9px}.v510-platform-card strong{display:block;margin-top:6px;font-size:15px;overflow-wrap:anywhere}.v510-stage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}.v510-stage{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:13px;border:1px solid var(--line);background:var(--soft);font-size:9px}.v510-stage b{font-size:10px}.v510-stage.error{color:var(--bad);background:var(--bad-soft)}.v510-stage.ok b{color:var(--good)}
+.v510-platform{margin-top:14px}.v510-platform-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.v510-platform-card{padding:14px;border:1px solid var(--line);border-radius:19px;background:var(--surface);box-shadow:var(--shadow2)}.v510-platform-card span{display:block;color:var(--muted);font-size:9px}.v510-platform-card strong{display:block;margin-top:6px;font-size:15px;overflow-wrap:anywhere}.v510-platform-card small{display:block;margin-top:4px;color:var(--muted);font-size:9px;line-height:1.45}.v510-stage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}.v510-stage{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:13px;border:1px solid var(--line);background:var(--soft);font-size:9px}.v510-stage b{font-size:10px}.v510-stage.error{color:var(--bad);background:var(--bad-soft)}.v510-stage.ok b{color:var(--good)}
 .v510-deploy{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,.7fr));gap:10px;align-items:center;margin-top:10px;padding:14px 15px;border:1px solid var(--line);border-radius:19px;background:linear-gradient(135deg,var(--primary-soft),var(--surface));box-shadow:var(--shadow2)}.v510-deploy.attention{background:linear-gradient(135deg,var(--bad-soft),var(--surface));border-color:color-mix(in srgb,var(--bad) 22%,var(--line))}.v510-deploy-main{min-width:0}.v510-deploy-title{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:820}.v510-deploy-dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 5px color-mix(in srgb,var(--good) 13%,transparent)}.v510-deploy.attention .v510-deploy-dot{background:var(--bad);box-shadow:0 0 0 5px color-mix(in srgb,var(--bad) 12%,transparent)}.v510-deploy-message{margin-top:4px;color:var(--muted);font-size:10px;line-height:1.55}.v510-deploy-meta span{display:block;color:var(--muted);font-size:9px}.v510-deploy-meta strong{display:block;margin-top:4px;font-size:11px;overflow-wrap:anywhere}.v510-commit{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
 @media(max-width:1040px){.v510-platform-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.v510-deploy{grid-template-columns:repeat(3,minmax(0,1fr))}.v510-deploy-main{grid-column:1/-1}}
 @media(max-width:760px){.v510-platform-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v510-stage-grid{grid-template-columns:1fr}.v510-deploy{grid-template-columns:1fr 1fr}#recordsPro .v3-controls{top:57px}}
@@ -52,37 +52,21 @@ FILTER_PATCH = r"""
       lastPlatformSuccess=Date.now();
       let section=document.getElementById('v510Platform');
       if(!section){section=document.createElement('section');section.id='v510Platform';section.className='section v510-platform';overview.appendChild(section)}
-      const backup=data.backup||{};
-      const deploy=data.deployment||{};
       const aiHealth=data.ai_health||{};
       const delivery=data.delivery_health||{};
       const fcm=(delivery.channels||{}).fcm||{};
       const telegram=(delivery.channels||{}).telegram||{};
-      const cycles=Object.entries(data.cycles||{});
-      const stages=cycles.flatMap(([lottery,cycle])=>(cycle?.stages||[]).map(stage=>({...stage,lottery})));
-      const attention=Boolean(deploy.requires_attention);
-      const current=commit(deploy.current_commit);
-      const target=commit(deploy.target_commit);
-      const syncLabel=deploy.is_current?'代码与目标一致':target==='—'?'等待首次记录':`目标 ${target}`;
+      const workerState=String(data.worker?.status||'waiting').toLowerCase();
+      const workerOk=['ok','running','healthy'].includes(workerState);
+      const healthy=data.status==='ok'&&data.database?.ok!==false&&workerOk;
       section.innerHTML=`
-        <div class="v3-head"><div><h3>平台健康、部署与任务阶段</h3><p>数据库、Worker、自动备份、实际运行 Commit 与周期耗时集中核验。</p></div><span class="badge ${data.status==='ok'&&!attention?'good':'warn'}">${data.status==='ok'&&!attention?'运行正常':'需要检查'}</span></div>
+        <div class="v3-head"><div><h3>服务状态</h3><p>只显示日常需要看的运行、AI 和推送状态；内部任务名、数据库细节与毫秒耗时已隐藏。</p></div><span class="badge ${healthy?'good':'warn'}">${healthy?'运行正常':'需要检查'}</span></div>
         <div class="v510-platform-grid">
-          <article class="v510-platform-card"><span>数据库</span><strong>${data.database?.ok?'连接正常':'连接异常'}</strong></article>
-          <article class="v510-platform-card"><span>Worker 心跳</span><strong>${esc(data.worker?.status||'waiting')} · ${age(data.worker?.updated_at_epoch_ms)}</strong></article>
-          <article class="v510-platform-card"><span>最近备份</span><strong>${backup.status==='ok'?age(backup.completed_at_epoch_ms):backup.message?'失败':'等待首次备份'}</strong></article>
-          <article class="v510-platform-card"><span>服务版本</span><strong>${esc(data.version||'—')}</strong></article>
-          <article class="v510-platform-card"><span>运行 Commit</span><strong class="v510-commit">${esc(current)}</strong></article>
-          <article class="v510-platform-card"><span>AI 任务</span><strong>${Number(aiHealth.running||0)} 运行 · ${Number(aiHealth.failed||0)} 失败</strong></article>
-          <article class="v510-platform-card"><span>FCM 24 小时</span><strong>${Number(fcm.sent||0)} 成功 · ${Number(fcm.failed||0)} 失败</strong></article>
-          <article class="v510-platform-card"><span>Telegram 24 小时</span><strong>${Number(telegram.sent||0)} 成功 · ${Number(telegram.failed||0)} 失败</strong></article>
-        </div>
-        <div class="v510-deploy ${attention?'attention':''}">
-          <div class="v510-deploy-main"><div class="v510-deploy-title"><i class="v510-deploy-dot"></i>${esc(deploy.label||'等待部署状态')}</div><div class="v510-deploy-message">${esc(deploy.message||'服务器完成下一次自动更新后会记录实际部署结果。')}</div></div>
-          <div class="v510-deploy-meta"><span>当前 / 目标</span><strong class="v510-commit">${esc(current)} / ${esc(target)}</strong></div>
-          <div class="v510-deploy-meta"><span>同步结论</span><strong>${esc(syncLabel)}</strong></div>
-          <div class="v510-deploy-meta"><span>最近部署 / 容器启动</span><strong>${age(deploy.updated_at_epoch_ms)} / ${age(deploy.container_started_at_epoch_ms)}</strong></div>
-        </div>
-        <div class="v510-stage-grid">${stages.length?stages.slice(-14).reverse().map(stage=>`<div class="v510-stage ${stage.status==='error'?'error':'ok'}"><span>${esc(stage.lottery)} · ${esc(stage.name)}</span><b>${stage.status==='error'?'失败':duration(stage.duration_ms)}</b></div>`).join(''):'<div class="v3-empty"><strong>等待任务阶段数据</strong>下一次 Worker 周期完成后自动显示</div>'}</div>`;
+          <article class="v510-platform-card"><span>云端服务</span><strong class="${workerOk?'good':'warn'}">${workerOk?'运行正常':'等待恢复'}</strong><small>Worker 心跳 ${age(data.worker?.updated_at_epoch_ms)}</small></article>
+          <article class="v510-platform-card"><span>AI 任务</span><strong class="${Number(aiHealth.failed||0)?'warn':'good'}">${Number(aiHealth.running||0)} 运行 · ${Number(aiHealth.failed||0)} 失败</strong><small>${Number(aiHealth.failed||0)?'有失败任务需要留意':'当前调度正常'}</small></article>
+          <article class="v510-platform-card"><span>App 预警</span><strong class="${Number(fcm.failed||0)?'warn':'good'}">${Number(fcm.sent||0)} 成功 · ${Number(fcm.failed||0)} 失败</strong><small>最近 24 小时 FCM 预警</small></article>
+          <article class="v510-platform-card"><span>Telegram</span><strong class="${Number(telegram.failed||0)?'warn':'good'}">${Number(telegram.sent||0)} 成功 · ${Number(telegram.failed||0)} 失败</strong><small>最近 24 小时 · 预警优先发送</small></article>
+        </div>`;
     }catch(_error){
       let section=document.getElementById('v510Platform');
       if(!section){
@@ -90,7 +74,7 @@ FILTER_PATCH = r"""
         if(!overview)return;
         section=document.createElement('section');section.id='v510Platform';section.className='section v510-platform';overview.appendChild(section);
       }
-      section.innerHTML=`<div class="v510-deploy attention"><div class="v510-deploy-main"><div class="v510-deploy-title"><i class="v510-deploy-dot"></i>状态刷新失败</div><div class="v510-deploy-message">控制台暂时无法读取最新服务状态；页面中的旧数据不能视为当前状态，请检查网络后重试。</div></div><div class="v510-deploy-meta"><span>最后成功刷新</span><strong>${lastPlatformSuccess?new Date(lastPlatformSuccess).toLocaleTimeString('zh-CN',{hour12:false}):'尚未成功'}</strong></div></div>`;
+      section.innerHTML=`<div class="v510-deploy attention"><div class="v510-deploy-main"><div class="v510-deploy-title"><i class="v510-deploy-dot"></i>服务状态刷新失败</div><div class="v510-deploy-message">暂时读取不到最新状态，请检查网络后刷新；后台预警与预测任务不会因为这个页面失败而停止。</div></div><div class="v510-deploy-meta"><span>最后成功刷新</span><strong>${lastPlatformSuccess?new Date(lastPlatformSuccess).toLocaleTimeString('zh-CN',{hour12:false}):'尚未成功'}</strong></div></div>`;
     }
   }
   loadPlatform();

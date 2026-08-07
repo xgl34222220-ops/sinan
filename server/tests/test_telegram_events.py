@@ -227,6 +227,38 @@ class TelegramEventTests(unittest.TestCase):
         self.assertEqual(1, result["skipped"])
         self.assertEqual(0, sender.call_count)
 
+    def test_stale_prediction_is_suppressed_instead_of_sent_late(self) -> None:
+        self.save_forecast(target="100")
+        telegram_events.materialize_events("xyft")
+        stale_at = int(time.time() * 1000) - 9 * 60_000
+        with database.connection() as db:
+            db.execute(
+                "UPDATE telegram_events SET created_at=? WHERE event_key LIKE 'prediction:%'",
+                (stale_at,),
+            )
+
+        with patch.object(
+            telegram_events,
+            "settings",
+            self.fake_settings(),
+        ), patch.object(
+            telegram_alerts,
+            "send_html_message",
+            return_value=(True, 200, json.dumps({"ok": True})),
+        ) as sender:
+            result = telegram_events.deliver_pending_events()
+
+        self.assertEqual(0, result["sent"])
+        self.assertEqual(1, result["skipped"])
+        self.assertEqual(0, sender.call_count)
+        with database.connection() as db:
+            delivery = db.execute(
+                "SELECT status,message FROM telegram_event_deliveries LIMIT 1"
+            ).fetchone()
+        self.assertIsNotNone(delivery)
+        self.assertEqual("suppressed", str(delivery["status"]))
+        self.assertIn("超过8分钟", str(delivery["message"]))
+
     def test_prediction_start_watermark_prevents_historical_backfill(self) -> None:
         self.save_forecast(target="100")
         future = int(time.time() * 1000) + 60_000

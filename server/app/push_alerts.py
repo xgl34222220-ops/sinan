@@ -714,7 +714,7 @@ def deliver_pending_alerts(lottery_filter: str | None = None) -> dict[str, int]:
         }
 
     now = _now_ms()
-    retry_before = now - 300_000
+    retry_before = now - 60_000
     with database.connection() as db:
         if lottery_filter:
             alerts = db.execute(
@@ -734,6 +734,37 @@ def deliver_pending_alerts(lottery_filter: str | None = None) -> dict[str, int]:
         )
 
     fcm_sent = fcm_failed = telegram_sent = telegram_failed = skipped = 0
+
+    # Telegram warnings are sent first; FCM fan-out follows without blocking them.
+    if settings.telegram_enabled:
+        for alert in alerts:
+            alert_id = int(alert["id"])
+            for chat_id in settings.telegram_chat_ids:
+                target_key = telegram_alerts.delivery_key(chat_id)
+                if not _claim_delivery(
+                    alert_id=alert_id,
+                    target_key=target_key,
+                    attempted_at=now,
+                    retry_before=retry_before,
+                ):
+                    continue
+                ok, code, message = telegram_alerts.send_alert(
+                    bot_token=settings.telegram_bot_token,
+                    chat_id=chat_id,
+                    alert=alert,
+                )
+                _store_delivery(
+                    alert_id=alert_id,
+                    target_key=target_key,
+                    ok=ok,
+                    code=code,
+                    message=message,
+                    attempted_at=now,
+                )
+                if ok:
+                    telegram_sent += 1
+                else:
+                    telegram_failed += 1
 
     if settings.fcm_enabled:
         for alert in alerts:
@@ -772,36 +803,6 @@ def deliver_pending_alerts(lottery_filter: str | None = None) -> dict[str, int]:
                     fcm_sent += 1
                 else:
                     fcm_failed += 1
-
-    if settings.telegram_enabled:
-        for alert in alerts:
-            alert_id = int(alert["id"])
-            for chat_id in settings.telegram_chat_ids:
-                target_key = telegram_alerts.delivery_key(chat_id)
-                if not _claim_delivery(
-                    alert_id=alert_id,
-                    target_key=target_key,
-                    attempted_at=now,
-                    retry_before=retry_before,
-                ):
-                    continue
-                ok, code, message = telegram_alerts.send_alert(
-                    bot_token=settings.telegram_bot_token,
-                    chat_id=chat_id,
-                    alert=alert,
-                )
-                _store_delivery(
-                    alert_id=alert_id,
-                    target_key=target_key,
-                    ok=ok,
-                    code=code,
-                    message=message,
-                    attempted_at=now,
-                )
-                if ok:
-                    telegram_sent += 1
-                else:
-                    telegram_failed += 1
 
     sent = fcm_sent + telegram_sent
     failed = fcm_failed + telegram_failed

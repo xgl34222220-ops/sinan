@@ -309,21 +309,8 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         }
         _state(f"learning:{lottery_key}", learning_summary)
 
-    try:
-        with _record_stage(stages, "deliver_telegram"):
-            telegram_result = telegram_events.process(lottery_key)
-            database.delete_state(f"telegram_event_error:{lottery_key}")
-    except Exception as exc:
-        telegram_result = {
-            "created": 0,
-            "delivery": {"sent": 0, "failed": 0, "skipped": 0},
-            "error": str(exc)[:500],
-        }
-        _state(
-            f"telegram_event_error:{lottery_key}",
-            {"message": str(exc)[:500], "at": int(time.time() * 1000)},
-        )
-
+    # Warning delivery is latency-sensitive: settle -> alert first -> routine Telegram queue.
+    # This keeps two/three-miss alerts from waiting behind ordinary prediction messages.
     try:
         with _record_stage(stages, "deliver_push"):
             push_result = push_alerts.process_prediction_alerts(lottery_key)
@@ -336,6 +323,21 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         }
         _state(
             f"push_error:{lottery_key}",
+            {"message": str(exc)[:500], "at": int(time.time() * 1000)},
+        )
+
+    try:
+        with _record_stage(stages, "deliver_telegram"):
+            telegram_result = telegram_events.process(lottery_key)
+            database.delete_state(f"telegram_event_error:{lottery_key}")
+    except Exception as exc:
+        telegram_result = {
+            "created": 0,
+            "delivery": {"sent": 0, "failed": 0, "skipped": 0},
+            "error": str(exc)[:500],
+        }
+        _state(
+            f"telegram_event_error:{lottery_key}",
             {"message": str(exc)[:500], "at": int(time.time() * 1000)},
         )
 
