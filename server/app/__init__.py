@@ -14,3 +14,8 @@ from .fixed_target_bridge import install as _install_fixed_target_bridge
 
 _install_fixed_target_bridge()
 del _install_fixed_target_bridge
+
+from .fixed_target_runtime_guard import install as _install_fixed_target_runtime_guard
+
+_install_fixed_target_runtime_guard()
+del _install_fixed_target_runtime_guard
