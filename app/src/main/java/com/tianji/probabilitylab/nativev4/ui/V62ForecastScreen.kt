@@ -120,8 +120,8 @@ fun V62ForecastScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 item("switcher") { CompactLotterySwitcher(state.lottery, onSelectLottery) }
                 if (state.snapshot == null || report == null) {
@@ -336,7 +336,7 @@ private fun V62ForecastHero(
             }
             Spacer(Modifier.height(9.dp))
             Text(
-                "训练窗口 ${report.historySize} 期 · 概率与模型细节已下沉到详情",
+                "基于最近 ${report.historySize} 期开奖 · 详细概率与模型见下方",
                 color = colors.textDim,
                 fontSize = 11.sp,
                 lineHeight = 16.sp,
@@ -361,27 +361,28 @@ private fun V62AiSummary(
         it.state == AiConnectionState.ANALYZING || it.state == AiConnectionState.TESTING
     }
     val failed = state.aiStatuses.values.count { it.state == AiConnectionState.FAILED }
+    val targetPeriod = state.report?.targetPeriod ?: state.snapshot?.nextPeriod ?: "—"
 
-    SurfaceCard(radius = 24.dp) {
-        Column(Modifier.padding(17.dp)) {
+    SurfaceCard(radius = 20.dp) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(colors.violet.copy(alpha = 0.13f)),
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.violet.copy(alpha = 0.11f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Rounded.AutoAwesome, null, tint = colors.violet, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Rounded.AutoAwesome, null, tint = colors.violet, modifier = Modifier.size(19.dp))
                 }
-                Spacer(Modifier.width(11.dp))
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("AI 联合判断", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("AI 联合判断", color = colors.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
                     Text(
-                        "固定目标 235780 · 只比较第 1～10 名位置",
+                        "目标 $targetPeriod · 比较第 1～10 名位置",
                         color = colors.textDim,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
                     )
                 }
                 StatusChipV2(
@@ -398,48 +399,47 @@ private fun V62AiSummary(
                 )
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(11.dp))
             if (forecasts.isNotEmpty() && lead != null) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(colors.violet.copy(alpha = 0.08f))
-                        .border(1.dp, colors.violet.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
-                        .padding(13.dp),
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.violet.copy(alpha = 0.075f))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("当前主判断", color = colors.textDim, fontSize = 12.sp)
+                        Text("当前主判断", color = colors.textDim, fontSize = 11.sp)
                         Text(
                             "第${positionNameV2(lead.key)}名",
                             color = colors.violet,
-                            fontSize = 24.sp,
+                            fontSize = 21.sp,
                             fontWeight = FontWeight.ExtraBold,
                         )
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("模型支持", color = colors.textDim, fontSize = 12.sp)
+                        Text("模型支持", color = colors.textDim, fontSize = 11.sp)
                         Text(
                             "${lead.value}/${forecasts.size}",
                             color = colors.text,
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
                         )
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(7.dp))
                 forecasts.take(4).forEach { forecast ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.size(7.dp).clip(CircleShape).background(colors.violet))
+                        Box(Modifier.size(6.dp).clip(CircleShape).background(colors.violet))
                         Spacer(Modifier.width(8.dp))
                         Text(
                             forecast.profileName.ifBlank { forecast.model },
                             color = colors.textSoft,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -447,53 +447,53 @@ private fun V62AiSummary(
                         Text(
                             "第${positionNameV2(forecast.position)}名",
                             color = colors.violet,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
                 }
                 if (forecasts.size > 4) {
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
-                        "另外 ${forecasts.size - 4} 个模型已完成 · 可在 AI 对话中查看完整判断",
+                        "另外 ${forecasts.size - 4} 个模型已完成 · 在 AI 对话查看完整判断",
                         color = colors.textDim,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp,
+                        fontSize = 10.sp,
+                        lineHeight = 15.sp,
                     )
                 }
             } else {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(colors.surfaceStrong.copy(alpha = 0.65f))
-                        .padding(13.dp),
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.surfaceStrong.copy(alpha = 0.58f))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Rounded.Bolt, null, tint = colors.amber, modifier = Modifier.size(19.dp))
+                    Icon(Icons.Rounded.Bolt, null, tint = colors.amber, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
                         if (complete.isEmpty()) "先在设置中配置可用 AI 接口" else "尚未生成本期 AI 判断",
                         color = colors.textSoft,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         modifier = Modifier.weight(1f),
                     )
                 }
             }
 
             if (running.isNotEmpty() || failed > 0) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     "可用 ${complete.size} · 正在 ${running.size} · 结果 ${forecasts.size} · 失败 $failed",
                     color = if (failed > 0) colors.red else colors.textDim,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 running.firstOrNull()?.let { status ->
                     Button(
                         onClick = { onCancel(status.profileId) },
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp),
-                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 7.dp).height(44.dp),
+                        shape = RoundedCornerShape(13.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.amber.copy(alpha = 0.12f),
                             contentColor = colors.amber,
@@ -504,12 +504,12 @@ private fun V62AiSummary(
                 }
             }
 
-            Spacer(Modifier.height(13.dp))
+            Spacer(Modifier.height(10.dp))
             Button(
                 onClick = onAnalyzeAll,
                 enabled = complete.isNotEmpty() && !state.isAiAnalyzing,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(15.dp),
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.accent,
                     contentColor = Color.White,
@@ -527,7 +527,7 @@ private fun V62AiSummary(
                 }
                 Text(
                     if (state.isAiAnalyzing) "正在生成本期 AI 判断" else "生成本期 AI 判断",
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold,
                 )
             }
