@@ -1,9 +1,13 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -27,10 +31,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -132,15 +138,22 @@ private fun RailItem(
     val colors = LocalTianjiColors.current
     val haptics = LocalHapticFeedback.current
     val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 560f),
+        label = "rail-press",
+    )
     Column(
         modifier = Modifier
             .size(width = 70.dp, height = 62.dp)
+            .scale(scale)
             .clip(RoundedCornerShape(19.dp))
             .background(if (active) colors.accentSoft else Color.Transparent)
             .semantics { role = Role.Tab }
             .clickable(
                 interactionSource = interaction,
-                indication = null,
+                indication = LocalIndication.current,
             ) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
@@ -168,14 +181,21 @@ private fun RailAiItem(isAiRunning: Boolean, onClick: () -> Unit) {
     val colors = LocalTianjiColors.current
     val haptics = LocalHapticFeedback.current
     val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 570f),
+        label = "rail-ai-press",
+    )
     Column(
         modifier = Modifier
             .size(width = 70.dp, height = 68.dp)
+            .scale(scale)
             .clip(RoundedCornerShape(20.dp))
             .semantics { role = Role.Button }
             .clickable(
                 interactionSource = interaction,
-                indication = null,
+                indication = LocalIndication.current,
             ) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()

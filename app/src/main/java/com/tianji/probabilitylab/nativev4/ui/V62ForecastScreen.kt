@@ -74,47 +74,46 @@ fun V62ForecastScreen(
     BoxWithConstraints(modifier = modifier) {
         val wide = maxWidth >= 720.dp && state.snapshot != null && report != null
         if (wide) {
-            Row(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 22.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                LazyColumn(
-                    modifier = Modifier.weight(1.02f),
-                    contentPadding = PaddingValues(bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item("switcher") { CompactLotterySwitcher(state.lottery, onSelectLottery) }
-                    item("live") { V62LiveHero(state, onRefresh) }
-                    item("forecast") {
-                        V62ForecastHero(requireNotNull(report), selectedPosition) { selectedPosition = it }
-                    }
-                }
-                LazyColumn(
-                    modifier = Modifier.weight(0.98f),
-                    contentPadding = PaddingValues(bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item("ai") {
-                        V62AiSummary(
-                            state = state,
-                            configs = aiConfigs,
-                            onAnalyzeAll = onAnalyzeAllAi,
-                            onCancel = onCancelAi,
-                        )
-                    }
-                    item("tabs") {
-                        SegmentedTabs(
-                            items = listOf("概率", "模型"),
-                            selectedIndex = detailTab.coerceIn(0, 1),
-                            onSelected = { detailTab = it },
-                        )
-                    }
-                    if (detailTab == 0) {
-                        item("probability") {
-                            V62ProbabilityCard(requireNotNull(report), selectedPosition) { selectedPosition = it }
+                item("switcher") { CompactLotterySwitcher(state.lottery, onSelectLottery) }
+                item("wide-grid") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1.02f),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            V62LiveHero(state, onRefresh)
+                            V62ForecastHero(requireNotNull(report), selectedPosition) { selectedPosition = it }
                         }
-                    } else {
-                        item("models") { RefinedModelCardV2(requireNotNull(report).models) }
+                        Column(
+                            modifier = Modifier.weight(0.98f),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            V62AiSummary(
+                                state = state,
+                                configs = aiConfigs,
+                                onAnalyzeAll = onAnalyzeAllAi,
+                                onCancel = onCancelAi,
+                            )
+                            SegmentedTabs(
+                                items = listOf("概率", "模型"),
+                                selectedIndex = detailTab.coerceIn(0, 1),
+                                onSelected = { detailTab = it },
+                            )
+                            if (detailTab == 0) {
+                                V62ProbabilityCard(requireNotNull(report), selectedPosition)
+                            } else {
+                                RefinedModelCardV2(requireNotNull(report).models)
+                            }
+                        }
                     }
                 }
             }
@@ -154,9 +153,7 @@ fun V62ForecastScreen(
                         )
                     }
                     if (detailTab == 0) {
-                        item("probability") {
-                            V62ProbabilityCard(report, selectedPosition) { selectedPosition = it }
-                        }
+                        item("probability") { V62ProbabilityCard(report, selectedPosition) }
                     } else {
                         item("models") { RefinedModelCardV2(report.models) }
                     }
@@ -336,8 +333,14 @@ private fun V62ForecastHero(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CompactMetricV2("覆盖概率", "${(position.coverage6 * 100).format1V2()}%", Modifier.weight(1f))
                 CompactMetricV2("边界优势", "${(position.boundaryMargin * 100).format2V2()}%", Modifier.weight(1f))
-                CompactMetricV2("训练历史", report.historySize.toString(), Modifier.weight(1f))
             }
+            Spacer(Modifier.height(9.dp))
+            Text(
+                "训练窗口 ${report.historySize} 期 · 概率与模型细节已下沉到详情",
+                color = colors.textDim,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
         }
     }
 }
@@ -449,6 +452,15 @@ private fun V62AiSummary(
                         )
                     }
                 }
+                if (forecasts.size > 4) {
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        "另外 ${forecasts.size - 4} 个模型已完成 · 可在 AI 对话中查看完整判断",
+                        color = colors.textDim,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                    )
+                }
             } else {
                 Row(
                     modifier = Modifier
@@ -527,7 +539,6 @@ private fun V62AiSummary(
 private fun V62ProbabilityCard(
     report: ForecastReport,
     selectedPosition: Int,
-    onPosition: (Int) -> Unit,
 ) {
     val colors = LocalTianjiColors.current
     val prediction = report.positions.getOrNull(selectedPosition) ?: report.selected
@@ -538,15 +549,29 @@ private fun V62ProbabilityCard(
         Column(Modifier.padding(16.dp)) {
             Text("号码概率", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             Text(
-                "第${positionNameV2(selectedPosition)}名 · 概率来自本地模型输出",
+                "第${positionNameV2(selectedPosition)}名 · 跟随上方名次选择",
                 color = colors.textDim,
                 fontSize = 12.sp,
                 lineHeight = 17.sp,
             )
             Spacer(Modifier.height(12.dp))
-            PositionSelectorV2(selectedPosition, onPosition)
-            Spacer(Modifier.height(12.dp))
             ranked.forEachIndexed { index, (number, probability) ->
+                if (index == 6) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.weight(1f).height(1.dp).background(colors.lineStrong))
+                        Text(
+                            "六码边界",
+                            color = colors.amber,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 9.dp),
+                        )
+                        Box(Modifier.weight(1f).height(1.dp).background(colors.lineStrong))
+                    }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,

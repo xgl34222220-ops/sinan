@@ -10,12 +10,14 @@ from .public_v4 import enhance_public_html
 V510_STYLE = r"""
 :where(button,a,input,select,summary):focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
 #recordsPro .v3-controls{position:sticky;top:64px;z-index:18;background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-.v510-platform{margin-top:14px}.v510-platform-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.v510-platform-card{padding:14px;border:1px solid var(--line);border-radius:19px;background:var(--surface);box-shadow:var(--shadow2)}.v510-platform-card span{display:block;color:var(--muted);font-size:10px}.v510-platform-card strong{display:block;margin-top:6px;font-size:15px;overflow-wrap:anywhere}.v510-platform-card small{display:block;margin-top:4px;color:var(--muted);font-size:10px;line-height:1.45}.v510-stage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}.v510-stage{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:13px;border:1px solid var(--line);background:var(--soft);font-size:10px}.v510-stage b{font-size:11px}.v510-stage.error{color:var(--bad);background:var(--bad-soft)}.v510-stage.ok b{color:var(--good)}
-.v510-deploy{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,.7fr));gap:10px;align-items:center;margin-top:10px;padding:14px 15px;border:1px solid var(--line);border-radius:19px;background:linear-gradient(135deg,var(--primary-soft),var(--surface));box-shadow:var(--shadow2)}.v510-deploy.attention{background:linear-gradient(135deg,var(--bad-soft),var(--surface));border-color:color-mix(in srgb,var(--bad) 22%,var(--line))}.v510-deploy-main{min-width:0}.v510-deploy-title{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:820}.v510-deploy-dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 5px color-mix(in srgb,var(--good) 13%,transparent)}.v510-deploy.attention .v510-deploy-dot{background:var(--bad);box-shadow:0 0 0 5px color-mix(in srgb,var(--bad) 12%,transparent)}.v510-deploy-message{margin-top:4px;color:var(--muted);font-size:10px;line-height:1.55}.v510-deploy-meta span{display:block;color:var(--muted);font-size:10px}.v510-deploy-meta strong{display:block;margin-top:4px;font-size:11px;overflow-wrap:anywhere}.v510-commit{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
-.v620-realtime{margin-top:14px}.v620-realtime-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:11px}.v620-realtime-card{padding:16px;border:1px solid var(--line);border-radius:21px;background:linear-gradient(145deg,color-mix(in srgb,var(--primary-soft) 42%,var(--surface)),var(--surface));box-shadow:var(--shadow2)}.v620-realtime-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.v620-realtime-head strong{font-size:15px}.v620-realtime-head span{font-size:10px;color:var(--muted)}.v620-latency-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.v620-latency{padding:10px;border-radius:14px;background:var(--soft);border:1px solid var(--line)}.v620-latency span{display:block;font-size:10px;color:var(--muted)}.v620-latency strong{display:block;margin-top:4px;font-size:17px;letter-spacing:-.03em}.v620-realtime-foot{display:flex;justify-content:space-between;gap:10px;margin-top:10px;color:var(--muted);font-size:10px;line-height:1.5}.v620-realtime-foot b{color:var(--text);font-weight:760}.v620-build{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--muted)}
+.v510-platform{margin-top:14px}.v510-platform-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.v510-platform-card{padding:14px;border:1px solid var(--line);border-radius:19px;background:var(--surface);box-shadow:var(--shadow2)}.v510-platform-card span{display:block;color:var(--muted);font-size:11px}.v510-platform-card strong{display:block;margin-top:6px;font-size:15px;overflow-wrap:anywhere}.v510-platform-card small{display:block;margin-top:4px;color:var(--muted);font-size:11px;line-height:1.45}.v510-stage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}.v510-stage{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:13px;border:1px solid var(--line);background:var(--soft);font-size:11px}.v510-stage b{font-size:12px}.v510-stage.error{color:var(--bad);background:var(--bad-soft)}.v510-stage.ok b{color:var(--good)}
+.v510-deploy{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,.7fr));gap:10px;align-items:center;margin-top:10px;padding:14px 15px;border:1px solid var(--line);border-radius:19px;background:linear-gradient(135deg,var(--primary-soft),var(--surface));box-shadow:var(--shadow2)}.v510-deploy.attention{background:linear-gradient(135deg,var(--bad-soft),var(--surface));border-color:color-mix(in srgb,var(--bad) 22%,var(--line))}.v510-deploy-main{min-width:0}.v510-deploy-title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:820}.v510-deploy-dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 5px color-mix(in srgb,var(--good) 13%,transparent)}.v510-deploy.attention .v510-deploy-dot{background:var(--bad);box-shadow:0 0 0 5px color-mix(in srgb,var(--bad) 12%,transparent)}.v510-deploy-message{margin-top:4px;color:var(--muted);font-size:11px;line-height:1.55}.v510-deploy-meta span{display:block;color:var(--muted);font-size:11px}.v510-deploy-meta strong{display:block;margin-top:4px;font-size:12px;overflow-wrap:anywhere}.v510-commit{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.v630-healthbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.v630-health-pill{display:flex;align-items:center;gap:7px;min-height:35px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font-size:11px;font-weight:760}.v630-health-pill i{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 4px color-mix(in srgb,var(--good) 12%,transparent)}.v630-health-pill.warn i{background:var(--warn);box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 12%,transparent)}.v630-health-pill.bad i{background:var(--bad);box-shadow:0 0 0 4px color-mix(in srgb,var(--bad) 12%,transparent)}.v630-health-details{margin-top:10px}.v630-health-details>summary{cursor:pointer;list-style:none;color:var(--muted);font-size:11px;font-weight:760;padding:7px 2px}.v630-health-details>summary::-webkit-details-marker{display:none}.v630-health-details>summary:after{content:'展开详情';margin-left:7px;color:var(--primary)}.v630-health-details[open]>summary:after{content:'收起详情'}
+.v620-realtime{margin-top:14px}.v620-realtime-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:11px}.v620-realtime-card{padding:16px;border:1px solid var(--line);border-radius:21px;background:linear-gradient(145deg,color-mix(in srgb,var(--primary-soft) 42%,var(--surface)),var(--surface));box-shadow:var(--shadow2)}.v620-realtime.stale .v620-realtime-card{opacity:.72}.v620-realtime-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.v620-realtime-head strong{font-size:15px}.v620-realtime-head span{font-size:11px;color:var(--muted)}.v620-latency-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.v620-latency{padding:10px;border-radius:14px;background:var(--soft);border:1px solid var(--line)}.v620-latency span{display:block;font-size:11px;color:var(--muted)}.v620-latency strong{display:block;margin-top:4px;font-size:17px;letter-spacing:-.03em}.v620-latency em{display:block;margin-top:3px;font-style:normal;font-size:11px;color:var(--muted)}.v620-realtime-foot{display:flex;justify-content:space-between;gap:10px;margin-top:10px;color:var(--muted);font-size:11px;line-height:1.5}.v620-realtime-foot b{color:var(--text);font-weight:760}.v620-build{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted)}.v620-fresh{display:inline-flex;align-items:center;min-height:25px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:760;background:var(--good-soft);color:var(--good);margin-left:7px}.v620-fresh.warn{background:var(--warn-soft);color:var(--warn)}
+.tianji-console-v620 .metric-label,.tianji-console-v620 .section-head p,.tianji-console-v620 .panel-head p,.tianji-console-v620 .card-head p,.tianji-console-v620 .sub,.tianji-console-v620 .quick-meta,.tianji-console-v620 .quick-note,.tianji-console-v620 .profile-model,.tianji-console-v620 .profile-endpoint{font-size:max(11px,1em)}.tianji-console-v620 .metric-foot,.tianji-console-v620 .badge,.tianji-console-v620 .target,.tianji-console-v620 .empty,.tianji-console-v620 .disclaimer{font-size:11px}.tianji-console-v620 .nav-tail,.tianji-console-v620 .side-label{font-size:10px}
 @media(max-width:1040px){.v510-platform-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.v510-deploy{grid-template-columns:repeat(3,minmax(0,1fr))}.v510-deploy-main{grid-column:1/-1}}
 @media(max-width:760px){.v510-platform-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v510-stage-grid{grid-template-columns:1fr}.v510-deploy{grid-template-columns:1fr 1fr}#recordsPro .v3-controls{top:57px}.v620-realtime-grid{grid-template-columns:1fr}}
-@media(max-width:520px){.v510-platform-grid,.v510-deploy{grid-template-columns:1fr}.v510-deploy-main{grid-column:auto}.v620-latency-grid{grid-template-columns:1fr 1fr}.v620-latency:last-child{grid-column:1/-1}}
+@media(max-width:520px){.v510-platform-grid,.v510-deploy{grid-template-columns:1fr}.v510-deploy-main{grid-column:auto}.v620-latency-grid{grid-template-columns:1fr}.v630-health-pill{flex:1 1 calc(50% - 8px);justify-content:flex-start}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 """
 
@@ -41,7 +43,36 @@ FILTER_PATCH = r"""
   const age=value=>{if(!value)return'尚未执行';const diff=Math.max(0,Date.now()-Number(value));if(diff<60000)return Math.floor(diff/1000)+' 秒前';if(diff<3600000)return Math.floor(diff/60000)+' 分钟前';if(diff<86400000)return Math.floor(diff/3600000)+' 小时前';return Math.floor(diff/86400000)+' 天前'};
   const duration=value=>value===null||value===undefined?'—':Number(value)<1000?Math.round(Number(value))+' ms':(Number(value)/1000).toFixed(1)+' s';
   const commit=value=>String(value||'—').slice(0,12);
+  const latencyClass=value=>{
+    const n=Number(value);
+    if(!Number.isFinite(n))return'';
+    if(n<=3000)return'good';
+    if(n<=7000)return'warn';
+    return'bad';
+  };
+  const latencyLabel=value=>{
+    const n=Number(value);
+    if(!Number.isFinite(n))return'等待样本';
+    if(n<=2000)return'优秀';
+    if(n<=4000)return'正常';
+    if(n<=7000)return'偏慢';
+    return'异常';
+  };
+  const trend=(current,average)=>{
+    const c=Number(current),a=Number(average);
+    if(!Number.isFinite(c)||!Number.isFinite(a)||a<=0)return'暂无趋势';
+    const delta=c-a;
+    if(Math.abs(delta)<120)return'≈ 与 EMA 持平';
+    return`${delta<0?'↓':'↑'} ${duration(Math.abs(delta))} 较 EMA`;
+  };
+  const updateRealtimePill=(state,text)=>{
+    const pill=document.getElementById('v630RealtimePill');
+    if(!pill)return;
+    pill.className=`v630-health-pill ${state||''}`.trim();
+    pill.innerHTML=`<i></i>Realtime ${esc(text)}`;
+  };
   let lastPlatformSuccess=0;
+  let lastRealtimeSuccess=0;
 
   async function loadPlatform(){
     const overview=document.getElementById('panel-overview');
@@ -60,14 +91,28 @@ FILTER_PATCH = r"""
       const workerState=String(data.worker?.status||'waiting').toLowerCase();
       const workerOk=['ok','running','healthy'].includes(workerState);
       const healthy=data.status==='ok'&&data.database?.ok!==false&&workerOk;
+      const aiOk=Number(aiHealth.failed||0)===0;
+      const fcmOk=Number(fcm.failed||0)===0;
+      const telegramOk=Number(telegram.failed||0)===0;
       section.innerHTML=`
-        <div class="v3-head"><div><h3>服务状态</h3><p>运行、AI、推送和实时开奖链路分开观察；异常时先看下方延迟卡片判断上游还是天机自身。</p></div><span class="badge ${healthy?'good':'warn'}">${healthy?'运行正常':'需要检查'}</span></div>
-        <div class="v510-platform-grid">
-          <article class="v510-platform-card"><span>云端服务</span><strong class="${workerOk?'good':'warn'}">${workerOk?'运行正常':'等待恢复'}</strong><small>Worker 心跳 ${age(data.worker?.updated_at_epoch_ms)}</small></article>
-          <article class="v510-platform-card"><span>AI 任务</span><strong class="${Number(aiHealth.failed||0)?'warn':'good'}">${Number(aiHealth.running||0)} 运行 · ${Number(aiHealth.failed||0)} 失败</strong><small>${Number(aiHealth.failed||0)?'有失败任务需要留意':'当前调度正常'}</small></article>
-          <article class="v510-platform-card"><span>App 预警</span><strong class="${Number(fcm.failed||0)?'warn':'good'}">${Number(fcm.sent||0)} 成功 · ${Number(fcm.failed||0)} 失败</strong><small>最近 24 小时 FCM 预警</small></article>
-          <article class="v510-platform-card"><span>Telegram</span><strong class="${Number(telegram.failed||0)?'warn':'good'}">${Number(telegram.sent||0)} 成功 · ${Number(telegram.failed||0)} 失败</strong><small>最近 24 小时 · 预警与 FCM 并行投递</small></article>
-        </div>`;
+        <div class="v3-head"><div><h3>运行总览</h3><p>正常时只看这一行；出现异常再展开详细卡片定位服务、AI 或投递渠道。</p></div><span class="badge ${healthy?'good':'warn'}">${healthy?'运行正常':'需要检查'}</span></div>
+        <div class="v630-healthbar">
+          <span class="v630-health-pill ${workerOk?'':'warn'}"><i></i>服务 ${workerOk?'正常':'待恢复'}</span>
+          <span id="v630RealtimePill" class="v630-health-pill"><i></i>Realtime ${lastRealtimeSuccess?'正常':'等待'}</span>
+          <span class="v630-health-pill ${aiOk?'':'warn'}"><i></i>AI ${aiOk?'正常':Number(aiHealth.failed||0)+' 失败'}</span>
+          <span class="v630-health-pill ${fcmOk?'':'warn'}"><i></i>FCM ${fcmOk?'正常':Number(fcm.failed||0)+' 失败'}</span>
+          <span class="v630-health-pill ${telegramOk?'':'warn'}"><i></i>Telegram ${telegramOk?'正常':Number(telegram.failed||0)+' 失败'}</span>
+        </div>
+        <details class="v630-health-details" ${healthy&&aiOk&&fcmOk&&telegramOk?'':'open'}>
+          <summary>详细运行指标</summary>
+          <div class="v510-platform-grid">
+            <article class="v510-platform-card"><span>云端服务</span><strong class="${workerOk?'good':'warn'}">${workerOk?'运行正常':'等待恢复'}</strong><small>Worker 心跳 ${age(data.worker?.updated_at_epoch_ms)}</small></article>
+            <article class="v510-platform-card"><span>AI 任务</span><strong class="${aiOk?'good':'warn'}">${Number(aiHealth.running||0)} 运行 · ${Number(aiHealth.failed||0)} 失败</strong><small>${aiOk?'当前调度正常':'有失败任务需要留意'}</small></article>
+            <article class="v510-platform-card"><span>App 预警</span><strong class="${fcmOk?'good':'warn'}">${Number(fcm.sent||0)} 成功 · ${Number(fcm.failed||0)} 失败</strong><small>最近 24 小时 FCM 预警</small></article>
+            <article class="v510-platform-card"><span>Telegram</span><strong class="${telegramOk?'good':'warn'}">${Number(telegram.sent||0)} 成功 · ${Number(telegram.failed||0)} 失败</strong><small>最近 24 小时 · 与 FCM 并行投递</small></article>
+          </div>
+        </details>`;
+      if(lastRealtimeSuccess)updateRealtimePill('', '正常');
     }catch(_error){
       let section=document.getElementById('v510Platform');
       if(!section){
@@ -79,13 +124,6 @@ FILTER_PATCH = r"""
     }
   }
 
-  const latencyClass=value=>{
-    const n=Number(value);
-    if(!Number.isFinite(n))return'';
-    if(n<=3000)return'good';
-    if(n<=7000)return'warn';
-    return'bad';
-  };
   let realtimeTimer=0;
   async function loadRealtimeLatency(){
     window.clearTimeout(realtimeTimer);
@@ -97,8 +135,10 @@ FILTER_PATCH = r"""
       const response=await fetch('/admin/api/realtime',{cache:'no-store'});
       if(!response.ok)throw new Error('realtime');
       const data=await response.json();
+      lastRealtimeSuccess=Date.now();
       let section=document.getElementById('v620Realtime');
       if(!section){section=document.createElement('section');section.id='v620Realtime';section.className='section v620-realtime';overview.appendChild(section)}
+      section.classList.remove('stale');
       const cards=(data.lotteries||[]).map(item=>{
         const current=item.detection_delay_ms;
         const average=item.detection_delay_ema_ms;
@@ -106,17 +146,30 @@ FILTER_PATCH = r"""
         return `<article class="v620-realtime-card">
           <div class="v620-realtime-head"><strong>${esc(item.name||item.key)}</strong><span>更新 ${age(item.updated_at_epoch_ms)}</span></div>
           <div class="v620-latency-grid">
-            <div class="v620-latency"><span>API 出结果 → 天机发现</span><strong class="${latencyClass(shown)}">${duration(shown)}</strong></div>
-            <div class="v620-latency"><span>单次探测请求</span><strong>${duration(item.probe_latency_ms)}</strong></div>
-            <div class="v620-latency"><span>写库 + 结算</span><strong>${duration(item.settlement_latency_ms)}</strong></div>
+            <div class="v620-latency"><span>API 出结果 → 天机发现</span><strong class="${latencyClass(shown)}">${duration(shown)}</strong><em>${latencyLabel(shown)} · ${trend(current,average)}</em></div>
+            <div class="v620-latency"><span>单次探测请求</span><strong>${duration(item.probe_latency_ms)}</strong><em>${latencyLabel(item.probe_latency_ms)}</em></div>
+            <div class="v620-latency"><span>写库 + 结算</span><strong>${duration(item.settlement_latency_ms)}</strong><em>${latencyLabel(item.settlement_latency_ms)}</em></div>
           </div>
           <div class="v620-realtime-foot"><span>EMA <b>${duration(average)}</b> · 历史最慢 <b>${duration(item.max_detection_delay_ms)}</b></span><span>样本 <b>${Number(item.draw_detection_samples||0)}</b></span></div>
         </article>`;
       }).join('');
-      section.innerHTML=`<div class="v3-head"><div><h3>实时开奖链路</h3><p>直接显示开奖后的实际检测和结算耗时。若第一项高而探测请求很低，通常是上游开奖时间/接口发布时间差异。</p></div><span class="v620-build">service ${esc(data.service_version||'—')} · ${esc(data.runtime_revision||'runtime —')}</span></div><div class="v620-realtime-grid">${cards||'<div class="empty">等待实时 Worker 写入首个延迟样本</div>'}</div>`;
+      section.innerHTML=`<div class="v3-head"><div><h3>实时开奖链路 <span class="v620-fresh">实时</span></h3><p>直接显示开奖后的实际检测和结算耗时；状态标签用于快速判断瓶颈来自上游、探测还是本机结算。</p></div><span class="v620-build">service ${esc(data.service_version||'—')} · ${esc(data.runtime_revision||'runtime —')}</span></div><div class="v620-realtime-grid">${cards||'<div class="empty">等待实时 Worker 写入首个延迟样本</div>'}</div>`;
+      updateRealtimePill('', '正常');
       const targets=(data.lotteries||[]).map(item=>Number(item.next_draw_at_epoch_ms||0)).filter(Boolean);
       if(targets.some(target=>target-Date.now()>=-90000&&target-Date.now()<=180000))delay=3000;
-    }catch(_error){delay=5000}
+    }catch(_error){
+      delay=5000;
+      const section=document.getElementById('v620Realtime');
+      if(section){
+        section.classList.add('stale');
+        const fresh=section.querySelector('.v620-fresh');
+        if(fresh){
+          fresh.className='v620-fresh warn';
+          fresh.textContent=`数据已过期 · ${age(lastRealtimeSuccess)}`;
+        }
+      }
+      updateRealtimePill('warn', lastRealtimeSuccess?`过期 ${age(lastRealtimeSuccess)}`:'不可用');
+    }
     realtimeTimer=window.setTimeout(loadRealtimeLatency,delay);
   }
 

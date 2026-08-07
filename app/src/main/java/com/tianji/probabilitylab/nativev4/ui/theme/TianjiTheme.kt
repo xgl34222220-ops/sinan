@@ -47,7 +47,7 @@ data class TianjiColors(
     val textDim: Color = Color(0xFF9299A9),
     val green: Color = Color(0xFF36B98B),
     val red: Color = Color(0xFFE45667),
-    val amber: Color = Color(0xFFE79B22),
+    val amber: Color = Color(0xFFF2C14E),
     val violet: Color = Color(0xFF8D7CFF),
     val accent: Color,
     val accentSoft: Color,
@@ -172,9 +172,11 @@ fun TianjiTheme(
         textDim = lerp(dynamicPalette?.onSurfaceVariant ?: base.textDim, base.page, if (isDark) 0.10f else 0.05f),
         accent = accent,
         accentSoft = accent.copy(alpha = if (isDark) 0.17f else 0.12f),
-        violet = dynamicPalette?.tertiary ?: Color(0xFF7C68F2),
-        green = dynamicPalette?.secondary ?: if (isDark) Color(0xFF5BD8AB) else Color(0xFF16865F),
-        amber = if (isDark) Color(0xFFF1B354) else Color(0xFFA96800),
+        // Semantic colors remain stable even when Monet or a lottery accent changes.
+        // This prevents orange lottery themes from looking identical to warning states.
+        violet = if (isDark) Color(0xFF9A8CFF) else Color(0xFF6F5BDD),
+        green = if (isDark) Color(0xFF5BD8AB) else Color(0xFF16865F),
+        amber = if (isDark) Color(0xFFFFD166) else Color(0xFF946200),
         red = if (isDark) Color(0xFFFF7D8C) else Color(0xFFC43A52),
         monetSupported = monetSupported,
         isOled = isOled,
