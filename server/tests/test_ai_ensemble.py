@@ -176,68 +176,64 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertTrue(needs_collapse_review([0, 0, 0], 0))
         self.assertFalse(needs_collapse_review([0, 0, 1, 0], 0))
 
-    @patch("app.ai_position_autonomy_guard._final_judge")
-    @patch("app.ai_position_autonomy_guard._autonomous_review")
-    def test_fixed_target_mode_never_generates_dynamic_six_numbers(
+    @patch("app.ai_ensemble._number_review")
+    @patch("app.ai_ensemble._position_review")
+    def test_formal_ai_prediction_generates_dynamic_six_numbers(
         self,
-        target_review: object,
-        final_judge: object,
+        position_review: object,
+        number_review: object,
     ) -> None:
-        target_scores = [0.02] * 10
-        target_scores[0] = 0.82
-        target_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=target_scores,
-            analysis="固定235780走势专家",
+        position_scores = [0.01] * 10
+        position_scores[0] = 0.91
+        position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=position_scores,
+            analysis="动态名次评审",
         )
-        final_judge.return_value = _ReviewerResult(scores=target_scores, analysis="最终走势裁判")
-        result = analyze_ensemble(_history(), "21348120", _config())
-        self.assertEqual(result.top6, [2, 3, 5, 7, 8, 10])
-        self.assertEqual(result.number_reviewers, 0)
-        self.assertEqual(result.position_reviewers, 3)
-        self.assertFalse(result.recent_copy_reviewed)
-        self.assertIn("固定目标六码235780", result.analysis)
-        self.assertIn("随机命中基准为60%", result.risk_note)
+        dynamic_order = [1, 4, 6, 9, 10, 2, 3, 5, 7, 8]
+        number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=_scores_for_order(dynamic_order),
+            analysis="动态号码评审",
+        )
 
-    @patch("app.ai_position_autonomy_guard._final_judge")
-    @patch("app.ai_position_autonomy_guard._autonomous_review")
-    def test_final_prediction_is_direct_ai_arbiter_for_fixed_target(
-        self,
-        target_review: object,
-        final_judge: object,
-    ) -> None:
-        specialist_scores = [0.02] * 10
-        specialist_scores[1] = 0.82
-        target_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=specialist_scores,
-            analysis="走势专家偏向第2名",
-        )
-        judge_scores = [0.02] * 10
-        judge_scores[3] = 0.82
-        final_judge.return_value = _ReviewerResult(scores=judge_scores, analysis="总裁判改选第4名")
-        result = analyze_ensemble(
-            _history(),
-            "21348120",
-            _config(),
-            recent_positions=[3, 3, 3, 3, 3, 3],
-        )
-        self.assertEqual(result.position, 3)
-        self.assertEqual(result.top6, [2, 3, 5, 7, 8, 10])
-        self.assertEqual(result.number_reviewers, 0)
+        result = analyze_ensemble(_history(), "21348120", _config())
+        self.assertEqual(result.position, 0)
+        self.assertEqual(result.top6, dynamic_order[:6])
+        self.assertNotEqual(result.top6, [2, 3, 5, 7, 8, 10])
+        self.assertGreaterEqual(result.number_reviewers, 2)
         self.assertTrue(result.strategy_probabilities)
         self.assertTrue(
-            all(
-                name.startswith("ai_fixed_235780_full_trend_position_")
-                for name in result.strategy_probabilities
-            )
+            any("forward_statistical_prior" in name for name in result.strategy_probabilities)
         )
-        self.assertIn("三路专家分别负责短期走势、中长期验证、自我纠错", result.analysis)
-        self.assertIn("第四路AI总裁判", result.analysis)
-        self.assertIn("固定235780覆盖10个位置中的6个", result.risk_note)
+        self.assertIn("动态混合", result.analysis)
 
-    @patch("app.ai_position_autonomy_guard._autonomous_review", side_effect=RuntimeError("provider down"))
+    @patch("app.ai_ensemble._number_review")
+    @patch("app.ai_ensemble._position_review")
+    def test_dynamic_ai_is_allowed_to_agree_with_any_six_number_set(
+        self,
+        position_review: object,
+        number_review: object,
+    ) -> None:
+        position_scores = [0.01] * 10
+        position_scores[0] = 0.91
+        position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=position_scores,
+            analysis="独立名次评审",
+        )
+        agreed_order = [2, 3, 5, 7, 8, 10, 1, 4, 6, 9]
+        number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=_scores_for_order(agreed_order),
+            analysis="独立号码评审",
+        )
+
+        result = analyze_ensemble(_history(), "21348120", _config())
+        self.assertEqual(result.top6, agreed_order[:6])
+        self.assertGreaterEqual(result.number_reviewers, 2)
+        self.assertIn("不会为了与本地不同而强制改号", result.analysis)
+
+    @patch("app.ai_ensemble._position_review", side_effect=RuntimeError("provider down"))
     def test_provider_failure_does_not_forge_a_statistical_ai_prediction(
         self,
-        _target_review: object,
+        _position_review: object,
     ) -> None:
         with self.assertRaisesRegex(RuntimeError, "全部AI评审失败"):
             analyze_ensemble(_history(), "21348120", _config())
