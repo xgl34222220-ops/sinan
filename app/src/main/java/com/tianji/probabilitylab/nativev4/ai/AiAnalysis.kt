@@ -643,7 +643,7 @@ class RemoteAiAnalyzer(context: Context) {
                 }
             }
             onProgress(
-                "预测核心已完整，正在本机校验概率矩阵并生成六码/七码",
+                "固定235780位置评分已完整，正在本机执行前向证据融合",
                 System.currentTimeMillis() - started,
             )
             return parseForecastContent(
@@ -1431,7 +1431,7 @@ class RemoteAiAnalyzer(context: Context) {
             .takeLast(historyLimit)
         require(rawHistory.isNotEmpty()) { "没有可用于独立 AI 分析的开奖历史" }
         return JSONObject().apply {
-            put("task", "仅根据原始开奖历史，独立选择下一期一个名次并对号码1至10排序")
+            put("task", "固定目标235780：仅根据原始开奖历史，比较十个位置下一期落入2/3/5/7/8/10的相对可能性并选出一个位置")
             put("independence_protocol", "raw-history-v1")
             put(
                 "input_isolation",
@@ -1457,22 +1457,22 @@ class RemoteAiAnalyzer(context: Context) {
                 JSONArray(
                     listOf(
                         "derive your own useful features directly from raw draws",
-                        "compare all ten positions before selecting one unless evidence is genuinely weak",
+                        "compare all ten positions for next-draw membership in fixed set 2/3/5/7/8/10 before selecting one",
                         "use at least three independently justified signals; do not inherit client weights",
                         "treat small samples and tiny differences as weak evidence",
-                        "produce your own ten-number score vector; natural agreement with another model is allowed but copying is not",
+                        "produce your own ten-position score vector for the fixed target; never generate or replace the target numbers",
                     ),
                 ),
             )
             put(
                 "output_rule",
-                "只输出position和scores紧凑JSON；不要输出隐藏思维链、Markdown、逐期复述或额外字段。",
+                "只输出position和scores紧凑JSON；scores按位置1至10排列，表示下一期进入固定235780的相对评分；不要输出隐藏思维链、Markdown、逐期复述或额外字段。",
             )
             put(
                 "required_json_schema",
                 JSONObject()
                     .put("position", "1至10的整数")
-                    .put("scores", "按号码1至10排列的10项非负原始评分，不得全部相同"),
+                    .put("scores", "按位置1至10排列的10项非负原始评分，表示各位置下一期落入2/3/5/7/8/10的相对证据，不得全部相同"),
             )
         }
     }
@@ -1582,7 +1582,7 @@ class RemoteAiAnalyzer(context: Context) {
 
     private companion object {
         const val FINALIZE_JSON_PROMPT =
-            "不要重新分析或复述过程。立即只输出紧凑JSON：{\"position\":1至10整数,\"scores\":[号码1至10对应的10项非负评分]}。"
-        const val SYSTEM_PROMPT = """你是与客户端本机模型严格隔离的概率排序模型。你只会收到按时间排序的真实开奖原始记录、目标期和必要元数据；客户端不会提供本机选择的名次、候选、概率矩阵、预计算频次/遗漏/转移统计或本机因子权重。你必须从原始记录自行决定分析方法，先比较十个名次，再选择证据相对充分的一个名次，并按号码1至10给出10项非负评分。不得猜测、迎合或复制本机答案，也不得为了显得不同而故意反选；独立分析后自然重合是允许的。小样本和细微差异必须降权。正式预测有严格时间预算：禁止输出隐藏思维链、解释、Markdown或逐期复述；只输出position与scores的紧凑JSON。不得承诺准确率、盈利或必中。"""
+            "不要重新分析或复述过程。立即只输出紧凑JSON：{\"position\":1至10整数,\"scores\":[位置1至10进入固定235780的10项非负评分]}。"
+        const val SYSTEM_PROMPT = """你是与客户端本机模型严格隔离的固定目标位置预测模型。固定目标永远是235780，其中0在1至10赛制中表示10，即内部集合2/3/5/7/8/10；绝对禁止生成、替换或优化这组六码。你只会收到按时间排序的真实开奖原始记录、目标期和必要元数据。唯一任务是比较第1至第10位置，判断下一期各位置的号码落入固定集合2/3/5/7/8/10的相对可能性，position返回最有证据的位置，scores按位置1至10给出10项非负原始评分。每个位置在随机排列下的固定六码命中基准是60%，短期高于60%不代表稳定优势；必须重视时序、状态转移、近期与长期一致性并对小样本降权。不得猜测、迎合或复制本机答案。正式预测有严格时间预算：禁止输出隐藏思维链、解释、Markdown或逐期复述；只输出position与scores的紧凑JSON。不得承诺准确率、盈利或必中。"""
     }
 }

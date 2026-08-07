@@ -123,19 +123,21 @@ object AiContinualForecastEngine {
         forecast: AiForecast,
         plan: AiContinualForecastPlan,
     ): AiForecast {
-        val selected = plan.best
-        val remoteEvidence = plan.evidence(forecast.position)
-        val remoteAgrees = forecast.position == selected.position
-        val probabilities = if (remoteAgrees) {
-            blendInsideFixedGroups(
-                base = selected.currentProbabilities,
-                remote = forecast.probabilities,
-                targetProbability = selected.targetProbability,
-                remoteWeight = 0.22,
-            )
+        val mathScores = normalize(plan.positions.map { evidence ->
+            evidence.validationScore.coerceAtLeast(1e-9)
+        })
+        val remoteScores = if (forecast.probabilities.size == 10) {
+            normalize(forecast.probabilities)
         } else {
-            selected.currentProbabilities
+            List(10) { 0.1 }
         }
+        val combinedScores = (0 until 10).map { position ->
+            mathScores[position] * 0.68 + remoteScores[position] * 0.32
+        }
+        val selectedPosition = combinedScores.indices.maxBy { combinedScores[it] }
+        val selected = plan.evidence(selectedPosition)
+        val probabilities = selected.currentProbabilities
+        val remoteBest = remoteScores.indices.maxBy { remoteScores[it] }
         val top6 = TARGET_NUMBERS
         val outside = (1..10).filterNot(TARGET_NUMBERS::contains)
         val hedge = outside.maxBy { number -> probabilities[number - 1] }
@@ -157,10 +159,10 @@ object AiContinualForecastEngine {
         } else {
             "暂未形成强优势，仍按相对最高名次输出"
         }
-        val remoteText = if (remoteAgrees) {
-            "远端AI旁路评审与固定目标学习器同选第${selected.position + 1}名。"
+        val remoteText = if (remoteBest == selected.position) {
+            "远端AI固定235780评审与前向学习融合后同选第${selected.position + 1}名。"
         } else {
-            "远端AI旧通用评审偏向第${remoteEvidence.position + 1}名，仅作为旁路审计，不覆盖固定目标决策。"
+            "远端AI固定235780评审首选第${remoteBest + 1}名；最终按前向验证68% + AI评分32%融合后选择第${selected.position + 1}名。"
         }
         val learningSummary = buildString {
             append("\n固定目标预测：六码固定为$TARGET_LABEL（0按10处理），不再生成动态六码。")
@@ -177,7 +179,7 @@ object AiContinualForecastEngine {
             top6 = top6,
             top7 = top7,
             probabilities = probabilities,
-            analysis = (forecast.analysis + learningSummary).take(1_700),
+            analysis = learningSummary.trim().take(1_700),
             riskNote = (
                 "固定六码${TARGET_LABEL}在每期开奖中恰好覆盖10个位置里的6个位置，因此任取一个名次随机命中基准就是60%。" +
                     "系统只允许用开奖前历史做滚动验证；短期高于60%不等于存在可持续规律。"
