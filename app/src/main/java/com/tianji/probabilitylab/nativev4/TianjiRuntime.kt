@@ -14,7 +14,7 @@ class TianjiRuntime private constructor(context: Context) {
 
     init {
         PushAlertCoordinator.setRealtimeRefreshCallback {
-            appController.refresh()
+            appController.refreshCurrentLottery()
         }
     }
 
