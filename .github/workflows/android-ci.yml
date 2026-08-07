@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n deploy/*.sh tools/*.sh
-          ruby -e "require 'yaml'; YAML.load_file('.github/workflows/release.yml')"
+          ruby -e "require 'yaml'; Dir['.github/workflows/*.yml'].each { |path| YAML.load_file(path) }"
           python tools/check-version-consistency.py
           python tools/check-ui-contract.py
 
@@ -61,6 +61,9 @@ jobs:
           :app:assembleDebug
           :app:assembleRelease
 
+      - name: Render Compose preview screenshot baselines
+        run: gradle --no-daemon --stacktrace :app:updateDebugScreenshotTest
+
       - name: Upload Debug APK and reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -70,5 +73,7 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
+            app/src/screenshotTestDebug/reference/
+            app/build/reports/screenshotTest/
           if-no-files-found: warn
           retention-days: 14

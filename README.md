@@ -4,14 +4,27 @@
 
 ## 当前版本
 
-- 当前正式版：**6.1.4**
+- 当前正式版：**6.2.0**
 - 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 正式应用 ID：`com.tianji.probabilitylab.nativev5`
 
-## v6.1 稳定化重点
+## v6.2 UI / 体验重构重点
+
+- 首页重排为“实时开奖 / 倒计时 → 本期预测 → AI 状态 → 深度分析”，减少重复卡片与视觉噪音。
+- 手机继续使用悬浮液态 Dock，宽屏和平板自动切换侧边 Navigation Rail，并接入 Material 3 Adaptive。
+- 通知中心改为按日期分组并收起高级筛选；档案页简化筛选与信息密度，设置页统一分组式信息层级。
+- 统一浅色 / 深色 / OLED 系统栏表现、字号、触摸区域与组件圆角，提升可读性和无障碍体验。
+- 删除当前彩种实时刷新的 Java 反射桥，改为 `AppController.refreshCurrentLottery()` 正式 API，避免 R8 下退化为全量刷新。
+- 服务端管理台新增实时链路延迟卡片，直接展示开奖发现延迟、探测请求耗时、结算耗时、EMA 与历史最慢值。
+- 服务端版本、Runtime Revision 与 Git Commit 统一展示，并加入受保护的手动 VPS 部署工作流。
+- Android CI 新增 Compose Preview Screenshot 基线渲染，持续校验首页、导航、设置等关键界面的视觉回归。
+- 保留 v6.1.4 的实时开奖快通道、异步 FCM / Telegram、当前彩种快速刷新与固定 `235780` 输出保护。
+- 合并主线最新 AI 走势体系：读取最多 240 期真实数据，使用 24 / 60 / 120 / 240 窗口、前向验证和自身实战结果，由多路专家与最终 AI 裁判给出正式名次；本地 native 模型继续保持原逻辑。
+
+## v6.1 稳定化基础
 
 - 推送升级到 **Push Protocol v2**：预测完成、两期预警、三期加强、后续升级和恢复命中使用统一事件字段。
 - FCM 与 App 预警中心直接采用服务端标题和正文，不再把“两期预警”误显示为“三期不中”。
@@ -86,6 +99,6 @@ sudo /opt/tianji/deploy/configure-fcm.sh /安全路径/firebase-service-account.
 
 ## 自动验证
 
-Android CI 执行单元测试、Lint、Debug APK 和 R8 Release APK 构建。服务端 CI 执行 Python 编译、单元测试、Docker Compose 校验和镜像构建。正式发布还会校验应用 ID、版本、签名和 Firebase 客户端配置。
+Android CI 执行单元测试、Lint、Debug / Release APK 构建和 Compose Preview Screenshot 基线渲染。服务端 CI 执行 Python 编译、单元测试、Docker Compose 校验和镜像构建。正式发布还会校验应用 ID、版本、签名和 Firebase 客户端配置。
 
 > 天机用于统计实验、记录和真实前向验证。请理性使用，不要将任何候选结果理解为确定性结论。

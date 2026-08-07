@@ -151,6 +151,10 @@ class AppController(context: Context) {
         refreshAll(force = true)
     }
 
+    internal fun refreshCurrentLottery() {
+        refreshLottery(state.lottery, force = true)
+    }
+
     private fun refreshAll(force: Boolean) {
         val selected = state.lottery
         val order = buildList {

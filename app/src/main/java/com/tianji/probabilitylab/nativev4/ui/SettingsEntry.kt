@@ -22,10 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,29 +45,23 @@ fun SettingsEntry(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 76.dp)
-            .shadow(
-                elevation = if (colors.isOled) 0.dp else 2.dp,
-                shape = RoundedCornerShape(19.dp),
-                ambientColor = Color.Black.copy(alpha = 0.10f),
-                spotColor = Color.Black.copy(alpha = 0.10f),
-            )
-            .clip(RoundedCornerShape(19.dp))
-            .background(Brush.linearGradient(listOf(colors.surfaceStrong, colors.surface)))
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(19.dp))
+            .heightIn(min = 70.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(colors.surface.copy(alpha = 0.72f))
+            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+            .semantics { role = Role.Button }
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 13.dp),
+            .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(colors.accentSoft)
-                .border(1.dp, colors.accent.copy(alpha = 0.20f), RoundedCornerShape(14.dp)),
+                .size(40.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(colors.accentSoft),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = colors.accent, modifier = Modifier.size(21.dp))
+            Icon(icon, null, tint = colors.accent, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -80,8 +75,8 @@ fun SettingsEntry(
             Text(
                 detail,
                 color = colors.textDim,
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -90,12 +85,12 @@ fun SettingsEntry(
             Text(
                 it,
                 color = colors.accent,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(colors.accentSoft)
-                    .border(1.dp, colors.accent.copy(alpha = 0.18f), CircleShape)
                     .padding(horizontal = 8.dp, vertical = 5.dp),
             )
             Spacer(Modifier.width(5.dp))
@@ -104,7 +99,7 @@ fun SettingsEntry(
             Icons.Rounded.KeyboardArrowRight,
             contentDescription = null,
             tint = colors.textDim,
-            modifier = Modifier.size(21.dp),
+            modifier = Modifier.size(20.dp),
         )
     }
 }

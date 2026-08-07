@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.android.compose.screenshot")
 }
 
 val releaseStoreFile = providers.environmentVariable("TIANJI_KEYSTORE_FILE").orNull
@@ -24,13 +25,14 @@ val firebaseSenderId = providers.gradleProperty("TIANJI_FIREBASE_SENDER_ID").orE
 android {
     namespace = "com.tianji.probabilitylab.nativev4"
     compileSdk = 36
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
 
     defaultConfig {
         applicationId = "com.tianji.probabilitylab.nativev5"
         minSdk = 26
         targetSdk = 36
-        versionCode = 66
-        versionName = "6.1.4"
+        versionCode = 67
+        versionName = "6.2.0"
 
         buildConfigField("String", "TIANJI_CLOUD_BASE_URL", "\"${cloudBaseUrl.get()}\"")
         buildConfigField("String", "TIANJI_FIREBASE_PROJECT_ID", "\"${firebaseProjectId.get()}\"")
@@ -110,8 +112,12 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3.adaptive:adaptive:1.2.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.datastore:datastore-preferences:1.1.7")
+
+    screenshotTestImplementation("com.android.tools.screenshot:screenshot-validation-api:0.0.1-alpha15")
+    screenshotTestImplementation("androidx.compose.ui:ui-tooling")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

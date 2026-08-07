@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +28,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,22 +53,23 @@ internal fun PositionSelectorV2(selected: Int, onSelected: (Int) -> Unit) {
             val active = index == selected
             Box(
                 modifier = Modifier
-                    .width(42.dp)
-                    .heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(13.dp))
+                    .width(46.dp)
+                    .heightIn(min = 52.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .background(if (active) colors.accent else colors.surfaceStrong)
                     .border(
                         1.dp,
                         if (active) Color.Transparent else colors.line,
-                        RoundedCornerShape(13.dp),
+                        RoundedCornerShape(14.dp),
                     )
+                    .semantics { role = Role.Tab }
                     .clickable { onSelected(index) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = if (index == 0) "冠" else if (index == 1) "亚" else (index + 1).toString(),
                     color = if (active) Color.White else colors.textSoft,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                 )
@@ -96,17 +99,17 @@ internal fun CompactMetricV2(label: String, value: String, modifier: Modifier = 
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(colors.surfaceStrong.copy(alpha = 0.82f))
+            .background(colors.surfaceStrong.copy(alpha = 0.78f))
             .border(1.dp, colors.line, RoundedCornerShape(14.dp))
             .padding(horizontal = 11.dp, vertical = 11.dp),
     ) {
-        Text(label, color = colors.textDim, fontSize = 11.sp, maxLines = 1)
-        Spacer(Modifier.height(4.dp))
+        Text(label, color = colors.textDim, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1)
+        Spacer(Modifier.size(3.dp))
         Text(
             value,
             color = colors.text,
-            fontSize = 15.sp,
-            lineHeight = 20.sp,
+            fontSize = 16.sp,
+            lineHeight = 21.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -121,18 +124,18 @@ internal fun RefinedModelRowV2(rank: Int, model: ModelPerformance) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(colors.surfaceStrong.copy(alpha = 0.78f))
+            .background(colors.surfaceStrong.copy(alpha = 0.72f))
             .border(1.dp, colors.line, RoundedCornerShape(14.dp))
             .padding(11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(colors.accentSoft),
+            Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(colors.accentSoft),
             contentAlignment = Alignment.Center,
         ) {
-            Text(rank.toString(), color = colors.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(rank.toString(), color = colors.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.width(9.dp))
+        Spacer(Modifier.size(9.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 model.name,
@@ -142,15 +145,15 @@ internal fun RefinedModelRowV2(rank: Int, model: ModelPerformance) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.size(5.dp))
             LinearProgressIndicator(
                 progress = { model.weight.toFloat().coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 5.dp).clip(CircleShape),
                 color = if (model.weight > 0.005) colors.accent else colors.textDim,
                 trackColor = colors.line,
             )
         }
-        Spacer(Modifier.width(9.dp))
+        Spacer(Modifier.size(9.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 "${(model.weight * 100).format1V2()}%",
@@ -158,7 +161,7 @@ internal fun RefinedModelRowV2(rank: Int, model: ModelPerformance) {
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text("命中 ${(model.hitRate * 100).format1V2()}%", color = colors.textDim, fontSize = 10.sp)
+            Text("命中 ${(model.hitRate * 100).format1V2()}%", color = colors.textDim, fontSize = 11.sp)
         }
     }
 }
@@ -177,7 +180,7 @@ internal fun EvidenceRowV2(text: String, passed: Boolean) {
             tint = tint,
             modifier = Modifier.size(18.dp),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.size(8.dp))
         Text(text, color = colors.textSoft, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
@@ -187,7 +190,8 @@ internal fun StatusChipV2(text: String, tint: Color) {
     Text(
         text,
         color = tint,
-        fontSize = 10.sp,
+        fontSize = 11.sp,
+        lineHeight = 15.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
             .clip(CircleShape)

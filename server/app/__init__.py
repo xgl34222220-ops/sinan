@@ -39,3 +39,8 @@ from .ai_position_autonomy_guard import install as _install_ai_position_autonomy
 
 _install_ai_position_autonomy_guard()
 del _install_ai_position_autonomy_guard
+
+from .realtime_admin import install as _install_realtime_admin
+
+_install_realtime_admin()
+del _install_realtime_admin

@@ -1,6 +1,7 @@
 package com.tianji.probabilitylab.nativev4
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -15,8 +16,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            statusBarStyle = transparentAutoSystemBarStyle(),
+            navigationBarStyle = transparentAutoSystemBarStyle(),
         )
         handlePushIntent(intent)
         setContent { TianjiApp() }
@@ -26,6 +27,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handlePushIntent(intent)
+    }
+
+    private fun transparentAutoSystemBarStyle(): SystemBarStyle = SystemBarStyle.auto(
+        lightScrim = Color.TRANSPARENT,
+        darkScrim = Color.TRANSPARENT,
+    ) {
+        resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
     }
 
     private fun handlePushIntent(intent: Intent?) {

@@ -33,9 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.tianji.probabilitylab.nativev4.TianjiRuntime
-import com.tianji.probabilitylab.nativev4.refreshCurrentLottery
-import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
 import com.tianji.probabilitylab.nativev4.model.LotteryType
+import com.tianji.probabilitylab.nativev4.push.PushAlertCoordinator
 import com.tianji.probabilitylab.nativev4.push.PushAlertNavigation
 import com.tianji.probabilitylab.nativev4.service.AiForegroundService
 import com.tianji.probabilitylab.nativev4.ui.theme.AppearanceMode
@@ -179,19 +178,23 @@ fun TianjiApp() {
         Box(
             modifier = Modifier.fillMaxSize().background(colors.page),
         ) {
-            TianjiRootScaffold(
-                bottomBar = {
+            V62AdaptiveScaffold(
+                selected = destination,
+                onSelected = { destination = it },
+                onChat = { showChat = true },
+                isAiRunning = state.isAiAnalyzing || chatRunning,
+                compactBottomBar = {
                     Column {
                         AiReviewProgressDock(
                             state = state,
-                            modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
+                            modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 6.dp),
                         )
                         MainBottomBar(
                             selected = destination,
                             onSelected = { destination = it },
                             onChat = { showChat = true },
                             isAiRunning = state.isAiAnalyzing || chatRunning,
-                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 9.dp),
+                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
                         )
                     }
                 },
@@ -214,10 +217,10 @@ fun TianjiApp() {
                             transitionSpec = {
                                 pageTransformV2(initialState.ordinal, targetState.ordinal)
                             },
-                            label = "refined-pages",
+                            label = "v62-pages",
                         ) { page ->
                             when (page) {
-                                MainDestination.HOME -> RefinedForecastScreen(
+                                MainDestination.HOME -> V62ForecastScreen(
                                     state = state,
                                     aiConfigs = controller.aiConfigs,
                                     onSelectLottery = controller::selectLottery,
@@ -231,7 +234,7 @@ fun TianjiApp() {
                                     onSelectLottery = controller::selectLottery,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                MainDestination.ARCHIVE -> RefinedArchiveScreen(
+                                MainDestination.ARCHIVE -> V62ArchiveScreen(
                                     state = state,
                                     onSelectLottery = controller::selectLottery,
                                     modifier = Modifier.fillMaxSize(),
@@ -283,7 +286,7 @@ fun TianjiApp() {
             }
 
             if (showAlertCenter) {
-                RefinedPushAlertCenterScreen(
+                V62PushAlertCenterScreen(
                     alerts = pushAlerts,
                     preferences = pushPreferences,
                     status = pushStatus,
@@ -306,8 +309,8 @@ fun TianjiApp() {
 private fun pageTransformV2(from: Int, to: Int): ContentTransform {
     val direction = if (to >= from) 1 else -1
     return (
-        slideInHorizontally(tween(230)) { it / 9 * direction } + fadeIn(tween(190))
+        slideInHorizontally(tween(210)) { it / 10 * direction } + fadeIn(tween(170))
         ) togetherWith (
-        slideOutHorizontally(tween(170)) { -it / 11 * direction } + fadeOut(tween(130))
+        slideOutHorizontally(tween(160)) { -it / 12 * direction } + fadeOut(tween(120))
         )
 }
