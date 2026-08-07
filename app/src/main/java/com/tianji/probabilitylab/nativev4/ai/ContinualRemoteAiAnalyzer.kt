@@ -4,17 +4,19 @@ import android.content.Context
 import com.tianji.probabilitylab.nativev4.model.Draw
 import com.tianji.probabilitylab.nativev4.model.DrawSnapshot
 import com.tianji.probabilitylab.nativev4.model.ForecastReport
-import kotlin.math.exp
+import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.max
 
 /**
- * App-side AI guard that keeps the remote model independent from the native forecast while still
- * making every settled AI result useful to the next prediction.
+ * App-side fixed-target continual predictor.
  *
- * The remote provider continues to receive raw history only. After it returns, Tianji evaluates
- * the selected position with leakage-free rolling forward tests and blends the number matrix with
- * the profile that belongs to this exact lottery + AI profile + model mode + position.
+ * The forecast target is no longer a dynamically generated six-number set. Tianji always evaluates
+ * the fixed pool 2/3/5/7/8/0 (0 is represented internally as 10) and asks one question only:
+ * which of the ten positions is most likely to land inside that pool on the next draw?
+ *
+ * The remote model is still called as an independent audit source. The final position, however, is
+ * selected by a leakage-free binary continual learner whose random baseline is explicitly 60%.
  */
 class ContinualRemoteAiAnalyzer(context: Context) {
     private val delegate = RemoteAiAnalyzer(context.applicationContext)
@@ -34,7 +36,7 @@ class ContinualRemoteAiAnalyzer(context: Context) {
         onProgress: (String, Long) -> Unit = { _, _ -> },
     ): AiForecast {
         val started = System.currentTimeMillis()
-        onProgress("正在对十个名次执行滚动前向学习验证", 0L)
+        onProgress("正在计算十个名次进入固定六码235780的下一期概率", 0L)
         val strategy = AiLearningStrategy.official(config)
         val profiles = (0 until 10).map { position ->
             learningStore.profile(
@@ -47,7 +49,7 @@ class ContinualRemoteAiAnalyzer(context: Context) {
         val plan = AiContinualForecastEngine.buildPlan(snapshot.history, profiles)
         val remote = delegate.analyze(config, snapshot, report, onProgress)
         onProgress(
-            "AI矩阵已返回，正在按真实结算成绩校准名次与号码权重",
+            "AI旁路评审已返回，正在按固定六码真实前向成绩确定最终名次",
             System.currentTimeMillis() - started,
         )
         return AiContinualForecastEngine.calibrate(remote, plan)
@@ -57,17 +59,18 @@ class ContinualRemoteAiAnalyzer(context: Context) {
 data class AiPositionForwardEvidence(
     val position: Int,
     val validationSamples: Int,
-    val top6Hits: Int,
-    val top6HitRate: Double,
-    val averageLogLoss: Double,
+    val targetHits: Int,
+    val targetHitRate: Double,
+    val averageBinaryLogLoss: Double,
     val maxMissStreak: Int,
-    val boundaryMargin: Double,
+    val currentMissStreak: Int,
+    val targetProbability: Double,
     val validationScore: Double,
     val gatePassed: Boolean,
     val currentProbabilities: List<Double>,
     val learningProfile: AiLearningProfile,
 ) {
-    val excessOverRandom: Double get() = top6HitRate - 0.60
+    val excessOverRandom: Double get() = targetHitRate - AiContinualForecastEngine.RANDOM_TARGET_RATE
 }
 
 data class AiContinualForecastPlan(
@@ -82,9 +85,15 @@ data class AiContinualForecastPlan(
 }
 
 object AiContinualForecastEngine {
-    private const val MAX_VALIDATION_SAMPLES = 48
-    private const val RANDOM_TOP6_RATE = 0.60
-    private const val UNIFORM_LOG_LOSS = 2.302585092994046
+    const val RANDOM_TARGET_RATE = 0.60
+    val TARGET_NUMBERS: List<Int> = listOf(2, 3, 5, 7, 8, 10)
+    const val TARGET_LABEL = "235780"
+
+    private const val MAX_VALIDATION_SAMPLES = 60
+    private val BINARY_LOG_LOSS_BASELINE = -(
+        RANDOM_TARGET_RATE * ln(RANDOM_TARGET_RATE) +
+            (1.0 - RANDOM_TARGET_RATE) * ln(1.0 - RANDOM_TARGET_RATE)
+        )
 
     fun buildPlan(
         historyInput: List<Draw>,
@@ -95,7 +104,7 @@ object AiContinualForecastEngine {
             .filter { draw -> draw.numbers.size == 10 && draw.numbers.toSet().size == 10 }
             .distinctBy { it.period }
             .takeLast(240)
-        require(history.size >= 40) { "持续学习至少需要40期有效历史" }
+        require(history.size >= 40) { "固定六码235780持续学习至少需要40期有效历史" }
         val normalizedProfiles = (0 until 10).map { position ->
             profiles.getOrNull(position) ?: AiLearningProfile()
         }
@@ -114,84 +123,70 @@ object AiContinualForecastEngine {
         forecast: AiForecast,
         plan: AiContinualForecastPlan,
     ): AiForecast {
-        val selected = plan.evidence(forecast.position)
-        val best = plan.best
-        val qualityRatio = selected.validationScore / best.validationScore.coerceAtLeast(1e-9)
-        val selectedRank = plan.positions
-            .sortedByDescending { it.validationScore }
-            .indexOfFirst { it.position == selected.position } + 1
-
-        // Do not freeze an obviously weak random position when a materially better, fully validated
-        // position exists. This is a veto only; it never substitutes the native model's position or
-        // candidate set into the AI result.
-        require(
-            !best.gatePassed || selected.gatePassed || selectedRank <= 4 || qualityRatio >= 0.70,
-        ) {
-            "AI选择的第${selected.position + 1}名未通过持续学习门槛，且真实前向成绩明显弱于第${best.position + 1}名；本期拒绝冻结随机弱名次"
-        }
-
-        val sampleConfidence = (selected.learningProfile.settled / 80.0).coerceIn(0.0, 1.0)
-        val forwardConfidence = if (selected.gatePassed) 1.0 else {
-            ((selected.top6HitRate - 0.50) / 0.15).coerceIn(0.0, 1.0)
-        }
-        val learningWeight = (
-            0.18 + sampleConfidence * 0.10 + forwardConfidence * 0.10
-        ).coerceIn(0.18, 0.38)
-        val aiWeight = 1.0 - learningWeight
-        val calibrated = normalize(
-            forecast.probabilities.indices.map { index ->
-                forecast.probabilities[index] * aiWeight +
-                    selected.currentProbabilities[index] * learningWeight
-            },
-        )
-        val ranking = calibrated.indices
-            .sortedByDescending { calibrated[it] }
-            .map { it + 1 }
-        val top6 = ranking.take(6)
-        val top7 = ranking.take(7)
-        AiOutputValidator.requireValidCandidateSets(top6, top7)
-        val entropy = -calibrated.sumOf { probability ->
-            if (probability <= 0.0) 0.0 else probability * ln(probability)
-        }
-        val concentration = (1.0 - entropy / ln(10.0)).coerceIn(0.0, 1.0)
-        val gateText = if (selected.gatePassed) {
-            "已通过强证据门槛"
+        val selected = plan.best
+        val remoteEvidence = plan.evidence(forecast.position)
+        val remoteAgrees = forecast.position == selected.position
+        val probabilities = if (remoteAgrees) {
+            blendInsideFixedGroups(
+                base = selected.currentProbabilities,
+                remote = forecast.probabilities,
+                targetProbability = selected.targetProbability,
+                remoteWeight = 0.22,
+            )
         } else {
-            "当前未形成强优势，按弱证据运行"
+            selected.currentProbabilities
         }
-        val learningPercent = learningWeight * 100.0
-        val aiPercent = aiWeight * 100.0
-        val recentRate = selected.learningProfile.recent20Top6Rate
+        val top6 = TARGET_NUMBERS
+        val outside = (1..10).filterNot(TARGET_NUMBERS::contains)
+        val hedge = outside.maxBy { number -> probabilities[number - 1] }
+        val top7 = TARGET_NUMBERS + hedge
+        AiOutputValidator.requireValidCandidateSets(top6, top7)
+
+        val rankedPositions = plan.positions.sortedByDescending { it.validationScore }
+        val runnerUp = rankedPositions.getOrNull(1)
+        val probabilityGap = runnerUp?.let {
+            selected.targetProbability - it.targetProbability
+        } ?: 0.0
+        val targetEdge = selected.targetProbability - RANDOM_TARGET_RATE
+        val fixedConfidence = (
+            abs(targetEdge) / 0.16 +
+                (selected.validationSamples / 60.0).coerceIn(0.0, 1.0) * 0.20
+            ).coerceIn(0.0, 1.0)
+        val gateText = if (selected.gatePassed) {
+            "通过固定目标前向门槛"
+        } else {
+            "暂未形成强优势，仍按相对最高名次输出"
+        }
+        val remoteText = if (remoteAgrees) {
+            "远端AI旁路评审与固定目标学习器同选第${selected.position + 1}名。"
+        } else {
+            "远端AI旧通用评审偏向第${remoteEvidence.position + 1}名，仅作为旁路审计，不覆盖固定目标决策。"
+        }
         val learningSummary = buildString {
-            append("\n持续学习校准：十个名次分别滚动前向验证，当前${plan.passedCount}个名次通过门槛；")
-            append("AI选择第${selected.position + 1}名，验证${selected.validationSamples}期，")
-            append("六码命中率${formatPercent(selected.top6HitRate)}，")
-            append("相对随机基准${formatSignedPercent(selected.excessOverRandom)}，")
-            append("最长连续未中${selected.maxMissStreak}期，$gateText。")
-            append("最终号码矩阵保留AI ${formatPercent(aiWeight)}，")
-            append("该模型在该名次的在线学习权重${formatPercent(learningWeight)}。")
-            if (selected.learningProfile.settled > 0) {
-                append("已结算${selected.learningProfile.settled}期")
-                recentRate?.let { append("，近20期命中率${formatPercent(it)}") }
-                append("。")
-            }
+            append("\n固定目标预测：六码固定为$TARGET_LABEL（0按10处理），不再生成动态六码。")
+            append("十个名次分别判断下一期是否落入2/3/5/7/8/10；随机基准60%。")
+            append("当前第${selected.position + 1}名概率${formatPercent(selected.targetProbability)}，")
+            append("相对随机基准${formatSignedPercent(targetEdge)}，")
+            append("领先第二候选${formatSignedPercent(probabilityGap)}。")
+            append("滚动验证${selected.validationSamples}期，固定六码命中率${formatPercent(selected.targetHitRate)}，")
+            append("最长连续未进${selected.maxMissStreak}期，当前连续未进${selected.currentMissStreak}期，$gateText。")
+            append(remoteText)
         }
         return forecast.copy(
+            position = selected.position,
             top6 = top6,
             top7 = top7,
-            probabilities = calibrated,
-            analysis = (forecast.analysis + learningSummary).take(1_600),
+            probabilities = probabilities,
+            analysis = (forecast.analysis + learningSummary).take(1_700),
             riskNote = (
-                forecast.riskNote +
-                    " App端已启用按彩种、AI配置、模型模式和具体名次隔离的在线学习；" +
-                    "只有真实开奖结算会改变下一期权重，持续学习不代表准确率会单调上升。"
+                "固定六码$TARGET_LABEL在每期开奖中恰好覆盖10个位置里的6个位置，因此任取一个名次随机命中基准就是60%。" +
+                    "系统只允许用开奖前历史做滚动验证；短期高于60%不等于存在可持续规律。"
                 ).take(900),
-            selfRating = max(forecast.selfRating, concentration * 0.85),
+            selfRating = fixedConfidence,
             executionNote = (
                 forecast.executionNote +
-                    " · 十名次滚动前向门槛 · AI${String.format(java.util.Locale.US, "%.0f", aiPercent)}%" +
-                    "+名次学习${String.format(java.util.Locale.US, "%.0f", learningPercent)}%"
-                ).take(500),
+                    " · 固定六码$TARGET_LABEL · 十名次二分类前向学习 · 最终第${selected.position + 1}名"
+                ).take(520),
         )
     }
 
@@ -201,7 +196,9 @@ object AiContinualForecastEngine {
         profile: AiLearningProfile,
         maxValidationSamples: Int,
     ): AiPositionForwardEvidence {
-        val current = AiAdaptiveSignalEngine.compute(history, position, profile)
+        val values = history.map { draw -> draw.numbers[position] }
+        val currentTargetProbability = fixedTargetProbability(values)
+        val currentProbabilities = fixedTargetDistribution(values, currentTargetProbability)
         val start = max(30, history.size - maxValidationSamples.coerceAtLeast(24))
         var hits = 0
         var samples = 0
@@ -209,60 +206,175 @@ object AiContinualForecastEngine {
         var maxMiss = 0
         var totalLogLoss = 0.0
         for (cursor in start until history.size) {
-            val prefix = history.take(cursor)
-            // Neutral historical profile prevents today's learned weights from leaking backwards
-            // into old validation periods.
-            val snapshot = AiAdaptiveSignalEngine.compute(
-                prefix,
-                position,
-                AiLearningProfile(),
+            val prefixValues = history.take(cursor).map { draw -> draw.numbers[position] }
+            val probability = fixedTargetProbability(prefixValues)
+            val actualHit = history[cursor].numbers[position] in TARGET_NUMBERS
+            hits += if (actualHit) 1 else 0
+            totalLogLoss += -ln(
+                (if (actualHit) probability else 1.0 - probability).coerceAtLeast(1e-12),
             )
-            val ranking = snapshot.adaptiveScores.indices
-                .sortedByDescending { snapshot.adaptiveScores[it] }
-            val actual = history[cursor].numbers[position]
-            val hit = actual in ranking.take(6).map { it + 1 }
-            if (hit) {
-                hits++
+            if (actualHit) {
                 runningMiss = 0
             } else {
                 runningMiss++
                 maxMiss = max(maxMiss, runningMiss)
             }
-            totalLogLoss += -ln(snapshot.adaptiveScores[actual - 1].coerceAtLeast(1e-12))
             samples++
         }
-        val hitRate = (hits + 6.0) / (samples + 10.0)
-        val averageLogLoss = if (samples == 0) UNIFORM_LOG_LOSS else totalLogLoss / samples
-        val rankedCurrent = current.adaptiveScores.indices
-            .sortedByDescending { current.adaptiveScores[it] }
-        val boundary = current.adaptiveScores[rankedCurrent[5]] -
-            current.adaptiveScores[rankedCurrent[6]]
-        val lossEdge = ((UNIFORM_LOG_LOSS - averageLogLoss) / UNIFORM_LOG_LOSS)
-            .coerceIn(-0.35, 0.35)
-        val validationScore = (
-            1.0 +
-                (hitRate - RANDOM_TOP6_RATE) * 5.0 +
-                lossEdge * 0.9 +
-                boundary * 4.0 -
-                max(0, maxMiss - 3) * 0.03
-            ).coerceAtLeast(0.05)
+        val hitRate = if (samples == 0) {
+            RANDOM_TARGET_RATE
+        } else {
+            (hits + 6.0) / (samples + 10.0)
+        }
+        val averageLogLoss = if (samples == 0) {
+            BINARY_LOG_LOSS_BASELINE
+        } else {
+            totalLogLoss / samples
+        }
+        val reliability = (samples / 60.0).coerceIn(0.0, 1.0)
+        val hitEdge = (hitRate - RANDOM_TARGET_RATE).coerceIn(-0.25, 0.25)
+        val lossEdge = (
+            (BINARY_LOG_LOSS_BASELINE - averageLogLoss) / BINARY_LOG_LOSS_BASELINE
+            ).coerceIn(-0.35, 0.35)
+        val currentEdge = currentTargetProbability - RANDOM_TARGET_RATE
+        val score = (
+            currentTargetProbability +
+                currentEdge * 0.35 +
+                reliability * hitEdge * 0.24 +
+                reliability * lossEdge * 0.08 -
+                max(0, maxMiss - 4) * 0.015
+            ).coerceIn(0.05, 0.95)
         val passed = samples >= 24 &&
-            hitRate >= 0.615 &&
-            averageLogLoss <= UNIFORM_LOG_LOSS * 1.01 &&
+            hitRate >= 0.61 &&
+            averageLogLoss <= BINARY_LOG_LOSS_BASELINE * 1.02 &&
             maxMiss <= 8
         return AiPositionForwardEvidence(
             position = position,
             validationSamples = samples,
-            top6Hits = hits,
-            top6HitRate = hitRate,
-            averageLogLoss = averageLogLoss,
+            targetHits = hits,
+            targetHitRate = hitRate,
+            averageBinaryLogLoss = averageLogLoss,
             maxMissStreak = maxMiss,
-            boundaryMargin = boundary,
-            validationScore = validationScore,
+            currentMissStreak = currentMissStreak(values),
+            targetProbability = currentTargetProbability,
+            validationScore = score,
             gatePassed = passed,
-            currentProbabilities = current.adaptiveScores,
+            currentProbabilities = currentProbabilities,
             learningProfile = profile,
         )
+    }
+
+    private fun fixedTargetProbability(values: List<Int>): Double {
+        if (values.isEmpty()) return RANDOM_TARGET_RATE
+        val windows = listOf(
+            12 to 0.36,
+            30 to 0.30,
+            60 to 0.22,
+            120 to 0.12,
+        )
+        var multiscale = 0.0
+        windows.forEach { (window, weight) ->
+            val subset = values.takeLast(window.coerceAtMost(values.size))
+            val hits = subset.count(TARGET_NUMBERS::contains).toDouble()
+            multiscale += weight * betaRate(hits, subset.size.toDouble())
+        }
+
+        var decayWeight = 1.0
+        var decayHits = 0.0
+        var decayTotal = 0.0
+        values.takeLast(120).asReversed().forEach { value ->
+            decayTotal += decayWeight
+            if (value in TARGET_NUMBERS) decayHits += decayWeight
+            decayWeight *= 0.94
+        }
+        val recency = betaRate(decayHits, decayTotal, priorStrength = 5.0)
+
+        val currentState = values.last() in TARGET_NUMBERS
+        var transitionHits = 0.0
+        var transitionTotal = 0.0
+        for (index in 1 until values.size) {
+            if ((values[index - 1] in TARGET_NUMBERS) == currentState) {
+                transitionTotal += 1.0
+                if (values[index] in TARGET_NUMBERS) transitionHits += 1.0
+            }
+        }
+        val transition = betaRate(transitionHits, transitionTotal, priorStrength = 8.0)
+
+        val currentNumber = values.last()
+        var successorHits = 0.0
+        var successorTotal = 0.0
+        for (index in 1 until values.size) {
+            if (values[index - 1] == currentNumber) {
+                successorTotal += 1.0
+                if (values[index] in TARGET_NUMBERS) successorHits += 1.0
+            }
+        }
+        val successor = betaRate(successorHits, successorTotal, priorStrength = 7.0)
+
+        var probability =
+            multiscale * 0.46 + recency * 0.24 + transition * 0.20 + successor * 0.10
+        val reliability = (values.size / 120.0).coerceIn(0.0, 1.0)
+        probability = RANDOM_TARGET_RATE +
+            (probability - RANDOM_TARGET_RATE) * (0.45 + 0.55 * reliability)
+        return probability.coerceIn(0.38, 0.82)
+    }
+
+    private fun fixedTargetDistribution(
+        values: List<Int>,
+        targetProbability: Double,
+    ): List<Double> {
+        val recent = values.takeLast(60.coerceAtMost(values.size))
+        val counts = (1..10).associateWith { number -> recent.count { it == number } + 1.5 }
+        val outside = (1..10).filterNot(TARGET_NUMBERS::contains)
+        val targetTotal = TARGET_NUMBERS.sumOf { number -> counts.getValue(number) }
+        val outsideTotal = outside.sumOf { number -> counts.getValue(number) }
+        return (1..10).map { number ->
+            if (number in TARGET_NUMBERS) {
+                targetProbability * counts.getValue(number) / targetTotal
+            } else {
+                (1.0 - targetProbability) * counts.getValue(number) / outsideTotal
+            }
+        }.let(::normalize)
+    }
+
+    private fun blendInsideFixedGroups(
+        base: List<Double>,
+        remote: List<Double>,
+        targetProbability: Double,
+        remoteWeight: Double,
+    ): List<Double> {
+        if (base.size != 10 || remote.size != 10) return base
+        val blended = normalize(
+            base.indices.map { index ->
+                base[index] * (1.0 - remoteWeight) + remote[index] * remoteWeight
+            },
+        )
+        val targetTotal = TARGET_NUMBERS.sumOf { number -> blended[number - 1] }
+        val outside = (1..10).filterNot(TARGET_NUMBERS::contains)
+        val outsideTotal = outside.sumOf { number -> blended[number - 1] }
+        return (1..10).map { number ->
+            if (number in TARGET_NUMBERS) {
+                targetProbability * blended[number - 1] / targetTotal.coerceAtLeast(1e-12)
+            } else {
+                (1.0 - targetProbability) * blended[number - 1] / outsideTotal.coerceAtLeast(1e-12)
+            }
+        }.let(::normalize)
+    }
+
+    private fun betaRate(
+        hits: Double,
+        total: Double,
+        priorStrength: Double = 10.0,
+    ): Double =
+        (hits + RANDOM_TARGET_RATE * priorStrength) / (total + priorStrength)
+
+    private fun currentMissStreak(values: List<Int>): Int {
+        var streak = 0
+        for (value in values.asReversed()) {
+            if (value in TARGET_NUMBERS) break
+            streak++
+        }
+        return streak
     }
 
     private fun normalize(values: List<Double>): List<Double> {
