@@ -21,15 +21,18 @@ V510_STYLE = r"""
 .tianji-console-v620 .btn,.tianji-console-v620 .icon-btn,.tianji-console-v620 .status{border-radius:var(--v65-control-radius)}
 .tianji-console-v620 .v620-realtime-card{border-radius:var(--v65-card-radius)}
 .tianji-console-v620 .v630-health-pill{font-size:11px}
-/* v6.5 UI Final Polish 2: shared density + semantic token layer */
-.tianji-console-v620{--v65-card-radius:18px;--v65-control-radius:14px;--v65-gap:9px}
-.tianji-console-v620 .card,.tianji-console-v620 .lottery-card{border-radius:var(--v65-card-radius)}
-.tianji-console-v620 .btn,.tianji-console-v620 .icon-btn,.tianji-console-v620 .status{border-radius:var(--v65-control-radius)}
-.tianji-console-v620 .v620-realtime-card{border-radius:var(--v65-card-radius)}
-.tianji-console-v620 .v630-health-pill{font-size:11px}
 @media(max-width:1040px){.v510-platform-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.v510-deploy{grid-template-columns:repeat(3,minmax(0,1fr))}.v510-deploy-main{grid-column:1/-1}}
 @media(max-width:760px){.v510-platform-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v510-stage-grid{grid-template-columns:1fr}.v510-deploy{grid-template-columns:1fr 1fr}#recordsPro .v3-controls{top:57px}.v620-realtime-grid{grid-template-columns:1fr}}
 @media(max-width:520px){
+  .tianji-console-v620 .section{margin-top:10px}
+  .tianji-console-v620 .card-pad{padding:14px}
+  .tianji-console-v620 .metric{padding:11px;border-radius:16px}
+  .tianji-console-v620 .lottery-main,.tianji-console-v620 .overview-card{padding:14px}
+  .tianji-console-v620 .switch-row{padding:10px 11px;border-radius:14px}
+  .tianji-console-v620 .model-choice{min-height:54px;padding:9px 10px;border-radius:14px}
+  .tianji-console-v620 .profile-card{padding:10px;border-radius:14px}
+  .tianji-console-v620 .provider-mark{width:38px;height:38px;border-radius:13px;background:linear-gradient(145deg,var(--ai),var(--primary2))}
+  .tianji-console-v620 .quick-current{font-size:16px}
   .tianji-console-v620 .shell{padding-bottom:calc(108px + env(safe-area-inset-bottom))!important}
   .tianji-console-v620 .topbar{min-height:52px;margin-bottom:8px;padding:5px 7px;border-radius:17px}
   .tianji-console-v620 .topbar .mark{width:34px;height:34px;flex-basis:34px;border-radius:12px}

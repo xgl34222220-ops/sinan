@@ -149,7 +149,7 @@ fun V62PushAlertCenterScreen(
             Column(Modifier.weight(1f)) {
                 Text("通知中心", color = colors.text, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    "${alerts.size} 条历史通知 · ${alerts.count { !it.isRead }} 条未读",
+                    "预测、预警与恢复",
                     color = colors.textDim,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
