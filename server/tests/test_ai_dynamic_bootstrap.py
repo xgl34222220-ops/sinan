@@ -4,7 +4,12 @@ import unittest
 
 from app import ai, ai_continual_bridge, ai_ensemble, runtime_patches
 from app import ai_fixed_output_guard, ai_position_autonomy_guard
-from app import fixed_target_bridge, fixed_target_runtime_guard
+from app import (
+    fixed_target_bridge,
+    fixed_target_runtime_compat,
+    fixed_target_runtime_guard,
+    fixed_target_settlement_class_guard,
+)
 from app.db import Database
 
 
@@ -19,6 +24,8 @@ class AiDynamicBootstrapTest(unittest.TestCase):
     def test_fixed_target_overrides_are_not_installed(self) -> None:
         self.assertFalse(fixed_target_bridge._INSTALLED)
         self.assertFalse(fixed_target_runtime_guard._INSTALLED)
+        self.assertFalse(fixed_target_settlement_class_guard._INSTALLED)
+        self.assertFalse(fixed_target_runtime_compat._INSTALLED)
         self.assertFalse(ai_position_autonomy_guard._INSTALLED)
         self.assertFalse(ai_fixed_output_guard._INSTALLED)
 
@@ -27,6 +34,11 @@ class AiDynamicBootstrapTest(unittest.TestCase):
         self.assertIsNot(
             Database.save_forecast_with_strategies,
             ai_fixed_output_guard._guarded_save_forecast_with_strategies,
+        )
+
+    def test_settlement_class_is_not_rewritten_to_fixed_target(self) -> None:
+        self.assertFalse(
+            bool(getattr(Database.settle_forecasts, "_tianji_fixed235780_guard", False))
         )
 
     def test_native_overlap_divergence_patch_no_longer_exists(self) -> None:
