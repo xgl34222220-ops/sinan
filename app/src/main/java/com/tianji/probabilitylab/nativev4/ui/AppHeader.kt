@@ -1,5 +1,7 @@
 package com.tianji.probabilitylab.nativev4.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,13 +22,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -53,10 +56,16 @@ fun CompactAppHeader(
     onAlerts: () -> Unit = {},
 ) {
     val colors = LocalTianjiColors.current
+    val refreshRotation by animateFloatAsState(
+        targetValue = if (isRefreshing) 360f else 0f,
+        animationSpec = tween(durationMillis = if (isRefreshing) 650 else 180),
+        label = "header-refresh-rotation",
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(62.dp)
+            .height(58.dp)
             .background(
                 Brush.verticalGradient(
                     listOf(colors.header, colors.page.copy(alpha = 0.94f)),
@@ -82,19 +91,19 @@ fun CompactAppHeader(
                 contentDescription = "天机",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .border(1.dp, colors.accent.copy(alpha = 0.24f), RoundedCornerShape(13.dp)),
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, colors.accent.copy(alpha = 0.24f), RoundedCornerShape(12.dp)),
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(9.dp))
         }
 
         Column(Modifier.weight(1f)) {
             Text(
                 if (destination == MainDestination.HOME) "天机" else destination.title,
                 color = colors.text,
-                fontSize = 18.sp,
-                lineHeight = 22.sp,
+                fontSize = 17.sp,
+                lineHeight = 21.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -102,8 +111,8 @@ fun CompactAppHeader(
             Text(
                 if (destination == MainDestination.HOME) "实时开奖 · 前向验证" else destination.subtitle,
                 color = colors.textDim,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -132,26 +141,18 @@ fun CompactAppHeader(
                 )
             }
         }
-        Spacer(Modifier.width(5.dp))
+        Spacer(Modifier.width(4.dp))
         HeaderActionButton(
             onClick = onRefresh,
             enabled = !isRefreshing,
-            contentDescription = "刷新当前彩种",
+            contentDescription = if (isRefreshing) "正在刷新当前彩种" else "刷新当前彩种",
         ) {
-            if (isRefreshing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    color = colors.accent,
-                    strokeWidth = 2.dp,
-                )
-            } else {
-                Icon(
-                    Icons.Rounded.Refresh,
-                    contentDescription = null,
-                    tint = colors.textSoft,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            Icon(
+                Icons.Rounded.Refresh,
+                contentDescription = null,
+                tint = if (isRefreshing) colors.accent else colors.textSoft,
+                modifier = Modifier.size(20.dp).rotate(refreshRotation),
+            )
         }
     }
 }
@@ -166,11 +167,11 @@ private fun HeaderActionButton(
     val colors = LocalTianjiColors.current
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(46.dp)
             .padding(3.dp)
-            .clip(RoundedCornerShape(15.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(colors.glassStrong)
-            .border(1.dp, colors.line, RoundedCornerShape(15.dp))
+            .border(1.dp, colors.line, RoundedCornerShape(14.dp))
             .semantics {
                 this.contentDescription = contentDescription
                 role = Role.Button
