@@ -160,15 +160,11 @@ fun V62PushAlertCenterScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 26.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item("connection") {
-                V62AlertConnectionStrip(
-                    status = status,
-                    preferences = preferences,
-                    onPreferencesChange = onPreferencesChange,
-                )
+                V62AlertConnectionStrip(status = status)
             }
             item("filters") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -274,49 +270,40 @@ fun V62PushAlertCenterScreen(
 }
 
 @Composable
-private fun V62AlertConnectionStrip(
-    status: PushConnectionStatus,
-    preferences: PushPreferences,
-    onPreferencesChange: (PushPreferences) -> Unit,
-) {
+private fun V62AlertConnectionStrip(status: PushConnectionStatus) {
     val colors = LocalTianjiColors.current
     val tint = if (status.instantReady) colors.green else if (status.registered) colors.accent else colors.amber
-    SurfaceCard(radius = 20.dp) {
+    SurfaceCard(radius = 16.dp) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(tint.copy(alpha = 0.11f)),
+                modifier = Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(tint.copy(alpha = 0.10f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     if (status.instantReady) Icons.Rounded.CloudDone else Icons.Rounded.NotificationsActive,
                     contentDescription = null,
                     tint = tint,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(17.dp),
                 )
             }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(v62ConnectionTitle(status), color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    if (status.instantReady) "FCM 即时到达 · 后台增量检查兜底" else status.detail,
-                    color = colors.textDim,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Switch(
-                checked = preferences.enabled,
-                onCheckedChange = { onPreferencesChange(preferences.copy(enabled = it)) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = colors.accent,
-                    uncheckedTrackColor = colors.lineStrong,
-                ),
+            Spacer(Modifier.width(9.dp))
+            Text(
+                if (status.instantReady) "FCM 即时推送正常" else v62ConnectionTitle(status),
+                color = tint,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.ExtraBold,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (status.instantReady) "后台增量检查兜底" else status.detail,
+                color = colors.textDim,
+                fontSize = 11.sp,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -432,6 +419,11 @@ private fun V62AlertCard(alert: PushAlert, focused: Boolean, onOpen: () -> Unit)
         alert.eventType == PushProtocol.EVENT_PREDICTION_READY -> "预测"
         else -> "通知"
     }
+    val actionLabel = when {
+        alert.isRiskAlert || alert.eventType == PushProtocol.EVENT_HIT_RECOVERY -> "查看档案"
+        alert.eventType == PushProtocol.EVENT_PREDICTION_READY -> "查看预测"
+        else -> "查看详情"
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -505,6 +497,8 @@ private fun V62AlertCard(alert: PushAlert, focused: Boolean, onOpen: () -> Unit)
                 } else {
                     Spacer(Modifier.weight(1f))
                 }
+                Text(actionLabel, color = tint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
                 Text(formatTimeV2(alert.createdAtEpochMs), color = colors.textDim, fontSize = 11.sp)
             }
         }
