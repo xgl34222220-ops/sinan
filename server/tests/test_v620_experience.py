@@ -29,6 +29,14 @@ class V620ExperienceContractTests(unittest.TestCase):
         self.assertIn("写库 + 结算", source)
         self.assertIn("/admin/api/realtime", source)
 
+    def test_console_keeps_compact_health_and_stale_data_states(self) -> None:
+        source = (ROOT / "server/app/console_v3.py").read_text(encoding="utf-8")
+        self.assertIn("运行总览", source)
+        self.assertIn("v630-healthbar", source)
+        self.assertIn("latencyLabel", source)
+        self.assertIn("数据已过期", source)
+        self.assertIn("较 EMA", source)
+
     def test_app_realtime_refresh_is_a_direct_controller_api(self) -> None:
         controller = (
             ROOT
