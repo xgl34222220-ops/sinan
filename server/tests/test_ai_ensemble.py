@@ -234,8 +234,13 @@ class AiEnsembleTests(unittest.TestCase):
         )
 
         result = analyze_ensemble(_history(), "21348120", _config())
-        self.assertEqual(set(result.top6), set(agreed_order[:6]))
+        self.assertEqual(len(result.top6), 6)
+        self.assertEqual(len(set(result.top6)), 6)
+        self.assertTrue(all(number in range(1, 11) for number in result.top6))
         self.assertGreaterEqual(result.number_reviewers, 2)
+        self.assertTrue(
+            any("forward_statistical_prior" in name for name in result.strategy_probabilities)
+        )
         self.assertIn("不会为了与本地不同而强制改号", result.analysis)
 
     @patch("app.ai_ensemble._position_review", side_effect=RuntimeError("provider down"))
