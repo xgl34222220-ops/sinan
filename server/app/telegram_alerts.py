@@ -113,7 +113,7 @@ def send_html_message(
     bot_token: str,
     chat_id: str,
     text: str,
-    timeout_seconds: int = 12,
+    timeout_seconds: int = 6,
     disable_notification: bool = False,
 ) -> tuple[bool, int | None, str]:
     token = bot_token.strip()
@@ -144,7 +144,7 @@ def send_alert(
     bot_token: str,
     chat_id: str,
     alert: Any,
-    timeout_seconds: int = 12,
+    timeout_seconds: int = 6,
 ) -> tuple[bool, int | None, str]:
     token = bot_token.strip()
     target = chat_id.strip()

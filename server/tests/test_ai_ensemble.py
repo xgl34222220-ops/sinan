@@ -176,59 +176,35 @@ class AiEnsembleTests(unittest.TestCase):
         self.assertTrue(needs_collapse_review([0, 0, 0], 0))
         self.assertFalse(needs_collapse_review([0, 0, 1, 0], 0))
 
-    @patch("app.ai_ensemble._number_review")
-    @patch("app.ai_ensemble._position_review")
-    def test_recent_seven_copy_adds_holdout_ai_review_and_blends_results(
+    @patch("app.fixed_target_bridge._target_position_review")
+    def test_fixed_target_mode_never_generates_dynamic_six_numbers(
         self,
-        position_review: object,
-        number_review: object,
+        target_review: object,
     ) -> None:
-        position_scores = [0.02] * 10
-        position_scores[0] = 0.82
-        initial_order = [4, 5, 6, 7, 8, 9, 10, 1, 2, 3]
-        holdout_order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        masks: list[int] = []
-        position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=position_scores,
-            analysis="匿名名次评审",
+        target_scores = [0.02] * 10
+        target_scores[0] = 0.82
+        target_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=target_scores,
+            analysis="固定235780匿名位置评审",
         )
-
-        def fake_number_review(*args: object, **kwargs: object) -> _ReviewerResult:
-            mask_recent = int(kwargs.get("mask_recent", 0))
-            masks.append(mask_recent)
-            return _ReviewerResult(
-                scores=_scores_for_order(holdout_order if mask_recent else initial_order),
-                analysis="匿名留出评审" if mask_recent else "完整匿名历史评审",
-            )
-
-        number_review.side_effect = fake_number_review
         result = analyze_ensemble(_history(), "21348120", _config())
-        self.assertTrue(result.recent_copy_reviewed)
-        self.assertEqual(masks.count(0), 2)
-        self.assertEqual(masks.count(7), 2)
-        self.assertEqual(result.number_reviewers, 4)
-        self.assertNotEqual(result.top7, initial_order[:7])
-        self.assertIn("避免直接复制最新六码", result.analysis)
-        self.assertIn("保留完整历史先后顺序", result.risk_note)
+        self.assertEqual(result.top6, [2, 3, 5, 7, 8, 10])
+        self.assertEqual(result.number_reviewers, 0)
+        self.assertEqual(result.position_reviewers, 3)
+        self.assertFalse(result.recent_copy_reviewed)
+        self.assertIn("固定目标六码235780", result.analysis)
+        self.assertIn("随机命中基准就是60%", result.risk_note)
 
-    @patch("app.ai_ensemble._number_review")
-    @patch("app.ai_ensemble._position_review")
-    def test_final_prediction_is_independent_from_native_math(
+    @patch("app.fixed_target_bridge._target_position_review")
+    def test_final_prediction_combines_forward_evidence_with_fixed_target_ai(
         self,
-        position_review: object,
-        number_review: object,
+        target_review: object,
     ) -> None:
-        position_scores = [0.02] * 10
-        position_scores[3] = 0.82
-        number_scores = [0.03] * 10
-        number_scores[7] = 0.73
-        position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=position_scores,
-            analysis="匿名名次评审",
-        )
-        number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=number_scores,
-            analysis="匿名号码评审",
+        target_scores = [0.02] * 10
+        target_scores[3] = 0.82
+        target_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+            scores=target_scores,
+            analysis="固定235780匿名位置评审",
         )
         result = analyze_ensemble(
             _history(),
@@ -237,21 +213,17 @@ class AiEnsembleTests(unittest.TestCase):
             recent_positions=[3, 3, 3, 3, 3, 3],
         )
         self.assertEqual(result.position, 3)
-        self.assertEqual(result.top6[0], 8)
-        self.assertTrue(result.collapse_reviewed)
+        self.assertEqual(result.top6, [2, 3, 5, 7, 8, 10])
+        self.assertEqual(result.number_reviewers, 0)
         self.assertTrue(result.strategy_probabilities)
-        self.assertTrue(all(name.startswith("ai_") for name in result.strategy_probabilities))
-        self.assertFalse(
-            {"long_frequency", "recent_frequency", "markov_transition"}
-            & set(result.strategy_probabilities)
-        )
-        self.assertIn("独立AI", result.risk_note)
-        self.assertIn("不再混入本地", result.analysis)
+        self.assertTrue(all(name.startswith("ai_fixed_235780_position_") for name in result.strategy_probabilities))
+        self.assertIn("数学证据权重68%", result.analysis)
+        self.assertIn("固定目标只有235780", result.risk_note)
 
-    @patch("app.ai_ensemble._position_review", side_effect=RuntimeError("provider down"))
+    @patch("app.fixed_target_bridge._target_position_review", side_effect=RuntimeError("provider down"))
     def test_provider_failure_does_not_forge_a_statistical_ai_prediction(
         self,
-        _position_review: object,
+        _target_review: object,
     ) -> None:
         with self.assertRaisesRegex(RuntimeError, "全部AI评审失败"):
             analyze_ensemble(_history(), "21348120", _config())

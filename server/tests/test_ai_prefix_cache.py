@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -164,22 +163,14 @@ class PrefixCacheTests(unittest.TestCase):
         self.assertEqual(usage["prompt_cache_miss_tokens"], 200)
         self.assertEqual(usage["reasoning_tokens"], 20)
 
-    @patch("app.ai_ensemble.recent_copy_diagnostics")
-    @patch("app.ai_ensemble._number_review")
-    @patch("app.ai_ensemble._position_review")
-    def test_ensemble_aggregates_usage_without_changing_reviewer_count(
+    @patch("app.fixed_target_bridge._target_position_review")
+    def test_fixed_target_ensemble_aggregates_usage_without_number_reviewers(
         self,
-        position_review: object,
-        number_review: object,
-        copy_diagnostics: object,
+        target_review: object,
     ) -> None:
-        copy_diagnostics.return_value = SimpleNamespace(
-            triggered=False,
-            exact_latest_six=False,
-        )
-        position_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
+        target_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
             scores=[0.1] * 10,
-            analysis="名次",
+            analysis="固定目标名次",
             usage={
                 "request_count": 1,
                 "prompt_tokens": 100,
@@ -189,25 +180,13 @@ class PrefixCacheTests(unittest.TestCase):
                 "reasoning_tokens": 2,
             },
         )
-        number_review.side_effect = lambda *args, **kwargs: _ReviewerResult(
-            scores=[0.1] * 10,
-            analysis="号码",
-            usage={
-                "request_count": 1,
-                "prompt_tokens": 50,
-                "prompt_cache_hit_tokens": 0,
-                "prompt_cache_miss_tokens": 50,
-                "completion_tokens": 5,
-                "reasoning_tokens": 1,
-            },
-        )
         result = analyze_ensemble(history(), "21348120", config())
         self.assertEqual(result.position_reviewers, 3)
-        self.assertEqual(result.number_reviewers, 2)
-        self.assertEqual(result.request_count, 5)
+        self.assertEqual(result.number_reviewers, 0)
+        self.assertEqual(result.request_count, 3)
         self.assertEqual(result.prompt_cache_hit_tokens, 180)
-        self.assertEqual(result.prompt_cache_miss_tokens, 220)
-        self.assertAlmostEqual(result.cache_hit_rate, 0.45)
+        self.assertEqual(result.prompt_cache_miss_tokens, 120)
+        self.assertAlmostEqual(result.cache_hit_rate, 0.60)
 
 
 if __name__ == "__main__":

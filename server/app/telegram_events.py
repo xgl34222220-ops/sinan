@@ -19,6 +19,9 @@ _PREDICTION_POLICY_KEY = "telegram_prediction_policy_always_v3"
 _PREDICTION_START_KEY = "telegram_prediction_always_from_ms_v1"
 _WIN_POLICY_KEY = "telegram_win_policy_tracking_only_v1"
 _STRONG_ALERT_AFTER_MISSES = 3
+_MAX_PENDING_PER_TARGET = 24
+_MAX_PREDICTION_EVENT_AGE_MS = 8 * 60_000
+_RETRY_COOLDOWN_MS = 60_000
 
 
 def _now_ms() -> int:
@@ -418,7 +421,7 @@ def materialize_events(lottery_filter: str | None = None) -> int:
 
 
 def _claim_delivery(event_key: str, target_key: str, now: int) -> bool:
-    retry_before = now - 300_000
+    retry_before = now - _RETRY_COOLDOWN_MS
     with database.connection() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
@@ -516,16 +519,29 @@ def deliver_pending_events() -> dict[str, int]:
                     delivery.status IS NULL
                     OR delivery.status NOT IN ('sent','suppressed')
                   )
-                ORDER BY event.created_at ASC
-                LIMIT 500
+                ORDER BY CASE event.event_type WHEN 'win' THEN 0 ELSE 1 END,
+                         event.created_at DESC
+                LIMIT ?
                 """,
-                (target_key,),
+                (target_key, _MAX_PENDING_PER_TARGET),
             ).fetchall()
 
         for event in events:
             event_key = str(event["event_key"])
             event_type = str(event["event_type"])
             now = _now_ms()
+            if (
+                event_type == "prediction"
+                and now - int(event["created_at"] or now) > _MAX_PREDICTION_EVENT_AGE_MS
+            ):
+                _suppress_delivery(
+                    event_key,
+                    target_key,
+                    attempted_at=now,
+                    message="预测消息已超过8分钟，避免迟到推送",
+                )
+                skipped += 1
+                continue
             if (
                 event_type == "prediction"
                 and not _prediction_event_is_eligible(event_key)
