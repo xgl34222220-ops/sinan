@@ -84,15 +84,16 @@ class AdminInsightsTests(unittest.TestCase):
         self.assertEqual("ok", value["integrity"]["sqlite"].lower())
         self.assertIsInstance(value["timeline"], list)
 
-    def test_console_enhancer_adds_v620_workspaces(self) -> None:
+    def test_console_enhancer_adds_v630_workspaces(self) -> None:
         html = enhance_console_html(
             "<html><head></head><body><section id='panel-records'></section></body></html>"
         )
-        self.assertIn("Tianji Cloud Console V6.2", html)
+        self.assertIn("Tianji Cloud Console V6.3", html)
         self.assertIn("/admin/api/records", html)
         self.assertIn("/admin/api/operations", html)
         self.assertIn("/admin/api/realtime", html)
         self.assertIn("实时开奖链路", html)
+        self.assertIn("系统健康", html)
         self.assertIn("分段真实成绩", html)
 
 
