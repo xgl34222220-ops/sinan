@@ -48,7 +48,10 @@ class FixedTargetRuntimeGuardTest(unittest.TestCase):
         return int(forecast_id)
 
     def settle(self, target: str, actual: int) -> None:
-        numbers = [actual, *[number for number in range(1, 11) if number != actual]]
+        # The forecast selects position index 7 (第8名), so place the simulated
+        # actual number at that exact position instead of position 1.
+        numbers = [number for number in range(1, 11) if number != actual]
+        numbers.insert(7, actual)
         database.save_draws([DrawModel(lottery="xyft", period=target, numbers=numbers)])
         database.settle_forecasts("xyft")
 
