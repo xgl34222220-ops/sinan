@@ -14,7 +14,7 @@ class WebConsoleV2Tests(unittest.TestCase):
         self.assertIn("AI 自动任务", html)
         self.assertIn("toggleTheme", html)
 
-    def test_admin_page_contains_quick_model_switcher(self) -> None:
+    def test_admin_page_contains_key_scoped_dynamic_model_switcher(self) -> None:
         html = admin_page()
         for marker in (
             'id="panel-overview"',
@@ -24,8 +24,8 @@ class WebConsoleV2Tests(unittest.TestCase):
             'id="runBtn"',
             'id="aiAutoEnabled"',
             'id="quickCurrent"',
-            'data-quick-model="deepseek-v4-flash"',
-            'data-quick-model="deepseek-v4-pro"',
+            'id="modelSwitcher"',
+            'id="dynamicModels"',
             'id="readQuickModelsBtn"',
             'id="manageDetails"',
             'id="saveAiBtn"',
@@ -35,7 +35,14 @@ class WebConsoleV2Tests(unittest.TestCase):
             self.assertIn(marker, html)
         self.assertIn("同一个 Key 支持的模型可直接一键切换", html)
         self.assertIn("切换只修改当前接口使用的模型名", html)
+        self.assertIn("待读取模型", html)
+        self.assertIn("discoveredModels", html)
+        self.assertIn("此 Key 已确认支持", html)
         self.assertIn("switchModel", html)
+        self.assertNotIn('data-quick-model="deepseek-v4-flash"', html)
+        self.assertNotIn('data-quick-model="deepseek-v4-pro"', html)
+        self.assertNotIn("DeepSeek V4 Flash</strong>", html)
+        self.assertNotIn("DeepSeek V4 Pro</strong>", html)
         self.assertIn("运行诊断", html)
         self.assertNotIn("技术详情", html)
 

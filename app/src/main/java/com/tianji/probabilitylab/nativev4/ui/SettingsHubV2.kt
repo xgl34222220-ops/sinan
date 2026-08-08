@@ -49,6 +49,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -117,6 +118,11 @@ private fun normalizeAiEndpointV2(
         value.endsWith("/chat/completions") ||
         value.endsWith("/completions")
     ) return value
+    val schemeEnd = value.indexOf("://")
+    val firstPathSlash = if (schemeEnd >= 0) value.indexOf('/', schemeEnd + 3) else -1
+    val normalizedBase = if (provider == AiProvider.COMPATIBLE && firstPathSlash < 0) {
+        "$value/v1"
+    } else value
     val resolvedRoute = when (route) {
         AiApiRouteV2.AUTO -> if (provider == AiProvider.OPENAI) {
             AiApiRouteV2.RESPONSES
@@ -125,10 +131,26 @@ private fun normalizeAiEndpointV2(
         }
         else -> route
     }
-    return value + when (resolvedRoute) {
+    return normalizedBase + when (resolvedRoute) {
         AiApiRouteV2.RESPONSES -> "/responses"
         AiApiRouteV2.CHAT_COMPLETIONS, AiApiRouteV2.AUTO -> "/chat/completions"
     }
+}
+
+private fun extractSuggestedModelsV2(message: String?): List<String> {
+    val text = message.orEmpty()
+    val marker = Regex("""(?i)(?:可用模型|available\s+models?)\s*[:：]""").find(text) ?: return emptyList()
+    val tail = text.substring(marker.range.last + 1)
+        .substringBefore("type")
+        .substringBefore('。')
+        .substringBefore('\n')
+    val validId = Regex("^[A-Za-z0-9][A-Za-z0-9._:/-]{1,95}$")
+    return tail
+        .split(Regex("""\s+/\s+|[,，、;；]"""))
+        .map { value -> value.trim().trim('"', '\'', '\\', '{', '}', '[', ']', ' ') }
+        .filter(validId::matches)
+        .distinct()
+        .take(20)
 }
 
 @Composable
@@ -211,7 +233,10 @@ private fun SettingsRootV2(
     modifier: Modifier,
 ) {
     val colors = LocalTianjiColors.current
-    val activeAi = aiConfigs.firstOrNull { it.id == activeAiProfileId && it.isComplete }
+    val activeAi = aiConfigs.firstOrNull {
+        it.id == activeAiProfileId && it.isComplete &&
+            state.aiStatuses[it.id]?.state != AiConnectionState.FAILED
+    }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
@@ -326,6 +351,16 @@ private fun AiSettingsPageV2(
     var editor by remember { mutableStateOf<AiConfig?>(null) }
     var createNew by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<AiConfig?>(null) }
+    val failedActive = configs.firstOrNull {
+        it.id == activeAiProfileId && state.aiStatuses[it.id]?.state == AiConnectionState.FAILED
+    }
+    val connectedFallback = configs.firstOrNull {
+        it.id != activeAiProfileId && it.isComplete &&
+            state.aiStatuses[it.id]?.state == AiConnectionState.CONNECTED
+    }
+    LaunchedEffect(activeAiProfileId, state.aiStatuses) {
+        if (failedActive != null && connectedFallback != null) onSelectActive(connectedFallback.id)
+    }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
@@ -381,7 +416,11 @@ private fun AiSettingsPageV2(
                     config = config,
                     status = state.aiStatuses[config.id],
                     isActive = config.id == activeAiProfileId,
-                    models = (listOf(config.model) + catalogs[config.id].orEmpty() + config.provider.fallbackModels)
+                    models = (
+                listOf(config.model) +
+                    extractSuggestedModelsV2(state.aiStatuses[config.id]?.message) +
+                    catalogs[config.id].orEmpty() + config.provider.fallbackModels
+            )
                         .map(String::trim)
                         .filter(String::isNotBlank)
                         .distinct(),
@@ -470,6 +509,8 @@ private fun AiConfigCardV2(
 ) {
     val colors = LocalTianjiColors.current
     var expanded by rememberSaveable(config.id) { mutableStateOf(false) }
+    val failed = status?.state == AiConnectionState.FAILED
+    val suggestedModels = extractSuggestedModelsV2(status?.message)
     val tint = when (status?.state) {
         AiConnectionState.CONNECTED -> colors.green
         AiConnectionState.FAILED -> colors.red
@@ -516,7 +557,7 @@ private fun AiConfigCardV2(
 
             if (isActive) {
                 Text(
-                    "● 当前 AI · 主页正式预测只调用此配置",
+                    if (failed) "● 当前 AI 已失效 · 请重新测试或切换" else "● 当前 AI · 主页正式预测只调用此配置",
                     color = colors.accent,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -531,6 +572,38 @@ private fun AiConfigCardV2(
                 lineHeight = 16.sp,
                 modifier = Modifier.padding(top = if (isActive) 4.dp else 8.dp),
             )
+
+            if (failed && suggestedModels.isNotEmpty()) {
+        Text(
+            "接口返回 ${suggestedModels.size} 个可用模型 · 点选后自动重测",
+            color = colors.accent,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 7.dp),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(top = 6.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            suggestedModels.forEach { model ->
+                Text(
+                    model,
+                    color = colors.accent,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(colors.accentSoft)
+                        .border(1.dp, colors.accent.copy(alpha = 0.25f), CircleShape)
+                        .clickable {
+                            onModel(model)
+                            onTest()
+                        }
+                        .padding(horizontal = 9.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
 
             val capability = config.capability
             if (capability != null) {
@@ -562,14 +635,14 @@ private fun AiConfigCardV2(
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 MiniButtonV2(
-                    if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",
-                    onAnalyze,
+                    if (failed) "重新测试" else if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",
+                    if (failed) onTest else onAnalyze,
                     Modifier.weight(1.2f),
                     primary = true,
                 )
                 MiniButtonV2(
-                    if (isActive) "当前 AI" else "设为当前",
-                    if (isActive) ({}) else onSetActive,
+                    if (isActive && failed) "当前失效" else if (isActive) "当前 AI" else if (failed) "测试后启用" else "设为当前",
+                    if (isActive || failed) ({}) else onSetActive,
                     Modifier.weight(0.9f),
                 )
                 MiniButtonV2(
@@ -759,7 +832,7 @@ private fun AiConfigEditorDialogV2(
                     supportingText = {
                         Text(
                             if (customEndpoint || provider == AiProvider.COMPATIBLE) {
-                                "中转站可直接填 https://example.com/v1，保存时自动补齐请求路径"
+                                "兼容中转可填 https://example.com 或 /v1；裸域名默认补 /v1 与请求路径"
                             } else {
                                 "官方地址由天机维护；切换到“自定义 / 中转”后可修改"
                             },
