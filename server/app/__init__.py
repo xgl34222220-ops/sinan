@@ -21,6 +21,11 @@ from .realtime_admin import install as _install_realtime_admin
 _install_realtime_admin()
 del _install_realtime_admin
 
+from .realtime_public import install as _install_realtime_public
+
+_install_realtime_public()
+del _install_realtime_public
+
 from .console_final_polish import install as _install_console_final_polish
 
 _install_console_final_polish()
