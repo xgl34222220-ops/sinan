@@ -94,15 +94,48 @@ def format_alert_message(alert: Any) -> str:
     return "\n".join(lines)
 
 
-def _reply_markup() -> dict[str, Any] | None:
+def _base_url() -> str:
     base = settings.public_base_url.strip().rstrip("/")
-    if not base.startswith("https://"):
+    return base if base.startswith("https://") else ""
+
+
+def prediction_reply_markup() -> dict[str, Any] | None:
+    base = _base_url()
+    if not base:
         return None
     return {
         "inline_keyboard": [
             [
-                {"text": "查看最新预测", "url": base},
-                {"text": "打开管理面板", "url": f"{base}/admin"},
+                {"text": "🔮 查看预测", "url": base},
+                {"text": "⚙️ 管理面板", "url": f"{base}/admin"},
+            ]
+        ]
+    }
+
+
+def alert_reply_markup() -> dict[str, Any] | None:
+    base = _base_url()
+    if not base:
+        return None
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🚨 查看预警", "url": base},
+                {"text": "⚙️ 管理面板", "url": f"{base}/admin"},
+            ]
+        ]
+    }
+
+
+def recovery_reply_markup() -> dict[str, Any] | None:
+    base = _base_url()
+    if not base:
+        return None
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ 查看最新预测", "url": base},
+                {"text": "📚 打开档案", "url": f"{base}/admin"},
             ]
         ]
     }
@@ -115,6 +148,7 @@ def send_html_message(
     text: str,
     timeout_seconds: int = 6,
     disable_notification: bool = False,
+    reply_markup: dict[str, Any] | None = None,
 ) -> tuple[bool, int | None, str]:
     token = bot_token.strip()
     target = chat_id.strip()
@@ -124,13 +158,15 @@ def send_html_message(
         return True, 204, _NATIVE_SUPPRESSED_MESSAGE
 
     url = f"{_TELEGRAM_API}/bot{token}/sendMessage"
-    payload = {
+    payload: dict[str, Any] = {
         "chat_id": target,
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
         "disable_notification": disable_notification,
     }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     try:
         response = requests.post(url, json=payload, timeout=timeout_seconds)
         message = response.text[:800]
@@ -161,7 +197,7 @@ def send_alert(
         "disable_web_page_preview": True,
         "disable_notification": False,
     }
-    markup = _reply_markup()
+    markup = alert_reply_markup()
     if markup is not None:
         payload["reply_markup"] = markup
     try:
