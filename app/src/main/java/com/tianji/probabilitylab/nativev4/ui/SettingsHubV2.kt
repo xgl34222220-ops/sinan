@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ColorLens
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
@@ -35,6 +36,8 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -55,8 +58,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,6 +80,56 @@ import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import com.tianji.probabilitylab.nativev4.ui.theme.PaletteMode
 
 private enum class SettingsPageV2 { ROOT, AI, DATA, APPEARANCE, HISTORY, ABOUT }
+
+private enum class AiApiRouteV2(val label: String) {
+    AUTO("自动"),
+    CHAT_COMPLETIONS("Chat"),
+    RESPONSES("Responses"),
+}
+
+private fun AiProvider.editorLabelV2(): String = when (this) {
+    AiProvider.COMPATIBLE -> "自定义"
+    else -> label
+}
+
+private fun endpointBaseForEditorV2(value: String): String = value.trim().trimEnd('/')
+    .removeSuffix("/chat/completions")
+    .removeSuffix("/responses")
+    .removeSuffix("/completions")
+
+private fun inferApiRouteV2(endpoint: String, provider: AiProvider): AiApiRouteV2 = when {
+    endpoint.trimEnd('/').endsWith("/responses") -> AiApiRouteV2.RESPONSES
+    endpoint.trimEnd('/').endsWith("/chat/completions") ||
+        endpoint.trimEnd('/').endsWith("/completions") -> AiApiRouteV2.CHAT_COMPLETIONS
+    provider == AiProvider.OPENAI -> AiApiRouteV2.RESPONSES
+    else -> AiApiRouteV2.AUTO
+}
+
+private fun normalizeAiEndpointV2(
+    rawValue: String,
+    provider: AiProvider,
+    route: AiApiRouteV2,
+): String {
+    val value = rawValue.trim().trimEnd('/')
+    if (!value.startsWith("https://")) return value
+    if (
+        value.endsWith("/responses") ||
+        value.endsWith("/chat/completions") ||
+        value.endsWith("/completions")
+    ) return value
+    val resolvedRoute = when (route) {
+        AiApiRouteV2.AUTO -> if (provider == AiProvider.OPENAI) {
+            AiApiRouteV2.RESPONSES
+        } else {
+            AiApiRouteV2.CHAT_COMPLETIONS
+        }
+        else -> route
+    }
+    return value + when (resolvedRoute) {
+        AiApiRouteV2.RESPONSES -> "/responses"
+        AiApiRouteV2.CHAT_COMPLETIONS, AiApiRouteV2.AUTO -> "/chat/completions"
+    }
+}
 
 @Composable
 fun SettingsHubScreen(
@@ -266,7 +322,7 @@ private fun AiSettingsPageV2(
         contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { SettingsPageHeaderV2("AI 模型与接口", "同一个 Key 支持的模型可直接切换", onBack) }
+        item { SettingsPageHeaderV2("AI 服务", "官方接口、中转站、模型与能力检测统一管理", onBack) }
         item {
             SurfaceCard(radius = 20.dp) {
                 Column(Modifier.padding(14.dp)) {
@@ -453,6 +509,33 @@ private fun AiConfigCardV2(
                 modifier = Modifier.padding(top = 8.dp),
             )
 
+            val capability = config.capability
+            if (capability != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    CapabilityBadgeV2("结构化", capability.structuredOutput)
+                    CapabilityBadgeV2("推理控制", capability.reasoningControl)
+                    CapabilityBadgeV2("推理已验证", capability.reasoningVerified)
+                    CapabilityBadgeV2("Token 用量", capability.usageReturned)
+                }
+                Text(
+                    "${capability.protocol.label} · ${status?.latencyMs ?: capability.latencyMs} ms",
+                    color = colors.textDim,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            } else if (status?.latencyMs != null) {
+                Text(
+                    "接口延迟 ${status.latencyMs} ms",
+                    color = colors.textDim,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 MiniButtonV2(
@@ -549,11 +632,22 @@ private fun AiConfigEditorDialogV2(
     onSave: (AiConfig) -> Unit,
 ) {
     val colors = LocalTianjiColors.current
+    val clipboard = LocalClipboardManager.current
     var provider by remember(initial.id) { mutableStateOf(initial.provider) }
     var name by remember(initial.id) { mutableStateOf(initial.name) }
-    var endpoint by remember(initial.id) { mutableStateOf(initial.endpoint) }
+    var endpoint by remember(initial.id) { mutableStateOf(endpointBaseForEditorV2(initial.endpoint)) }
     var model by remember(initial.id) { mutableStateOf(initial.model) }
     var apiKey by remember(initial.id) { mutableStateOf(initial.apiKey) }
+    var apiKeyVisible by remember(initial.id) { mutableStateOf(false) }
+    var customEndpoint by remember(initial.id) {
+        mutableStateOf(
+            initial.provider == AiProvider.COMPATIBLE ||
+                initial.endpoint.trimEnd('/') != initial.provider.defaultEndpoint.trimEnd('/'),
+        )
+    }
+    var apiRoute by remember(initial.id) {
+        mutableStateOf(inferApiRouteV2(initial.endpoint, initial.provider))
+    }
     var mode by remember(initial.id) { mutableStateOf(initial.analysisMode) }
     var reasoning by remember(initial.id) { mutableStateOf(initial.reasoningMode) }
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -585,10 +679,12 @@ private fun AiConfigEditorDialogV2(
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     AiProvider.entries.forEach { item ->
-                        SmallChoiceV2(item.label, provider == item, Modifier.weight(1f)) {
+                        SmallChoiceV2(item.editorLabelV2(), provider == item, Modifier.weight(1f)) {
                             provider = item
-                            endpoint = item.defaultEndpoint
-                            if (model.isBlank()) model = item.defaultModel
+                            customEndpoint = item == AiProvider.COMPATIBLE
+                            endpoint = endpointBaseForEditorV2(item.defaultEndpoint)
+                            apiRoute = inferApiRouteV2(item.defaultEndpoint, item)
+                            if (model.isBlank() && item.defaultModel.isNotBlank()) model = item.defaultModel
                         }
                     }
                 }
@@ -603,14 +699,67 @@ private fun AiConfigEditorDialogV2(
                     shape = RoundedCornerShape(14.dp),
                 )
                 Spacer(Modifier.height(8.dp))
+                Text("接口来源", color = colors.textDim, fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SmallChoiceV2(
+                        "官方接口",
+                        !customEndpoint && provider != AiProvider.COMPATIBLE,
+                        Modifier.weight(1f),
+                    ) {
+                        if (provider != AiProvider.COMPATIBLE) {
+                            customEndpoint = false
+                            endpoint = endpointBaseForEditorV2(provider.defaultEndpoint)
+                            apiRoute = inferApiRouteV2(provider.defaultEndpoint, provider)
+                        }
+                    }
+                    SmallChoiceV2(
+                        "自定义 / 中转",
+                        customEndpoint || provider == AiProvider.COMPATIBLE,
+                        Modifier.weight(1f),
+                    ) {
+                        customEndpoint = true
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = endpoint,
                     onValueChange = { endpoint = it },
-                    label = { Text("HTTPS 接口地址") },
+                    label = { Text("API Base URL / 接口地址") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    readOnly = !customEndpoint && provider != AiProvider.COMPATIBLE,
+                    supportingText = {
+                        Text(
+                            if (customEndpoint || provider == AiProvider.COMPATIBLE) {
+                                "中转站可直接填 https://example.com/v1，保存时自动补齐请求路径"
+                            } else {
+                                "官方地址由天机维护；切换到“自定义 / 中转”后可修改"
+                            },
+                            fontSize = 10.sp,
+                        )
+                    },
                     colors = fieldColors,
                     shape = RoundedCornerShape(14.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("API 协议", color = colors.textDim, fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AiApiRouteV2.entries.forEach { item ->
+                        SmallChoiceV2(item.label, apiRoute == item, Modifier.weight(1f)) {
+                            apiRoute = item
+                        }
+                    }
+                }
+                Text(
+                    when (apiRoute) {
+                        AiApiRouteV2.AUTO -> "自动：OpenAI 默认 Responses，其余兼容接口默认 Chat Completions"
+                        AiApiRouteV2.CHAT_COMPLETIONS -> "适用于大多数 OpenAI 兼容中转站"
+                        AiApiRouteV2.RESPONSES -> "适用于支持 OpenAI Responses API 的官方或中转接口"
+                    },
+                    color = colors.textDim,
+                    fontSize = 10.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(top = 4.dp),
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
@@ -629,7 +778,29 @@ private fun AiConfigEditorDialogV2(
                     label = { Text("API Key（加密保存）") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (apiKeyVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailingIcon = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    if (apiKey.isNotBlank()) clipboard.setText(AnnotatedString(apiKey))
+                                },
+                                enabled = apiKey.isNotBlank(),
+                            ) {
+                                Icon(Icons.Rounded.ContentCopy, contentDescription = "复制 Key")
+                            }
+                            IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                                Icon(
+                                    if (apiKeyVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = if (apiKeyVisible) "隐藏 Key" else "显示 Key",
+                                )
+                            }
+                        }
+                    },
                     colors = fieldColors,
                     shape = RoundedCornerShape(14.dp),
                 )
@@ -652,15 +823,22 @@ private fun AiConfigEditorDialogV2(
         confirmButton = {
             TextButton(
                 onClick = {
+                    val normalizedEndpoint = normalizeAiEndpointV2(endpoint, provider, apiRoute)
+                    val connectionChanged =
+                        provider != initial.provider ||
+                            normalizedEndpoint != initial.endpoint.trim() ||
+                            model.trim() != initial.model.trim() ||
+                            apiKey.trim() != initial.apiKey.trim()
                     onSave(
                         initial.copy(
                             name = name.trim(),
                             provider = provider,
-                            endpoint = endpoint.trim(),
+                            endpoint = normalizedEndpoint,
                             model = model.trim(),
                             apiKey = apiKey.trim(),
                             analysisMode = mode,
                             reasoningMode = reasoning,
+                            capability = if (connectionChanged) null else initial.capability,
                         ),
                     )
                 },
@@ -673,6 +851,34 @@ private fun AiConfigEditorDialogV2(
             TextButton(onClick = onDismiss) { Text("取消", color = colors.textDim) }
         },
     )
+}
+
+@Composable
+private fun CapabilityBadgeV2(text: String, supported: Boolean) {
+    val colors = LocalTianjiColors.current
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(if (supported) colors.accentSoft else colors.surfaceStrong)
+            .border(
+                1.dp,
+                if (supported) colors.accent.copy(alpha = 0.22f) else colors.line,
+                CircleShape,
+            )
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Box(
+            Modifier.size(6.dp).clip(CircleShape).background(if (supported) colors.green else colors.textDim),
+        )
+        Text(
+            text,
+            color = if (supported) colors.textSoft else colors.textDim,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
 }
 
 @Composable
