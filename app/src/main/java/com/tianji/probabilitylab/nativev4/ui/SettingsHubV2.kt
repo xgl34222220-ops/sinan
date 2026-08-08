@@ -605,7 +605,7 @@ private fun AiConfigCardV2(
         }
     }
 
-    val capability = config.capability
+            val capability = config.capability
             if (capability != null) {
                 Spacer(Modifier.height(8.dp))
                 Row(
