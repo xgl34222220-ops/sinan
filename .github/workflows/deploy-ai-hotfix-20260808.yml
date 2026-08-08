@@ -1,4 +1,4 @@
-name: Tianji AI Deadline Hotfix Deploy 20260808
+name: Tianji AI Original Engine Deploy 20260808
 
 on:
   push:
@@ -24,24 +24,29 @@ jobs:
       DEPLOY_SSH_KEY: ${{ secrets.TIANJI_DEPLOY_SSH_KEY }}
       DEPLOY_PORT: ${{ vars.TIANJI_DEPLOY_PORT || '22' }}
       DEPLOY_PATH: ${{ vars.TIANJI_DEPLOY_PATH || '/opt/tianji' }}
-      EXPECTED_SHA: 8d46b9b96761a99ea4a0664a95f5488365a213cb
+      EXPECTED_SHA: ebff13962324dd6cdb7c9bf4f1b53966c9d828c6
     steps:
-      - name: Checkout hotfix commit
+      - name: Checkout merged AI fix
         uses: actions/checkout@v6
         with:
           ref: ${{ env.EXPECTED_SHA }}
 
-      - name: Validate exact hotfix
+      - name: Validate exact original-engine fix
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           python -m compileall -q server/app
+          test ! -e server/app/ai_deadline_fast.py
           python - <<'PY'
           from pathlib import Path
-          text = Path('server/app/ai_deadline_fast.py').read_text()
-          for marker in ('AI_PUBLISH_GUARD_MS = 90_000', 'AI_MIN_START_LEAD_MS = 225_000', 'AI_FAST_MODE_THRESHOLD_MS = 270_000'):
-              assert marker in text, marker
+
+          service = Path('server/app/service.py').read_text()
+          init = Path('server/app/__init__.py').read_text()
+          for marker in ('AI_PUBLISH_GUARD_MS = 60_000', 'AI_MIN_START_LEAD_MS = 225_000'):
+              assert marker in service, marker
+          assert 'AI_FAST_MODE_THRESHOLD_MS' not in service
+          assert 'ai_deadline_fast' not in init
           PY
 
       - name: Require protected deployment secrets
@@ -61,7 +66,7 @@ jobs:
           chmod 600 ~/.ssh/tianji_deploy_key
           ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy exact AI hotfix commit
+      - name: Deploy exact original-engine fix
         shell: bash
         run: |
           set -euo pipefail
@@ -106,21 +111,27 @@ jobs:
           done
 
           docker compose exec -T api python - <<'PY'
+          import importlib.util
           import json
           import urllib.request
-          from app import ai_deadline_fast
+          from app import ai, ai_continual_bridge, ai_ensemble, service
 
-          assert ai_deadline_fast.AI_PUBLISH_GUARD_MS == 90_000
-          assert ai_deadline_fast.AI_MIN_START_LEAD_MS == 225_000
-          assert ai_deadline_fast.AI_FAST_MODE_THRESHOLD_MS == 270_000
+          assert service.AI_PUBLISH_GUARD_MS == 60_000
+          assert service.AI_MIN_START_LEAD_MS == 225_000
+          assert importlib.util.find_spec('app.ai_deadline_fast') is None
+          assert ai.analyze.__module__ == 'app.ai'
+          assert ai_ensemble._call_json.__module__ == 'app.ai_ensemble'
+          assert ai_ensemble._run_prefix_cached.__module__ == 'app.ai_ensemble'
+          assert ai_ensemble.analyze_ensemble is ai_continual_bridge._analyze_ensemble_with_continual_learning
+
           payload = json.loads(urllib.request.urlopen('http://127.0.0.1:8000/v1/public/realtime', timeout=5).read())
           lotteries = payload.get('lotteries')
           assert isinstance(lotteries, (dict, list)) and len(lotteries) >= 2, payload
-          print('Adaptive AI deadline runtime verified; realtime lotteries:', len(lotteries))
+          print('Original Dynamic AI v2 runtime verified; 60s hard cutoff; realtime lotteries:', len(lotteries))
           PY
 
           docker compose ps worker
-          echo "Tianji AI deadline hotfix production health check passed at $ACTUAL_SHA"
+          echo "Tianji original AI engine production health check passed at $ACTUAL_SHA"
           REMOTE
 
       - name: Remove SSH key
