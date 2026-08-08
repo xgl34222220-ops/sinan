@@ -216,27 +216,23 @@ jobs:
           )
 
           replace_once(
-              '''                    if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",
-                      onAnalyze,''',
-              '''                    when {
-                          failed -> "重新测试"
-                          status?.state == AiConnectionState.ANALYZING -> "正在分析"
-                          else -> "立即分析"
-                      },
-                      if (failed) onTest else onAnalyze,''',
+              '                    if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",',
+              '                    if (failed) "重新测试" else if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",',
+              'primary failure label',
+          )
+          replace_once(
+              '                    onAnalyze,',
+              '                    if (failed) onTest else onAnalyze,',
               'primary failure action',
           )
-
           replace_once(
-              '''                    if (isActive) "当前 AI" else "设为当前",
-                      if (isActive) ({}) else onSetActive,''',
-              '''                    when {
-                          isActive && failed -> "当前失效"
-                          isActive -> "当前 AI"
-                          failed -> "测试后启用"
-                          else -> "设为当前"
-                      },
-                      if (isActive || failed) ({}) else onSetActive,''',
+              '                    if (isActive) "当前 AI" else "设为当前",',
+              '                    if (isActive && failed) "当前失效" else if (isActive) "当前 AI" else if (failed) "测试后启用" else "设为当前",',
+              'active selection label',
+          )
+          replace_once(
+              '                    if (isActive) ({}) else onSetActive,',
+              '                    if (isActive || failed) ({}) else onSetActive,',
               'active selection safety',
           )
 
@@ -247,25 +243,21 @@ jobs:
           )
 
           replace_once(
-              '''                    modifier = Modifier.padding(top = 4.dp),
-                  )
-                  Spacer(Modifier.height(8.dp))
+              '''                Spacer(Modifier.height(8.dp))
                   OutlinedTextField(
                       value = model,''',
-              '''                    modifier = Modifier.padding(top = 4.dp),
+              '''                if (endpoint.startsWith("https://")) {
+                  Text(
+                      "实际请求：${normalizeAiEndpointV2(endpoint, provider, apiRoute)}",
+                      color = colors.accent,
+                      fontSize = 10.sp,
+                      lineHeight = 15.sp,
+                      modifier = Modifier.padding(top = 3.dp),
                   )
-                  if (endpoint.startsWith("https://")) {
-                      Text(
-                          "实际请求：${normalizeAiEndpointV2(endpoint, provider, apiRoute)}",
-                          color = colors.accent,
-                          fontSize = 10.sp,
-                          lineHeight = 15.sp,
-                          modifier = Modifier.padding(top = 3.dp),
-                      )
-                  }
-                  Spacer(Modifier.height(8.dp))
-                  OutlinedTextField(
-                      value = model,''',
+              }
+              Spacer(Modifier.height(8.dp))
+              OutlinedTextField(
+                  value = model,''',
               'request URL preview',
           )
 
