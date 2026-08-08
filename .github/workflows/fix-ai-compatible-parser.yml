@@ -1,0 +1,49 @@
+name: Fix AI Compatible Model Parser
+
+on:
+  push:
+    branches:
+      - feature/ai-compatible-auto-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[parser-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/ai-compatible-auto-recovery
+          fetch-depth: 0
+
+      - name: Repair parser source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/SettingsHubV2.kt')
+          text = path.read_text(encoding='utf-8')
+          old = '''        .substringBefore("","type"")
+              .substringBefore(""type"")'''
+          new = '''        .substringBefore("type")'''
+          if text.count(old) != 1:
+              raise SystemExit(f'parser repair expected 1 match, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          rm -f .github/workflows/fix-ai-compatible-parser.yml
+          git diff --check
+
+      - name: Commit repaired parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- app/src/main/java/com/tianji/probabilitylab/nativev4/ui/SettingsHubV2.kt
+          git add -u -- .github/workflows/fix-ai-compatible-parser.yml
+          git diff --cached --check
+          git commit -m "fix(android): repair compatible model parser [parser-fixed]"
+          git push origin HEAD:feature/ai-compatible-auto-recovery
