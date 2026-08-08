@@ -30,10 +30,10 @@ class AiOriginalEngineDeadlineTests(unittest.TestCase):
         self.assertEqual("app.ai_ensemble", ai_ensemble._run_prefix_cached.__module__)
         self.assertEqual("_run_prefix_cached", ai_ensemble._run_prefix_cached.__name__)
 
-    def test_publish_guard_is_exactly_60_seconds(self) -> None:
-        self.assertEqual(60_000, service.AI_PUBLISH_GUARD_MS)
+    def test_publish_guard_is_exactly_40_seconds(self) -> None:
+        self.assertEqual(40_000, service.AI_PUBLISH_GUARD_MS)
 
-    def test_target_is_rejected_inside_60_second_publish_guard(self) -> None:
+    def test_target_is_rejected_inside_40_second_publish_guard(self) -> None:
         now_seconds = 1_800_000_000.0
         now_ms = int(now_seconds * 1000)
         latest = SimpleNamespace(period="21348747")
@@ -43,13 +43,13 @@ class AiOriginalEngineDeadlineTests(unittest.TestCase):
             patch.object(
                 service.lottery_client,
                 "fetch_latest",
-                return_value=(latest, "21348748", now_ms, now_ms + 59_999),
+                return_value=(latest, "21348748", now_ms, now_ms + 39_999),
             ),
             patch.object(service.database, "get_draw", return_value=None),
         ):
             self.assertFalse(service._target_is_open(spec, "21348747", "21348748"))
 
-    def test_target_can_publish_before_60_second_guard(self) -> None:
+    def test_target_can_publish_before_40_second_guard(self) -> None:
         now_seconds = 1_800_000_000.0
         now_ms = int(now_seconds * 1000)
         latest = SimpleNamespace(period="21348747")
@@ -59,7 +59,7 @@ class AiOriginalEngineDeadlineTests(unittest.TestCase):
             patch.object(
                 service.lottery_client,
                 "fetch_latest",
-                return_value=(latest, "21348748", now_ms, now_ms + 60_001),
+                return_value=(latest, "21348748", now_ms, now_ms + 40_001),
             ),
             patch.object(service.database, "get_draw", return_value=None),
         ):
