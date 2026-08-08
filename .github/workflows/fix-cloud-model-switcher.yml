@@ -1,0 +1,80 @@
+name: Fix Cloud Model Switcher
+
+on:
+  push:
+    branches:
+      - feature/ai-compatible-auto-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/ai-compatible-auto-recovery
+          fetch-depth: 0
+      - name: Replace hardcoded cloud model shortcuts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('server/app/web_console.py')
+          text = path.read_text(encoding='utf-8')
+
+          hardcoded = '<div class=\\"model-switcher\\" id=\\"modelSwitcher\\"><button class=\\"model-choice\\" data-quick-model=\\"deepseek-v4-flash\\"><strong>DeepSeek V4 Flash</strong><span>速度优先 · 直接使用现有 Key</span></button><button class=\\"model-choice\\" data-quick-model=\\"deepseek-v4-pro\\"><strong>DeepSeek V4 Pro</strong><span>能力优先 · 直接使用现有 Key</span></button></div>'
+          dynamic = '<div class=\\"model-switcher\\" id=\\"modelSwitcher\\"></div>'
+          if text.count(hardcoded) != 1:
+              raise SystemExit(f'hardcoded switcher expected once, found {text.count(hardcoded)}')
+          text = text.replace(hardcoded, dynamic, 1)
+
+          start = text.index('function renderQuick(){')
+          end = text.index('\nfunction profiles(', start)
+          replacement = r'''function renderQuick(){
+            const p=activeProfile(),current=p&&p.model||'',hasModels=discoveredModels.length>0;
+            $('quickCurrent').textContent=current||'尚未选择';
+            $('quickMeta').textContent=p?providerName(p)+' · '+p.api_key_hint+' · '+p.timeout_seconds+' 秒':'先添加一个接口和 API Key';
+            $('providerMark').textContent=providerMark(p);
+            $('quickStatus').textContent=p&&p.ready?(hasModels?'已读取支持列表':'待读取模型'):'未配置';
+            $('quickStatus').className='badge '+(p&&p.ready?(hasModels?'good':'warn'):'warn');
+            const models=[...new Set(discoveredModels.map(m=>String(m||'').trim()).filter(Boolean))];
+            const primary=models.slice(0,2),extras=models.slice(2);
+            $('modelSwitcher').innerHTML=primary.map(m=>`<button class="model-choice ${m===current?'active':''}" data-quick-model="${esc(m)}"><strong>${esc(m)}</strong><span>${m===current?'当前模型':'此 Key 已确认支持'}</span></button>`).join('');
+            document.querySelectorAll('[data-quick-model]').forEach(b=>{b.disabled=!(p&&p.ready);b.onclick=()=>switchModel(b.dataset.quickModel)});
+            $('dynamicModels').innerHTML=extras.map(m=>`<button class="dynamic-model ${m===current?'active':''}" data-dynamic-model="${esc(m)}">${esc(m)}</button>`).join('');
+            document.querySelectorAll('[data-dynamic-model]').forEach(b=>b.onclick=()=>switchModel(b.dataset.dynamicModel));
+            $('readQuickModelsBtn').disabled=!(p&&p.ready);
+            $('manageCurrentBtn').disabled=!p;
+          }'''
+          text = text[:start] + replacement + text[end:]
+
+          stale_binding = "document.querySelectorAll('[data-quick-model]').forEach(b=>b.onclick=()=>switchModel(b.dataset.quickModel));\n"
+          if text.count(stale_binding) != 1:
+              raise SystemExit(f'stale quick binding expected once, found {text.count(stale_binding)}')
+          text = text.replace(stale_binding, '', 1)
+
+          old_notice = '平时切换 DeepSeek V4 Flash / Pro 不需要进入这里。'
+          new_notice = '同一 Key 的模型请先读取支持列表，再直接切换，无需重新输入 Key。'
+          if text.count(old_notice) != 1:
+              raise SystemExit(f'notice expected once, found {text.count(old_notice)}')
+          text = text.replace(old_notice, new_notice, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          rm -f .github/workflows/fix-cloud-model-switcher.yml
+          git diff --check
+      - name: Commit cloud console fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- server/app/web_console.py
+          git add -u -- .github/workflows/fix-cloud-model-switcher.yml
+          git diff --cached --check
+          git commit -m "fix(console): show only models supported by current API key"
+          git push origin HEAD:feature/ai-compatible-auto-recovery
