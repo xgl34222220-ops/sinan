@@ -43,7 +43,9 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           python -m compileall -q server/app
+          cp .env.example .env
           docker compose config --quiet
+          rm -f .env
 
       - name: Require protected deployment secrets
         shell: bash
