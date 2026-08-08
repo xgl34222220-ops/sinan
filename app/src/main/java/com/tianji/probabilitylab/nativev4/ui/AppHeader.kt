@@ -109,7 +109,7 @@ fun CompactAppHeader(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (destination == MainDestination.HOME) "实时开奖 · 前向验证" else destination.subtitle,
+                if (destination == MainDestination.HOME) "双彩种实时同步 · 前向验证" else destination.subtitle,
                 color = colors.textDim,
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
@@ -145,7 +145,7 @@ fun CompactAppHeader(
         HeaderActionButton(
             onClick = onRefresh,
             enabled = !isRefreshing,
-            contentDescription = if (isRefreshing) "正在刷新当前彩种" else "刷新当前彩种",
+            contentDescription = if (isRefreshing) "正在同步全部彩种" else "同步全部彩种",
         ) {
             Icon(
                 Icons.Rounded.Refresh,

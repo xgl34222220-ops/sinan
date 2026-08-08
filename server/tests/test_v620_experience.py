@@ -49,21 +49,29 @@ class V620ExperienceContractTests(unittest.TestCase):
             ROOT
             / "app/src/main/java/com/tianji/probabilitylab/nativev4/AppRealtimeRefresh.kt"
         )
-        self.assertIn("internal fun refreshCurrentLottery()", controller)
+        self.assertIn("fun refresh()", controller)
+        self.assertIn("refreshAll(force = true)", controller)
         self.assertFalse(bridge.exists())
         self.assertNotIn("java.lang.reflect", controller)
         self.assertNotIn("getDeclaredMethod", controller)
 
-    def test_v62_home_archive_alerts_and_adaptive_navigation_are_wired(self) -> None:
+    def test_v67_home_archive_alerts_and_adaptive_navigation_are_wired(self) -> None:
         app_source = (
             ROOT
             / "app/src/main/java/com/tianji/probabilitylab/nativev4/ui/TianjiApp.kt"
         ).read_text(encoding="utf-8")
+        forecast_source = (
+            ROOT
+            / "app/src/main/java/com/tianji/probabilitylab/nativev4/ui/V67ForecastScreen.kt"
+        ).read_text(encoding="utf-8")
         build_source = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
-        self.assertIn("V62ForecastScreen", app_source)
+        self.assertIn("V67ForecastScreen", app_source)
         self.assertIn("V62ArchiveScreen", app_source)
         self.assertIn("V62PushAlertCenterScreen", app_source)
         self.assertIn("V62AdaptiveScaffold", app_source)
+        self.assertIn("V67DualLotteryStrip", forecast_source)
+        self.assertIn("AI v2 联合预测", forecast_source)
+        self.assertIn("概率对比", forecast_source)
         self.assertIn("material3.adaptive:adaptive:1.2.0", build_source)
         self.assertIn("com.android.compose.screenshot", build_source)
 

@@ -14,7 +14,9 @@ class TianjiRuntime private constructor(context: Context) {
 
     init {
         PushAlertCoordinator.setRealtimeRefreshCallback {
-            appController.refreshCurrentLottery()
+            // Push means the shared server lane observed a meaningful event. Refresh both lotteries
+            // so switching tabs never exposes the other lottery's stale cache.
+            appController.refresh()
         }
     }
 
