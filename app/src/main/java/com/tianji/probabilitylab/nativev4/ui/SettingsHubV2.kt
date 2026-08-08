@@ -155,7 +155,7 @@ private fun SettingsRootV2(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item("settings-section-core") {
-            Text("核心能力", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, top = 2.dp))
+            Text("核心能力", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp))
         }
         item {
             SettingsEntry(
@@ -185,7 +185,7 @@ private fun SettingsRootV2(
             )
         }
         item("settings-section-personal") {
-            Text("个性化", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, top = 4.dp))
+            Text("个性化", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
         }
         item {
             SettingsEntry(
@@ -197,7 +197,7 @@ private fun SettingsRootV2(
             )
         }
         item("settings-section-more") {
-            Text("更多", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, top = 4.dp))
+            Text("更多", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
         }
         item {
             SettingsEntry(
