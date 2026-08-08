@@ -1,0 +1,63 @@
+name: Apply v6.9.2 AI controls optimization v3
+
+on:
+  push:
+    branches:
+      - fix/ai-publish-guard-40s
+    paths:
+      - .github/workflows/apply-v6.9.2-ai-controls-v3.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ai-publish-guard-40s
+          fetch-depth: 0
+
+      - name: Apply deterministic patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/apply-v6.9.2-ai-controls.yml').read_text(encoding='utf-8')
+          lines = workflow.splitlines()
+          start = next(i for i, line in enumerate(lines) if "python - <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(lines)) if lines[i].strip() == 'PY')
+          script_lines = [line[10:] if line.startswith('          ') else line for line in lines[start:end]]
+          script = '\n'.join(script_lines)
+          old = "replace_once(path, '        \"ai_allowed\": allow_ai,\\n', '        \"ai_allowed\": allow_ai and lottery_ai_enabled,\\n')"
+          new = "text = read(path)\nif text.count('        \\\"ai_allowed\\\": allow_ai,\\n') < 1:\n    raise SystemExit('service.py: ai_allowed cycle field missing')\nwrite(path, text.replace('        \\\"ai_allowed\\\": allow_ai,\\n', '        \\\"ai_allowed\\\": allow_ai and lottery_ai_enabled,\\n', 1))"
+          if old not in script:
+              raise SystemExit('could not locate ai_allowed replacement in patch script')
+          script = script.replace(old, new, 1)
+          exec(compile(script, '<v6.9.2-patch>', 'exec'), {})
+          PY
+
+      - name: Install server dependencies
+        run: python -m pip install -r server/requirements.txt
+
+      - name: Validate server changes
+        env:
+          PYTHONPATH: server
+          TIANJI_DATABASE: ${{ runner.temp }}/tianji-ci.db
+        run: |
+          python -m compileall -q server/app server/tests
+          python -m unittest discover -s server/tests -v
+
+      - name: Commit optimized v6.9.2 source and remove one-shot workflows
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-v6.9.2-ai-controls.yml .github/workflows/apply-v6.9.2-ai-controls-v2.yml .github/workflows/apply-v6.9.2-ai-controls-v3.yml
+          git add -- server/app/service.py server/app/main.py server/app/web_console.py server/tests/test_ai_original_engine_deadline.py server/tests/test_web_console_v2.py app/build.gradle.kts README.md RELEASE_NOTES_v6.9.2.md
+          git diff --cached --check
+          git status --short
+          git commit -m "feat: parallel per-lottery AI controls and 40s guard (v6.9.2)"
+          git push origin HEAD:fix/ai-publish-guard-40s
