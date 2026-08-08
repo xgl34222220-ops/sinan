@@ -1,0 +1,130 @@
+name: Tianji AI Deadline Hotfix Deploy 20260808
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-ai-hotfix-20260808.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tianji-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.TIANJI_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.TIANJI_DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.TIANJI_DEPLOY_SSH_KEY }}
+      DEPLOY_PORT: ${{ vars.TIANJI_DEPLOY_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.TIANJI_DEPLOY_PATH || '/opt/tianji' }}
+      EXPECTED_SHA: 8d46b9b96761a99ea4a0664a95f5488365a213cb
+    steps:
+      - name: Checkout hotfix commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+
+      - name: Validate exact hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          python -m compileall -q server/app
+          docker compose config --quiet
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('server/app/ai_deadline_fast.py').read_text()
+          for marker in ('AI_PUBLISH_GUARD_MS = 90_000', 'AI_MIN_START_LEAD_MS = 225_000', 'AI_FAST_MODE_THRESHOLD_MS = 270_000'):
+              assert marker in text, marker
+          PY
+
+      - name: Require protected deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST" || { echo "Missing TIANJI_DEPLOY_HOST" >&2; exit 1; }
+          test -n "$DEPLOY_USER" || { echo "Missing TIANJI_DEPLOY_USER" >&2; exit 1; }
+          test -n "$DEPLOY_SSH_KEY" || { echo "Missing TIANJI_DEPLOY_SSH_KEY" >&2; exit 1; }
+
+      - name: Configure ephemeral SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/tianji_deploy_key
+          chmod 600 ~/.ssh/tianji_deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy exact AI hotfix commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf -v remote_script '%q ' bash -s -- "$DEPLOY_PATH" "$EXPECTED_SHA"
+          ssh \
+            -i ~/.ssh/tianji_deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "$remote_script" <<'REMOTE'
+          set -euo pipefail
+          DEPLOY_PATH="$1"
+          EXPECTED_SHA="$2"
+          cd "$DEPLOY_PATH"
+          test -d .git || { echo "Not a git checkout: $DEPLOY_PATH" >&2; exit 1; }
+          test -z "$(git status --porcelain)" || {
+            echo "Deployment checkout has local changes; refusing to overwrite them." >&2
+            git status --short
+            exit 1
+          }
+          git fetch --prune origin main
+          git cat-file -e "$EXPECTED_SHA^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main
+          git checkout --detach "$EXPECTED_SHA"
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+
+          docker compose config --quiet
+          docker compose up -d --build --remove-orphans
+          docker compose ps
+
+          for attempt in 1 2 3 4 5 6; do
+            if docker compose exec -T api python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).read()" >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" = 6 ]; then
+              echo "Tianji health check failed after deploy" >&2
+              docker compose logs --tail=160 api worker >&2 || true
+              exit 1
+            fi
+            sleep 5
+          done
+
+          docker compose exec -T api python - <<'PY'
+          import json
+          import urllib.request
+          from app import ai_deadline_fast
+
+          assert ai_deadline_fast.AI_PUBLISH_GUARD_MS == 90_000
+          assert ai_deadline_fast.AI_MIN_START_LEAD_MS == 225_000
+          assert ai_deadline_fast.AI_FAST_MODE_THRESHOLD_MS == 270_000
+          payload = json.loads(urllib.request.urlopen('http://127.0.0.1:8000/v1/public/realtime', timeout=5).read())
+          lotteries = payload.get('lotteries')
+          assert isinstance(lotteries, (dict, list)) and len(lotteries) >= 2, payload
+          print('Adaptive AI deadline runtime verified; realtime lotteries:', len(lotteries))
+          PY
+
+          docker compose ps worker
+          echo "Tianji AI deadline hotfix production health check passed at $ACTUAL_SHA"
+          REMOTE
+
+      - name: Remove SSH key
+        if: always()
+        shell: bash
+        run: rm -f ~/.ssh/tianji_deploy_key
