@@ -172,48 +172,16 @@ jobs:
           )
 
           replace_once(
-              '''            if (isActive) {
-                  Text(
-                      "● 当前 AI · 主页正式预测只调用此配置",
-                      color = colors.accent,
-                      fontSize = 10.sp,
-                      fontWeight = FontWeight.Bold,
-                      modifier = Modifier.padding(top = 7.dp),
-                  )
-              }''',
-              '''            if (isActive) {
-                  Text(
-                      if (failed) "● 当前 AI 已失效 · 请重新测试或切换" else "● 当前 AI · 主页正式预测只调用此配置",
-                      color = if (failed) colors.red else colors.accent,
-                      fontSize = 10.sp,
-                      fontWeight = FontWeight.Bold,
-                      modifier = Modifier.padding(top = 7.dp),
-                  )
-              }''',
+              '                    "● 当前 AI · 主页正式预测只调用此配置",',
+              '                    if (failed) "● 当前 AI 已失效 · 请重新测试或切换" else "● 当前 AI · 主页正式预测只调用此配置",',
               'active failure label',
           )
 
           replace_once(
-              '''            Text(
-                  status?.message ?: "配置已保存，尚未测试",
-                  color = tint,
-                  fontSize = 11.sp,
-                  lineHeight = 16.sp,
-                  modifier = Modifier.padding(top = if (isActive) 4.dp else 8.dp),
-              )
-
-              val capability = config.capability''',
-              '''            Text(
-                  status?.message ?: "配置已保存，尚未测试",
-                  color = tint,
-                  fontSize = 11.sp,
-                  lineHeight = 16.sp,
-                  modifier = Modifier.padding(top = if (isActive) 4.dp else 8.dp),
-              )
-
-              if (failed && suggestedModels.isNotEmpty()) {
+              '            val capability = config.capability',
+              '''            if (failed && suggestedModels.isNotEmpty()) {
                   Text(
-                      "接口返回 ${suggestedModels.size} 个可用模型 · 点选后重新测试",
+                      "接口返回 ${suggestedModels.size} 个可用模型 · 点选后自动重测",
                       color = colors.accent,
                       fontSize = 10.sp,
                       fontWeight = FontWeight.Bold,
@@ -233,7 +201,10 @@ jobs:
                                   .clip(CircleShape)
                                   .background(colors.accentSoft)
                                   .border(1.dp, colors.accent.copy(alpha = 0.25f), CircleShape)
-                                  .clickable { onModel(model) }
+                                  .clickable {
+                                      onModel(model)
+                                      onTest()
+                                  }
                                   .padding(horizontal = 9.dp, vertical = 6.dp),
                           )
                       }
@@ -245,38 +216,28 @@ jobs:
           )
 
           replace_once(
-              '''                MiniButtonV2(
-                      if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",
-                      onAnalyze,
-                      Modifier.weight(1.2f),
-                      primary = true,
-                  )
-                  MiniButtonV2(
-                      if (isActive) "当前 AI" else "设为当前",
-                      if (isActive) ({}) else onSetActive,
-                      Modifier.weight(0.9f),
-                  )''',
-              '''                MiniButtonV2(
-                      when {
+              '''                    if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",
+                      onAnalyze,''',
+              '''                    when {
                           failed -> "重新测试"
                           status?.state == AiConnectionState.ANALYZING -> "正在分析"
                           else -> "立即分析"
                       },
-                      if (failed) onTest else onAnalyze,
-                      Modifier.weight(1.2f),
-                      primary = true,
-                  )
-                  MiniButtonV2(
-                      when {
+                      if (failed) onTest else onAnalyze,''',
+              'primary failure action',
+          )
+
+          replace_once(
+              '''                    if (isActive) "当前 AI" else "设为当前",
+                      if (isActive) ({}) else onSetActive,''',
+              '''                    when {
                           isActive && failed -> "当前失效"
                           isActive -> "当前 AI"
                           failed -> "测试后启用"
                           else -> "设为当前"
                       },
-                      if (isActive || failed) ({}) else onSetActive,
-                      Modifier.weight(0.9f),
-                  )''',
-              'failure safe actions',
+                      if (isActive || failed) ({}) else onSetActive,''',
+              'active selection safety',
           )
 
           replace_once(
@@ -286,28 +247,12 @@ jobs:
           )
 
           replace_once(
-              '''                Text(
-                      when (apiRoute) {
-                          AiApiRouteV2.AUTO -> "自动：OpenAI 默认 Responses，其余兼容接口默认 Chat Completions"
-                          AiApiRouteV2.CHAT_COMPLETIONS -> "适用于大多数 OpenAI 兼容中转站"
-                          AiApiRouteV2.RESPONSES -> "适用于支持 OpenAI Responses API 的官方或中转接口"
-                      },
-                      color = colors.textDim,
-                      fontSize = 10.sp,
-                      lineHeight = 15.sp,
-                      modifier = Modifier.padding(top = 4.dp),
+              '''                    modifier = Modifier.padding(top = 4.dp),
                   )
-                  Spacer(Modifier.height(8.dp))''',
-              '''                Text(
-                      when (apiRoute) {
-                          AiApiRouteV2.AUTO -> "自动：OpenAI 默认 Responses，其余兼容接口默认 Chat Completions"
-                          AiApiRouteV2.CHAT_COMPLETIONS -> "适用于大多数 OpenAI 兼容中转站"
-                          AiApiRouteV2.RESPONSES -> "适用于支持 OpenAI Responses API 的官方或中转接口"
-                      },
-                      color = colors.textDim,
-                      fontSize = 10.sp,
-                      lineHeight = 15.sp,
-                      modifier = Modifier.padding(top = 4.dp),
+                  Spacer(Modifier.height(8.dp))
+                  OutlinedTextField(
+                      value = model,''',
+              '''                    modifier = Modifier.padding(top = 4.dp),
                   )
                   if (endpoint.startsWith("https://")) {
                       Text(
@@ -318,7 +263,9 @@ jobs:
                           modifier = Modifier.padding(top = 3.dp),
                       )
                   }
-                  Spacer(Modifier.height(8.dp))''',
+                  Spacer(Modifier.height(8.dp))
+                  OutlinedTextField(
+                      value = model,''',
               'request URL preview',
           )
 
