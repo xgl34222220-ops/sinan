@@ -1,0 +1,64 @@
+name: Apply model choice contrast hotfix
+
+on:
+  push:
+    branches: [fix/model-choice-contrast]
+    paths:
+      - '.github/workflows/apply-model-choice-contrast.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/model-choice-contrast
+          fetch-depth: 0
+
+      - name: Apply high-contrast selected model state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('server/app/web_console.py')
+          text = path.read_text(encoding='utf-8')
+          old = '.model-choice.active{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--primary),var(--primary2));box-shadow:0 12px 26px color-mix(in srgb,var(--primary) 25%,transparent)}.model-choice strong{display:block;font-size:12px}.model-choice span{display:block;font-size:8px;opacity:.74;margin-top:4px}.model-choice .check{position:absolute;right:9px;top:9px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.18);font-size:10px}'
+          new = '.model-choice.active{color:var(--text);padding-right:38px;border:2px solid var(--primary);background:linear-gradient(135deg,var(--primary-soft),var(--solid));box-shadow:0 10px 24px color-mix(in srgb,var(--primary) 18%,transparent)}.model-choice.active strong{color:var(--primary)}.model-choice.active span{color:var(--text2);opacity:1;font-weight:760}.model-choice.active:after{content:"✓";position:absolute;right:10px;top:10px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--primary);color:#fff;font-size:11px;font-weight:900;box-shadow:0 4px 12px color-mix(in srgb,var(--primary) 24%,transparent)}.model-choice strong{display:block;font-size:12px}.model-choice span{display:block;font-size:8px;opacity:.74;margin-top:4px}.model-choice .check{position:absolute;right:9px;top:9px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.18);font-size:10px}'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one selected-model CSS block, found {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          test_path = Path('server/tests/test_web_console_v2.py')
+          tests = test_path.read_text(encoding='utf-8')
+          anchor = '        self.assertIn("models.map", html)\n        self.assertNotIn("const primary=models.slice", html)\n'
+          replacement = '        self.assertIn("models.map", html)\n        self.assertIn(".model-choice.active{color:var(--text);", html)\n        self.assertIn(".model-choice.active strong{color:var(--primary)}", html)\n        self.assertIn("content:\\"✓\\"", html)\n        self.assertNotIn(".model-choice.active{color:#fff", html)\n        self.assertNotIn("const primary=models.slice", html)\n'
+          if tests.count(anchor) != 1:
+              raise SystemExit(f'expected one test anchor, found {tests.count(anchor)}')
+          test_path.write_text(tests.replace(anchor, replacement), encoding='utf-8')
+          PY
+
+      - name: Validate server console
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r server/requirements.txt
+          python -m compileall -q server/app
+          PYTHONPATH=server python -m unittest server.tests.test_web_console_v2 -v
+
+      - name: Commit hotfix and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/apply-model-choice-contrast.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- server/app/web_console.py server/tests/test_web_console_v2.py
+          git diff --cached --check
+          git commit -m 'fix: keep selected AI model readable on mobile browsers'
+          git push origin HEAD:fix/model-choice-contrast
