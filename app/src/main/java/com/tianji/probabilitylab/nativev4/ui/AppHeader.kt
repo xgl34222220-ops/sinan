@@ -54,6 +54,7 @@ fun CompactAppHeader(
     onBack: (() -> Unit)? = null,
     unreadAlerts: Int = 0,
     onAlerts: () -> Unit = {},
+    homeSubtitle: String? = null,
 ) {
     val colors = LocalTianjiColors.current
     val refreshRotation by animateFloatAsState(
@@ -109,7 +110,11 @@ fun CompactAppHeader(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (destination == MainDestination.HOME) "双彩种实时同步 · 前向验证" else destination.subtitle,
+                if (destination == MainDestination.HOME) {
+                    homeSubtitle?.takeIf(String::isNotBlank) ?: "双彩种实时同步 · 前向验证"
+                } else {
+                    destination.subtitle
+                },
                 color = colors.textDim,
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
