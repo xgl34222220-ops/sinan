@@ -19,8 +19,7 @@ import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 
 /**
  * Single system-inset and bottom-navigation owner for normal App pages.
- * Page lists only keep ordinary visual spacing instead of reserving a guessed
- * 88–124 dp area for a navigation bar drawn on top of their content.
+ * v6.7 keeps one restrained accent glow instead of stacking decorative gradients behind every card.
  */
 @Composable
 internal fun TianjiRootScaffold(
@@ -70,25 +69,13 @@ private fun TianjiBackdrop() {
             brush = Brush.radialGradient(
                 listOf(
                     colors.accent.copy(
-                        alpha = if (colors.isOled) 0.035f else if (colors.isDark) 0.075f else 0.045f,
+                        alpha = if (colors.isOled) 0.018f else if (colors.isDark) 0.040f else 0.026f,
                     ),
                     Color.Transparent,
                 ),
             ),
-            radius = size.width * 0.84f,
-            center = Offset(size.width * 1.04f, size.height * 0.20f),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(
-                    colors.amber.copy(
-                        alpha = if (colors.isOled) 0.018f else if (colors.isDark) 0.042f else 0.028f,
-                    ),
-                    Color.Transparent,
-                ),
-            ),
-            radius = size.width * 0.72f,
-            center = Offset(size.width * -0.08f, size.height * 0.04f),
+            radius = size.width * 0.90f,
+            center = Offset(size.width * 1.06f, size.height * 0.16f),
         )
     }
 }
