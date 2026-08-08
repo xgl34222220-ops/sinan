@@ -69,24 +69,7 @@ fun MainBottomBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 62.dp)
-            .shadow(
-                elevation = if (colors.isOled) 0.dp else 6.dp,
-                shape = RoundedCornerShape(23.dp),
-                ambientColor = Color.Black.copy(alpha = 0.16f),
-                spotColor = Color.Black.copy(alpha = 0.16f),
-            )
-            .clip(RoundedCornerShape(23.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        colors.navSurface.copy(alpha = 0.965f),
-                        colors.surface.copy(alpha = 0.985f),
-                    ),
-                ),
-            )
-            .border(1.dp, colors.lineStrong, RoundedCornerShape(23.dp))
-            .padding(horizontal = 5.dp, vertical = 4.dp),
+            .height(76.dp),
     ) {
         val slotWidth = maxWidth / 5
         val indicatorX by animateDpAsState(
@@ -101,22 +84,49 @@ fun MainBottomBar(
 
         Box(
             modifier = Modifier
-                .align(Alignment.CenterStart)
-                .offset(x = indicatorX)
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(64.dp)
+                .shadow(
+                    elevation = if (colors.isOled) 0.dp else 7.dp,
+                    shape = RoundedCornerShape(24.dp),
+                    ambientColor = Color.Black.copy(alpha = 0.15f),
+                    spotColor = Color.Black.copy(alpha = 0.15f),
+                )
+                .clip(RoundedCornerShape(24.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            colors.navSurface.copy(alpha = 0.965f),
+                            colors.surface.copy(alpha = 0.992f),
+                        ),
+                    ),
+                )
+                .border(1.dp, colors.lineStrong, RoundedCornerShape(24.dp)),
+        )
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .offset(x = indicatorX, y = (-6).dp)
                 .width(slotWidth)
                 .height(50.dp)
-                .padding(horizontal = 3.dp)
+                .padding(horizontal = 4.dp)
                 .clip(RoundedCornerShape(17.dp))
                 .background(indicatorTint)
                 .border(
                     width = 1.dp,
-                    color = colors.accent.copy(alpha = 0.07f),
+                    color = colors.accent.copy(alpha = 0.08f),
                     shape = RoundedCornerShape(17.dp),
                 ),
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(64.dp)
+                .padding(horizontal = 5.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StandardNavItem(
@@ -134,7 +144,9 @@ fun MainBottomBar(
             ChatNavItem(
                 onClick = onChat,
                 isRunning = isAiRunning,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .offset(y = (-9).dp),
             )
             StandardNavItem(
                 item = MainDestination.ARCHIVE,
@@ -222,15 +234,15 @@ private fun ChatNavItem(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        if (pressed) 0.95f else 1f,
-        animationSpec = spring(dampingRatio = 0.84f, stiffness = 560f),
+        if (pressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 560f),
         label = "ai-nav-press",
     )
     Column(
         modifier = modifier
-            .heightIn(min = 52.dp)
+            .heightIn(min = 60.dp)
             .scale(pressScale)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(20.dp))
             .semantics { role = Role.Button }
             .clickable(
                 interactionSource = interaction,
@@ -242,38 +254,43 @@ private fun ChatNavItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(50.dp), contentAlignment = Alignment.Center) {
             if (isRunning) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(49.dp),
                     color = colors.accent,
+                    trackColor = colors.accent.copy(alpha = 0.12f),
                     strokeWidth = 2.dp,
                 )
             }
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(43.dp)
                     .shadow(
-                        elevation = if (colors.isOled) 0.dp else 7.dp,
+                        elevation = if (colors.isOled) 0.dp else 10.dp,
                         shape = CircleShape,
-                        ambientColor = colors.accent.copy(alpha = 0.27f),
-                        spotColor = colors.accent.copy(alpha = 0.27f),
+                        ambientColor = colors.accent.copy(alpha = 0.30f),
+                        spotColor = colors.violet.copy(alpha = 0.24f),
                     )
                     .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(colors.accent, colors.violet)))
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                    .background(
+                        Brush.linearGradient(
+                            listOf(colors.accent, colors.violet),
+                        ),
+                    )
+                    .border(1.dp, Color.White.copy(alpha = 0.24f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
                     tint = Color.White,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
         Text(
-            if (isRunning) "运行中" else "AI",
+            if (isRunning) "运行中" else "问 AI",
             color = colors.accent,
             fontSize = 11.sp,
             lineHeight = 13.sp,
