@@ -19,14 +19,320 @@ jobs:
           ref: feature/ai-compatible-auto-recovery
           fetch-depth: 0
 
-      - name: Validate and apply patch
+      - name: Apply deterministic source edits
         shell: bash
         run: |
           set -euo pipefail
-          git apply --check tools/patches/ai-compatible-auto-recovery.patch
-          git apply tools/patches/ai-compatible-auto-recovery.patch
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/SettingsHubV2.kt')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              'import androidx.compose.runtime.Composable\nimport androidx.compose.runtime.getValue',
+              'import androidx.compose.runtime.Composable\nimport androidx.compose.runtime.LaunchedEffect\nimport androidx.compose.runtime.getValue',
+              'LaunchedEffect import',
+          )
+
+          old_normalize = '''private fun normalizeAiEndpointV2(
+              rawValue: String,
+              provider: AiProvider,
+              route: AiApiRouteV2,
+          ): String {
+              val value = rawValue.trim().trimEnd('/')
+              if (!value.startsWith("https://")) return value
+              if (
+                  value.endsWith("/responses") ||
+                  value.endsWith("/chat/completions") ||
+                  value.endsWith("/completions")
+              ) return value
+              val resolvedRoute = when (route) {
+                  AiApiRouteV2.AUTO -> if (provider == AiProvider.OPENAI) {
+                      AiApiRouteV2.RESPONSES
+                  } else {
+                      AiApiRouteV2.CHAT_COMPLETIONS
+                  }
+                  else -> route
+              }
+              return value + when (resolvedRoute) {
+                  AiApiRouteV2.RESPONSES -> "/responses"
+                  AiApiRouteV2.CHAT_COMPLETIONS, AiApiRouteV2.AUTO -> "/chat/completions"
+              }
+          }
+          '''
+          new_normalize = '''private fun normalizeAiEndpointV2(
+              rawValue: String,
+              provider: AiProvider,
+              route: AiApiRouteV2,
+          ): String {
+              val value = rawValue.trim().trimEnd('/')
+              if (!value.startsWith("https://")) return value
+              if (
+                  value.endsWith("/responses") ||
+                  value.endsWith("/chat/completions") ||
+                  value.endsWith("/completions")
+              ) return value
+              val schemeEnd = value.indexOf("://")
+              val firstPathSlash = if (schemeEnd >= 0) value.indexOf('/', schemeEnd + 3) else -1
+              val normalizedBase = if (provider == AiProvider.COMPATIBLE && firstPathSlash < 0) {
+                  "$value/v1"
+              } else value
+              val resolvedRoute = when (route) {
+                  AiApiRouteV2.AUTO -> if (provider == AiProvider.OPENAI) {
+                      AiApiRouteV2.RESPONSES
+                  } else {
+                      AiApiRouteV2.CHAT_COMPLETIONS
+                  }
+                  else -> route
+              }
+              return normalizedBase + when (resolvedRoute) {
+                  AiApiRouteV2.RESPONSES -> "/responses"
+                  AiApiRouteV2.CHAT_COMPLETIONS, AiApiRouteV2.AUTO -> "/chat/completions"
+              }
+          }
+
+          private fun extractSuggestedModelsV2(message: String?): List<String> {
+              val text = message.orEmpty()
+              val marker = Regex("(?i)(?:可用模型|available\\s+models?)\\s*[:：]").find(text) ?: return emptyList()
+              val tail = text.substring(marker.range.last + 1)
+                  .substringBefore("\",\"type\"")
+                  .substringBefore("\"type\"")
+                  .substringBefore('。')
+                  .substringBefore('\\n')
+              val validId = Regex("^[A-Za-z0-9][A-Za-z0-9._:/-]{1,95}$")
+              return tail
+                  .split(Regex("\\s+/\\s+|[,，、;；]"))
+                  .map { value -> value.trim().trim('"', '\\'', '\\\\', '{', '}', '[', ']', ' ') }
+                  .filter(validId::matches)
+                  .distinct()
+                  .take(20)
+          }
+          '''
+          replace_once(old_normalize, new_normalize, 'endpoint normalization')
+
+          replace_once(
+              '    val activeAi = aiConfigs.firstOrNull { it.id == activeAiProfileId && it.isComplete }',
+              '''    val activeAi = aiConfigs.firstOrNull {
+                  it.id == activeAiProfileId && it.isComplete &&
+                      state.aiStatuses[it.id]?.state != AiConnectionState.FAILED
+              }''',
+              'root active AI guard',
+          )
+
+          replace_once(
+              '''    var editor by remember { mutableStateOf<AiConfig?>(null) }
+              var createNew by remember { mutableStateOf(false) }
+              var pendingDelete by remember { mutableStateOf<AiConfig?>(null) }
+              LazyColumn(''',
+              '''    var editor by remember { mutableStateOf<AiConfig?>(null) }
+              var createNew by remember { mutableStateOf(false) }
+              var pendingDelete by remember { mutableStateOf<AiConfig?>(null) }
+              val failedActive = configs.firstOrNull {
+                  it.id == activeAiProfileId && state.aiStatuses[it.id]?.state == AiConnectionState.FAILED
+              }
+              val connectedFallback = configs.firstOrNull {
+                  it.id != activeAiProfileId && it.isComplete &&
+                      state.aiStatuses[it.id]?.state == AiConnectionState.CONNECTED
+              }
+              LaunchedEffect(activeAiProfileId, state.aiStatuses) {
+                  if (failedActive != null && connectedFallback != null) onSelectActive(connectedFallback.id)
+              }
+              LazyColumn(''',
+              'failed active fallback',
+          )
+
+          replace_once(
+              '''                    models = (listOf(config.model) + catalogs[config.id].orEmpty() + config.provider.fallbackModels)
+                          .map(String::trim)
+                          .filter(String::isNotBlank)
+                          .distinct(),''',
+              '''                    models = (
+                          listOf(config.model) +
+                              extractSuggestedModelsV2(state.aiStatuses[config.id]?.message) +
+                              catalogs[config.id].orEmpty() + config.provider.fallbackModels
+                      )
+                          .map(String::trim)
+                          .filter(String::isNotBlank)
+                          .distinct(),''',
+              'suggested models merge',
+          )
+
+          replace_once(
+              '''    val colors = LocalTianjiColors.current
+              var expanded by rememberSaveable(config.id) { mutableStateOf(false) }
+              val tint = when (status?.state) {''',
+              '''    val colors = LocalTianjiColors.current
+              var expanded by rememberSaveable(config.id) { mutableStateOf(false) }
+              val failed = status?.state == AiConnectionState.FAILED
+              val suggestedModels = extractSuggestedModelsV2(status?.message)
+              val tint = when (status?.state) {''',
+              'card failure state',
+          )
+
+          replace_once(
+              '''            if (isActive) {
+                  Text(
+                      "● 当前 AI · 主页正式预测只调用此配置",
+                      color = colors.accent,
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.Bold,
+                      modifier = Modifier.padding(top = 7.dp),
+                  )
+              }''',
+              '''            if (isActive) {
+                  Text(
+                      if (failed) "● 当前 AI 已失效 · 请重新测试或切换" else "● 当前 AI · 主页正式预测只调用此配置",
+                      color = if (failed) colors.red else colors.accent,
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.Bold,
+                      modifier = Modifier.padding(top = 7.dp),
+                  )
+              }''',
+              'active failure label',
+          )
+
+          replace_once(
+              '''            Text(
+                  status?.message ?: "配置已保存，尚未测试",
+                  color = tint,
+                  fontSize = 11.sp,
+                  lineHeight = 16.sp,
+                  modifier = Modifier.padding(top = if (isActive) 4.dp else 8.dp),
+              )
+
+              val capability = config.capability''',
+              '''            Text(
+                  status?.message ?: "配置已保存，尚未测试",
+                  color = tint,
+                  fontSize = 11.sp,
+                  lineHeight = 16.sp,
+                  modifier = Modifier.padding(top = if (isActive) 4.dp else 8.dp),
+              )
+
+              if (failed && suggestedModels.isNotEmpty()) {
+                  Text(
+                      "接口返回 ${suggestedModels.size} 个可用模型 · 点选后重新测试",
+                      color = colors.accent,
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.Bold,
+                      modifier = Modifier.padding(top = 7.dp),
+                  )
+                  Row(
+                      Modifier.fillMaxWidth().padding(top = 6.dp).horizontalScroll(rememberScrollState()),
+                      horizontalArrangement = Arrangement.spacedBy(6.dp),
+                  ) {
+                      suggestedModels.forEach { model ->
+                          Text(
+                              model,
+                              color = colors.accent,
+                              fontSize = 10.sp,
+                              fontWeight = FontWeight.Bold,
+                              modifier = Modifier
+                                  .clip(CircleShape)
+                                  .background(colors.accentSoft)
+                                  .border(1.dp, colors.accent.copy(alpha = 0.25f), CircleShape)
+                                  .clickable { onModel(model) }
+                                  .padding(horizontal = 9.dp, vertical = 6.dp),
+                          )
+                      }
+                  }
+              }
+
+              val capability = config.capability''',
+              'inline model suggestions',
+          )
+
+          replace_once(
+              '''                MiniButtonV2(
+                      if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",
+                      onAnalyze,
+                      Modifier.weight(1.2f),
+                      primary = true,
+                  )
+                  MiniButtonV2(
+                      if (isActive) "当前 AI" else "设为当前",
+                      if (isActive) ({}) else onSetActive,
+                      Modifier.weight(0.9f),
+                  )''',
+              '''                MiniButtonV2(
+                      when {
+                          failed -> "重新测试"
+                          status?.state == AiConnectionState.ANALYZING -> "正在分析"
+                          else -> "立即分析"
+                      },
+                      if (failed) onTest else onAnalyze,
+                      Modifier.weight(1.2f),
+                      primary = true,
+                  )
+                  MiniButtonV2(
+                      when {
+                          isActive && failed -> "当前失效"
+                          isActive -> "当前 AI"
+                          failed -> "测试后启用"
+                          else -> "设为当前"
+                      },
+                      if (isActive || failed) ({}) else onSetActive,
+                      Modifier.weight(0.9f),
+                  )''',
+              'failure safe actions',
+          )
+
+          replace_once(
+              '"中转站可直接填 https://example.com/v1，保存时自动补齐请求路径"',
+              '"兼容中转可填 https://example.com 或 /v1；裸域名默认补 /v1 与请求路径"',
+              'endpoint helper copy',
+          )
+
+          replace_once(
+              '''                Text(
+                      when (apiRoute) {
+                          AiApiRouteV2.AUTO -> "自动：OpenAI 默认 Responses，其余兼容接口默认 Chat Completions"
+                          AiApiRouteV2.CHAT_COMPLETIONS -> "适用于大多数 OpenAI 兼容中转站"
+                          AiApiRouteV2.RESPONSES -> "适用于支持 OpenAI Responses API 的官方或中转接口"
+                      },
+                      color = colors.textDim,
+                      fontSize = 10.sp,
+                      lineHeight = 15.sp,
+                      modifier = Modifier.padding(top = 4.dp),
+                  )
+                  Spacer(Modifier.height(8.dp))''',
+              '''                Text(
+                      when (apiRoute) {
+                          AiApiRouteV2.AUTO -> "自动：OpenAI 默认 Responses，其余兼容接口默认 Chat Completions"
+                          AiApiRouteV2.CHAT_COMPLETIONS -> "适用于大多数 OpenAI 兼容中转站"
+                          AiApiRouteV2.RESPONSES -> "适用于支持 OpenAI Responses API 的官方或中转接口"
+                      },
+                      color = colors.textDim,
+                      fontSize = 10.sp,
+                      lineHeight = 15.sp,
+                      modifier = Modifier.padding(top = 4.dp),
+                  )
+                  if (endpoint.startsWith("https://")) {
+                      Text(
+                          "实际请求：${normalizeAiEndpointV2(endpoint, provider, apiRoute)}",
+                          color = colors.accent,
+                          fontSize = 10.sp,
+                          lineHeight = 15.sp,
+                          modifier = Modifier.padding(top = 3.dp),
+                      )
+                  }
+                  Spacer(Modifier.height(8.dp))''',
+              'request URL preview',
+          )
+
+          path.write_text(text, encoding='utf-8')
+          PY
           rm -f tools/patches/ai-compatible-auto-recovery.patch
           rm -f .github/workflows/apply-ai-compatible-auto-recovery.yml
+          git diff --check
 
       - name: Commit patched source
         shell: bash
