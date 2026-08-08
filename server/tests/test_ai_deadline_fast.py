@@ -72,26 +72,58 @@ class AiDeadlineFastTests(unittest.TestCase):
                 service._target_is_open(spec, "21348747", "21348748")
             )
 
-    def test_live_review_phase_starts_all_reviewers_in_parallel_and_propagates_fast_context(self) -> None:
+    def test_live_review_phase_starts_all_reviewers_in_parallel_and_propagates_deadline(self) -> None:
+        now_seconds = 1_800_000_000.0
+        now_ms = int(now_seconds * 1000)
         barrier = threading.Barrier(3)
         started: list[int] = []
-        worker_contexts: list[bool] = []
+        fast_flags: list[bool] = []
         lock = threading.Lock()
 
         def task(reviewer: int) -> int:
             with lock:
                 started.append(reviewer)
-                worker_contexts.append(ai_deadline_fast._fast_context_enabled())
+                fast_flags.append(ai_deadline_fast._fast_transport_enabled())
             barrier.wait(timeout=2.0)
             return reviewer
 
-        with ai_deadline_fast._deadline_fast_context():
+        with (
+            patch("app.ai_deadline_fast.time.time", return_value=now_seconds),
+            ai_deadline_fast._live_prediction_context(now_ms + 250_000),
+        ):
             results = ai_ensemble._run_prefix_cached(3, task)
         self.assertEqual(set(started), {0, 1, 2})
         self.assertEqual(set(results), {0, 1, 2})
-        self.assertEqual(worker_contexts, [True, True, True])
+        self.assertEqual(fast_flags, [True, True, True])
 
-    def test_deepseek_first_live_request_disables_thinking_and_caps_output(self) -> None:
+    def test_quality_mode_preserves_original_provider_path_above_270_seconds(self) -> None:
+        now_seconds = 1_800_000_000.0
+        now_ms = int(now_seconds * 1000)
+        expected = {"scores": {"A": 1}}
+        with (
+            patch("app.ai_deadline_fast.time.time", return_value=now_seconds),
+            patch.object(
+                ai_deadline_fast,
+                "_ORIGINAL_CALL_JSON",
+                return_value=expected,
+            ) as original,
+            patch("app.ai_deadline_fast.httpx.Client") as client,
+            ai_deadline_fast._live_prediction_context(now_ms + 300_000),
+        ):
+            result = ai_deadline_fast._fast_call_json(
+                self.config(),
+                system_prompt="quality",
+                user_payload={"target": "21348748"},
+                max_tokens=1400,
+                timeout_seconds=50,
+            )
+        self.assertIs(result, expected)
+        original.assert_called_once()
+        client.assert_not_called()
+
+    def test_deepseek_fast_phase_disables_thinking_and_caps_output(self) -> None:
+        now_seconds = 1_800_000_000.0
+        now_ms = int(now_seconds * 1000)
         response = MagicMock()
         response.status_code = 200
         response.raise_for_status.return_value = None
@@ -112,8 +144,9 @@ class AiDeadlineFastTests(unittest.TestCase):
         client_cm.__exit__.return_value = False
 
         with (
+            patch("app.ai_deadline_fast.time.time", return_value=now_seconds),
             patch("app.ai_deadline_fast.httpx.Client", return_value=client_cm),
-            ai_deadline_fast._deadline_fast_context(),
+            ai_deadline_fast._live_prediction_context(now_ms + 250_000),
         ):
             result = ai_deadline_fast._fast_call_json(
                 self.config(),
@@ -127,6 +160,16 @@ class AiDeadlineFastTests(unittest.TestCase):
         self.assertEqual(request_body["thinking"], {"type": "disabled"})
         self.assertLessEqual(request_body["max_tokens"], ai_deadline_fast.AI_MAX_FAST_TOKENS)
         self.assertIn("scores", result)
+
+    def test_same_job_can_switch_from_quality_to_fast_between_phases(self) -> None:
+        start_seconds = 1_800_000_000.0
+        start_ms = int(start_seconds * 1000)
+        deadline_ms = start_ms + 300_000
+        with ai_deadline_fast._live_prediction_context(deadline_ms):
+            with patch("app.ai_deadline_fast.time.time", return_value=start_seconds):
+                self.assertFalse(ai_deadline_fast._fast_transport_enabled())
+            with patch("app.ai_deadline_fast.time.time", return_value=start_seconds + 40.0):
+                self.assertTrue(ai_deadline_fast._fast_transport_enabled())
 
 
 if __name__ == "__main__":
