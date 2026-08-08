@@ -86,13 +86,20 @@ object PushNotificationManager {
         if (alert.isExpired || !canPostNotifications(context)) return
         val notificationId = alert.stableNotificationKey.hashCode()
         val groupKey = groupKey(alert)
-        val openIntent = if (alert.eventType == PushProtocol.EVENT_PREDICTION_READY) {
+        val isPrediction = alert.eventType == PushProtocol.EVENT_PREDICTION_READY
+        val isRecovery = alert.eventType == PushProtocol.EVENT_HIT_RECOVERY
+        val openIntent = if (isPrediction) {
             openPredictionIntent(context, alert, notificationId)
         } else {
             openAlertIntent(context, alert.id, notificationId)
         }
-        val markReadIntent = markReadIntent(context, alert.id, notificationId)
         val channel = if (alert.isRiskAlert) RISK_CHANNEL_ID else UPDATE_CHANNEL_ID
+        val actionLabel = when {
+            isPrediction -> "查看预测"
+            isRecovery -> "查看档案"
+            alert.isRiskAlert -> "查看预警"
+            else -> "查看详情"
+        }
         val expanded = buildString {
             append(alert.body)
             if (alert.latestTargetPeriod.isNotBlank()) {
@@ -125,17 +132,13 @@ object PushNotificationManager {
             .setContentIntent(openIntent)
             .addAction(
                 R.drawable.ic_stat_tianji,
-                "查看预测",
+                actionLabel,
                 openIntent,
-            )
-            .addAction(
-                R.drawable.ic_stat_tianji,
-                "标记已读",
-                markReadIntent,
             )
             .setWhen(alert.createdAtEpochMs)
             .setShowWhen(true)
-            .setSilent(!alert.isRiskAlert)
+            // Every-period prediction stays quiet; recovery and risk events are allowed to alert.
+            .setSilent(isPrediction)
             .build()
         val manager = NotificationManagerCompat.from(context)
         manager.notify(notificationId, notification)
@@ -177,24 +180,6 @@ object PushNotificationManager {
         return PendingIntent.getActivity(
             context,
             requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    private fun markReadIntent(
-        context: Context,
-        alertId: Long,
-        notificationId: Int,
-    ): PendingIntent {
-        val intent = Intent(context, PushNotificationActionReceiver::class.java).apply {
-            action = PushNotificationActionReceiver.ACTION_MARK_READ
-            putExtra(PushNotificationActionReceiver.EXTRA_ALERT_ID, alertId)
-            putExtra(PushNotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-        }
-        return PendingIntent.getBroadcast(
-            context,
-            notificationId xor 0x5A17,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
