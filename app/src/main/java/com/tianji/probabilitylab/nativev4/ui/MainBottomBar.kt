@@ -145,9 +145,7 @@ fun MainBottomBar(
             ChatNavItem(
                 onClick = onChat,
                 isRunning = isAiRunning,
-                modifier = Modifier
-                    .weight(1f)
-                    .offset(y = (-9).dp),
+                modifier = Modifier.weight(1f),
             )
             StandardNavItem(
                 item = MainDestination.ARCHIVE,
@@ -255,10 +253,15 @@ private fun ChatNavItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(modifier = Modifier.size(50.dp), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .offset(y = (-7).dp),
+            contentAlignment = Alignment.Center,
+        ) {
             if (isRunning) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(49.dp),
+                    modifier = Modifier.size(47.dp),
                     color = colors.accent,
                     trackColor = colors.accent.copy(alpha = 0.12f),
                     strokeWidth = 2.dp,
@@ -266,7 +269,7 @@ private fun ChatNavItem(
             }
             Box(
                 modifier = Modifier
-                    .size(43.dp)
+                    .size(41.dp)
                     .shadow(
                         elevation = if (colors.isOled) 0.dp else 10.dp,
                         shape = CircleShape,
@@ -286,17 +289,18 @@ private fun ChatNavItem(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(19.dp),
                 )
             }
         }
         Text(
             if (isRunning) "运行中" else "问 AI",
             color = colors.accent,
-            fontSize = 11.sp,
-            lineHeight = 13.sp,
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
+            modifier = Modifier.offset(y = (-6).dp),
         )
     }
 }
