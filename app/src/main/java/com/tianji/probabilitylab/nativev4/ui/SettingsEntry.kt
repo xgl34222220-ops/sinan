@@ -1,7 +1,6 @@
 package com.tianji.probabilitylab.nativev4.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
@@ -54,25 +52,23 @@ fun SettingsEntry(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 66.dp)
-            .clip(RoundedCornerShape(17.dp))
-            .background(colors.surface.copy(alpha = 0.90f))
-            .border(1.dp, colors.line, RoundedCornerShape(17.dp))
+            .heightIn(min = 64.dp)
+            .clip(RoundedCornerShape(13.dp))
             .semantics { role = Role.Button }
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(13.dp))
-                .background(tint.copy(alpha = 0.11f)),
+                .size(38.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(tint.copy(alpha = 0.10f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
+            Icon(icon, null, tint = tint, modifier = Modifier.size(19.dp))
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 title,
@@ -96,11 +92,8 @@ fun SettingsEntry(
                 color = tint,
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(tint.copy(alpha = 0.10f))
-                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
             )
             Spacer(Modifier.width(5.dp))
         }
