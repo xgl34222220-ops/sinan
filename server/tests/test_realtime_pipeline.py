@@ -51,19 +51,31 @@ class RealtimePipelineContractTests(unittest.TestCase):
         self.assertIn("normalizeNextPeriod", lottery)
         self.assertIn("connectTimeout = 4_000", lottery)
 
-    def test_push_and_foreground_both_trigger_fast_app_refresh(self) -> None:
+    def test_push_and_foreground_keep_both_lotteries_current(self) -> None:
         coordinator = (APP / "push" / "PushAlertCoordinator.kt").read_text(encoding="utf-8")
         runtime = (APP / "TianjiRuntime.kt").read_text(encoding="utf-8")
         controller = (APP / "AppController.kt").read_text(encoding="utf-8")
         ui = (APP / "ui" / "TianjiApp.kt").read_text(encoding="utf-8")
+        realtime_client = (APP / "data" / "CloudRealtimeOverviewApi.kt").read_text(encoding="utf-8")
+        realtime_public = (SERVER / "realtime_public.py").read_text(encoding="utf-8")
+
         self.assertIn("setRealtimeRefreshCallback", coordinator)
         self.assertIn("requestRealtimeRefresh()", coordinator)
-        self.assertIn("appController.refreshCurrentLottery()", runtime)
-        self.assertIn("internal fun refreshCurrentLottery()", controller)
+        self.assertIn("appController.refresh()", runtime)
+        self.assertIn("fun refresh()", controller)
+        self.assertIn("refreshAll(force = true)", controller)
         self.assertFalse((APP / "AppRealtimeRefresh.kt").exists())
-        self.assertIn("controller.refreshCurrentLottery()", ui)
-        self.assertIn("remaining in -90_000L..60_000L -> 3_000L", ui)
-        self.assertIn("remaining in 60_001L..180_000L -> 8_000L", ui)
+
+        # Foreground polling uses one light server response for both lotteries, then only enters
+        # the heavy all-lottery lane on an actual period change or a bounded fallback interval.
+        self.assertIn("CloudRealtimeOverviewApi", ui)
+        self.assertIn("realtimeApi.fetchOverview()", ui)
+        self.assertIn("controller.refresh()", ui)
+        self.assertNotIn("controller.refreshCurrentLottery()", ui)
+        self.assertIn("nearestDrawMs in -90_000L..60_000L -> 2_500L", ui)
+        self.assertIn("nearestDrawMs in 60_001L..180_000L -> 6_000L", ui)
+        self.assertIn('URL("$baseUrl/v1/public/realtime")', realtime_client)
+        self.assertIn('@app.get("/v1/public/realtime"', realtime_public)
 
     def test_console_has_adaptive_lightweight_draw_refresh(self) -> None:
         console = (SERVER / "console_v3.py").read_text(encoding="utf-8")
