@@ -51,7 +51,14 @@ def _run_prefix_cached_deadline_aware(count: int, task: Any) -> list[Any]:
     live prediction wait for an artificial warm-up request.
     """
     if _fast_context_enabled():
-        return ai_ensemble._run_parallel(count, task)
+        # Thread-local state does not cross ThreadPoolExecutor boundaries by itself.
+        # Re-enter the live deadline context inside every reviewer worker so transport
+        # limits (non-thinking DeepSeek, bounded tokens/timeouts) apply to real calls.
+        def live_task(reviewer: int) -> Any:
+            with _deadline_fast_context():
+                return task(reviewer)
+
+        return ai_ensemble._run_parallel(count, live_task)
     return _ORIGINAL_RUN_PREFIX_CACHED(count, task)
 
 
