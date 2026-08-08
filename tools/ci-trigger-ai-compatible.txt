@@ -1,0 +1,1 @@
+Temporary CI trigger for the final AI-compatible endpoint recovery source. This file will be removed after validation.
