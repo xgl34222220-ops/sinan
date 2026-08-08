@@ -1,10 +1,16 @@
-name: Tianji AI Original Engine Deploy 20260808
+name: Tianji Production Server Deploy
 
 on:
   push:
     branches: [main]
     paths:
+      - 'server/**'
+      - 'deploy/**'
+      - 'docker-compose.yml'
+      - 'compose.yml'
+      - 'compose.yaml'
       - '.github/workflows/deploy-ai-hotfix-20260808.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,30 +30,20 @@ jobs:
       DEPLOY_SSH_KEY: ${{ secrets.TIANJI_DEPLOY_SSH_KEY }}
       DEPLOY_PORT: ${{ vars.TIANJI_DEPLOY_PORT || '22' }}
       DEPLOY_PATH: ${{ vars.TIANJI_DEPLOY_PATH || '/opt/tianji' }}
-      EXPECTED_SHA: ebff13962324dd6cdb7c9bf4f1b53966c9d828c6
+      EXPECTED_SHA: ${{ github.sha }}
     steps:
-      - name: Checkout merged AI fix
+      - name: Checkout deployment commit
         uses: actions/checkout@v6
         with:
           ref: ${{ env.EXPECTED_SHA }}
 
-      - name: Validate exact original-engine fix
+      - name: Validate deployment source
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           python -m compileall -q server/app
-          test ! -e server/app/ai_deadline_fast.py
-          python - <<'PY'
-          from pathlib import Path
-
-          service = Path('server/app/service.py').read_text()
-          init = Path('server/app/__init__.py').read_text()
-          for marker in ('AI_PUBLISH_GUARD_MS = 60_000', 'AI_MIN_START_LEAD_MS = 225_000'):
-              assert marker in service, marker
-          assert 'AI_FAST_MODE_THRESHOLD_MS' not in service
-          assert 'ai_deadline_fast' not in init
-          PY
+          docker compose config --quiet
 
       - name: Require protected deployment secrets
         shell: bash
@@ -56,6 +52,7 @@ jobs:
           test -n "$DEPLOY_HOST" || { echo "Missing TIANJI_DEPLOY_HOST" >&2; exit 1; }
           test -n "$DEPLOY_USER" || { echo "Missing TIANJI_DEPLOY_USER" >&2; exit 1; }
           test -n "$DEPLOY_SSH_KEY" || { echo "Missing TIANJI_DEPLOY_SSH_KEY" >&2; exit 1; }
+          test -n "$EXPECTED_SHA" || { echo "Missing deployment SHA" >&2; exit 1; }
 
       - name: Configure ephemeral SSH identity
         shell: bash
@@ -66,7 +63,7 @@ jobs:
           chmod 600 ~/.ssh/tianji_deploy_key
           ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy exact original-engine fix
+      - name: Deploy exact main commit
         shell: bash
         run: |
           set -euo pipefail
@@ -87,9 +84,16 @@ jobs:
             git status --short
             exit 1
           }
+
           git fetch --prune origin main
-          git cat-file -e "$EXPECTED_SHA^{commit}"
-          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main
+          git cat-file -e "$EXPECTED_SHA^{commit}" || {
+            echo "Deployment commit is not available from origin/main history: $EXPECTED_SHA" >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main || {
+            echo "Deployment commit is not an ancestor of current origin/main" >&2
+            exit 1
+          }
           git checkout --detach "$EXPECTED_SHA"
           ACTUAL_SHA="$(git rev-parse HEAD)"
           test "$ACTUAL_SHA" = "$EXPECTED_SHA"
@@ -98,40 +102,32 @@ jobs:
           docker compose up -d --build --remove-orphans
           docker compose ps
 
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in 1 2 3 4 5 6 7 8; do
             if docker compose exec -T api python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).read()" >/dev/null 2>&1; then
               break
             fi
-            if [ "$attempt" = 6 ]; then
+            if [ "$attempt" = 8 ]; then
               echo "Tianji health check failed after deploy" >&2
-              docker compose logs --tail=160 api worker >&2 || true
+              docker compose logs --tail=200 api worker >&2 || true
               exit 1
             fi
             sleep 5
           done
 
           docker compose exec -T api python - <<'PY'
-          import importlib.util
           import json
           import urllib.request
-          from app import ai, ai_continual_bridge, ai_ensemble, service
 
-          assert service.AI_PUBLISH_GUARD_MS == 60_000
-          assert service.AI_MIN_START_LEAD_MS == 225_000
-          assert importlib.util.find_spec('app.ai_deadline_fast') is None
-          assert ai.analyze.__module__ == 'app.ai'
-          assert ai_ensemble._call_json.__module__ == 'app.ai_ensemble'
-          assert ai_ensemble._run_prefix_cached.__module__ == 'app.ai_ensemble'
-          assert ai_ensemble.analyze_ensemble is ai_continual_bridge._analyze_ensemble_with_continual_learning
-
-          payload = json.loads(urllib.request.urlopen('http://127.0.0.1:8000/v1/public/realtime', timeout=5).read())
-          lotteries = payload.get('lotteries')
-          assert isinstance(lotteries, (dict, list)) and len(lotteries) >= 2, payload
-          print('Original Dynamic AI v2 runtime verified; 60s hard cutoff; realtime lotteries:', len(lotteries))
+          health = json.loads(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read())
+          realtime = json.loads(urllib.request.urlopen('http://127.0.0.1:8000/v1/public/realtime', timeout=5).read())
+          lotteries = realtime.get('lotteries')
+          assert isinstance(lotteries, (dict, list)) and len(lotteries) >= 2, realtime
+          print('health:', health)
+          print('realtime lotteries:', len(lotteries))
           PY
 
           docker compose ps worker
-          echo "Tianji original AI engine production health check passed at $ACTUAL_SHA"
+          echo "Tianji production deployment passed at $ACTUAL_SHA"
           REMOTE
 
       - name: Remove SSH key
