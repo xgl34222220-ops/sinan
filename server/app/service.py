@@ -17,7 +17,7 @@ from .runtime_config import RuntimeAiConfig, load_ai_config
 
 SERVICE_VERSION = "1.8.0"
 SAFETY_WINDOW_MS = 5_000
-AI_PUBLISH_GUARD_MS = 60_000
+AI_PUBLISH_GUARD_MS = 40_000
 AI_MIN_START_LEAD_MS = 225_000
 AI_RETRY_AFTER_MS = 30_000
 _AI_EXECUTOR = ThreadPoolExecutor(
@@ -82,7 +82,7 @@ def _ai_job_state(
 
 
 def _target_is_open(spec: LotterySpec, trained_through_period: str, target_period: str) -> bool:
-    """Fail closed once the target changes or enters the final 60-second publish window."""
+    """Fail closed once the target changes or enters the final 40-second publish window."""
     latest, current_next_period, _, next_draw_at = lottery_client.fetch_latest(spec)
     if latest.period != trained_through_period or current_next_period != target_period:
         return False
@@ -158,7 +158,7 @@ def _run_ai_prediction(
             },
         )
         if not _target_is_open(spec, trained_through_period, target_period):
-            message = "AI 完成时已进入开奖前60秒硬截止窗口或目标期已变化，结果未写入前向档案"
+            message = "AI 完成时已进入开奖前40秒硬截止窗口或目标期已变化，结果未写入前向档案"
             database.finish_forecast_job(
                 lottery=spec.key,
                 target_period=target_period,
