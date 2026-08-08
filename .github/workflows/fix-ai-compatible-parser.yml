@@ -25,13 +25,14 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           path = Path('app/src/main/java/com/tianji/probabilitylab/nativev4/ui/SettingsHubV2.kt')
-          text = path.read_text(encoding='utf-8')
-          old = '''        .substringBefore("","type"")
-              .substringBefore(""type"")'''
-          new = '''        .substringBefore("type")'''
-          if text.count(old) != 1:
-              raise SystemExit(f'parser repair expected 1 match, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          first = [i for i, line in enumerate(lines) if '.substringBefore("","type"")' in line]
+          second = [i for i, line in enumerate(lines) if '.substringBefore(""type"")' in line]
+          if len(first) != 1 or len(second) != 1 or second[0] != first[0] + 1:
+              raise SystemExit(f'parser repair anchors invalid: first={first}, second={second}')
+          lines[first[0]] = '        .substringBefore("type")'
+          del lines[second[0]]
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
           PY
           rm -f .github/workflows/fix-ai-compatible-parser.yml
           git diff --check
