@@ -4,12 +4,21 @@
 
 ## 当前版本
 
-- 当前正式版：**6.7.0**
+- 当前正式版：**6.8.0**
 - 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 正式应用 ID：`com.tianji.probabilitylab.nativev5`
+
+## v6.8 稳定 UI 与实时链路观测
+
+- Android 保持 v6.7 正式版 UI、导航、首页、历史、推送中心与 AI 交互，不引入实验性的 V68 视觉重构。
+- 实时开奖快车道继续按开奖窗口自适应约 2 / 6 / 10–60 秒探测，最新开奖优先写库与结算，FCM / Telegram 网络投递继续异步运行。
+- 服务端记录最近 100 次开奖发现、探测、写库结算、App / FCM、Telegram 与完整预测周期延迟，并提供 P50 / P95。
+- 管理控制台新增端到端链路指标，异常时可直接定位开奖源、结算、推送或完整预测周期。
+- 完整预测周期继续使用单 worker 合并重复请求，避免重复重计算阻塞开奖快车道。
+- 新增服务端链路指标与控制台契约测试；Android UI 回归沿用 v6.7 稳定视觉基线。
 
 ## v6.7 双彩种实时同步与 UI 收敛
 
