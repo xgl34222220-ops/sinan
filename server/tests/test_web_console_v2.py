@@ -23,6 +23,7 @@ class WebConsoleV2Tests(unittest.TestCase):
             'id="panel-security"',
             'id="runBtn"',
             'id="aiAutoEnabled"',
+            'id="aiLotterySwitches"',
             'id="quickCurrent"',
             'id="modelSwitcher"',
             'id="dynamicModels"',
@@ -39,6 +40,10 @@ class WebConsoleV2Tests(unittest.TestCase):
         self.assertIn("discoveredModels", html)
         self.assertIn("此 Key 已确认支持", html)
         self.assertIn("switchModel", html)
+        self.assertIn("renderLotteryAiSwitches", html)
+        self.assertIn("/admin/api/ai/lotteries/", html)
+        self.assertIn("models.map", html)
+        self.assertNotIn("const primary=models.slice", html)
         self.assertNotIn('data-quick-model="deepseek-v4-flash"', html)
         self.assertNotIn('data-quick-model="deepseek-v4-pro"', html)
         self.assertNotIn("DeepSeek V4 Flash</strong>", html)

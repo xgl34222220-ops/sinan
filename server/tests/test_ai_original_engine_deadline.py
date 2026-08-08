@@ -65,6 +65,18 @@ class AiOriginalEngineDeadlineTests(unittest.TestCase):
         ):
             self.assertTrue(service._target_is_open(spec, "21348747", "21348748"))
 
+    def test_each_lottery_has_its_own_single_worker_ai_executor(self) -> None:
+        self.assertEqual(set(service.LOTTERIES), set(service._AI_EXECUTORS))
+        executors = list(service._AI_EXECUTORS.values())
+        self.assertEqual(len(executors), len({id(executor) for executor in executors}))
+        self.assertTrue(all(executor._max_workers == 1 for executor in executors))
+
+    def test_per_lottery_ai_switch_defaults_on_and_can_disable(self) -> None:
+        with patch.object(service.database, "get_state", return_value=None):
+            self.assertTrue(service._lottery_ai_auto_enabled("xyft"))
+        with patch.object(service.database, "get_state", return_value=('{"enabled":false}', 1)):
+            self.assertFalse(service._lottery_ai_auto_enabled("azxy10"))
+
     def test_ai_is_scheduled_after_settlement_but_before_notifications_and_native(self) -> None:
         source = inspect.getsource(service.run_lottery_cycle)
         settle = source.index('"settle_forecasts"')

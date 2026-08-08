@@ -76,6 +76,10 @@ class AiAutoPayload(BaseModel):
     enabled: bool
 
 
+class AiLotteryAutoPayload(BaseModel):
+    enabled: bool
+
+
 class PasswordPayload(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=8, max_length=256)
@@ -160,6 +164,13 @@ def _clear_ai_errors() -> None:
         database.delete_state(f"ai_error:{key}")
 
 
+def _lottery_ai_auto_enabled(key: str) -> bool:
+    value = _decode_state(f"ai_auto:{key}")
+    if value is None:
+        return True
+    return bool(value.get("enabled", True))
+
+
 def _lottery_overview(key: str) -> dict[str, Any]:
     spec = LOTTERIES[key]
     latest = database.latest_draw(key)
@@ -182,6 +193,7 @@ def _lottery_overview(key: str) -> dict[str, Any]:
             "ai": database.strategy_learning_summary(key, "ai"),
         },
         "learning_diagnostics": database.strategy_snapshot_diagnostics(key),
+        "ai_auto_enabled": _lottery_ai_auto_enabled(key),
     }
 
 
@@ -416,6 +428,7 @@ def admin_state() -> dict[str, Any]:
         "health": health_value().model_dump(),
         "ai": runtime_ai.public_dict(),
         "ai_registry": registry.public_dict(),
+        "ai_lottery_auto": {key: _lottery_ai_auto_enabled(key) for key in LOTTERIES},
         "heartbeat": _decode_state("worker_heartbeat"),
         "ai_errors": errors,
         "lotteries": [_lottery_overview(key) for key in LOTTERIES],
@@ -552,6 +565,19 @@ def update_ai_auto(payload: AiAutoPayload) -> dict[str, object]:
         return registry.public_dict()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.put("/admin/api/ai/lotteries/{lottery_key}", dependencies=[Depends(require_admin_action)])
+def update_ai_lottery_auto(lottery_key: str, payload: AiLotteryAutoPayload) -> dict[str, object]:
+    if lottery_key not in LOTTERIES:
+        raise HTTPException(status_code=404, detail="未知彩种")
+    database.set_state(
+        f"ai_auto:{lottery_key}",
+        json.dumps({"enabled": payload.enabled}, ensure_ascii=False),
+    )
+    if not payload.enabled:
+        database.delete_state(f"ai_error:{lottery_key}")
+    return {"lottery": lottery_key, "enabled": payload.enabled}
 
 
 @app.post("/admin/api/ai/test", dependencies=[Depends(require_admin_action)])
