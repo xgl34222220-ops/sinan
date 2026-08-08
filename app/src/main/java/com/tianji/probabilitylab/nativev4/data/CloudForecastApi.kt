@@ -15,8 +15,9 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.absoluteValue
 
 /**
- * Read-only cloud archive client. Failure is deliberately non-fatal: AppController keeps the
- * existing direct开奖、手机直连 AI and local statistical paths when the VPS is unavailable.
+ * Read-only cloud AI archive client. Native cloud forecasts are deliberately excluded here:
+ * AppController already has a separate local/native forecast path and mixing the two would pollute
+ * the UI's AI vote count and consensus semantics.
  *
  * Cloud history is secondary UI data, so it must never hold the latest-draw path for several
  * seconds. Successful responses are cached per lottery and reused on a timeout or transient error.
@@ -62,6 +63,7 @@ class CloudForecastApi {
         buildList {
             for (index in 0 until array.length()) {
                 val value = array.optJSONObject(index) ?: continue
+                if (!value.optString("source").trim().equals("ai", ignoreCase = true)) continue
                 value.toRecord(lottery)?.let(::add)
             }
         }
@@ -73,7 +75,7 @@ class CloudForecastApi {
         val top6 = optJSONArray("top6").toIntList()
         val top7 = optJSONArray("top7").toIntList()
         val probabilities = optJSONArray("probabilities").toDoubleList()
-        val source = optString("source").trim().ifBlank { "cloud" }
+        val source = "ai"
         val model = optString("model").trim().ifBlank { "tianji-cloud" }
         if (
             targetPeriod.isBlank() ||
@@ -86,13 +88,12 @@ class CloudForecastApi {
 
         val stableKey = "$targetPeriod|$source|$model|$position"
         val cloudId = -(stableKey.hashCode().toLong().absoluteValue + 1L)
-        val isAi = source.equals("ai", ignoreCase = true)
         val actual = optNullableInt("actual_number")
         return AiForecastRecord(
             id = cloudId,
             lottery = lottery,
-            profileId = "cloud:$source:$model",
-            profileName = if (isAi) "天机云端 AI" else "天机云端本地",
+            profileId = "cloud:ai:$model",
+            profileName = "天机云端 AI",
             targetPeriod = targetPeriod,
             trainedThroughPeriod = trainedThrough,
             position = position,
@@ -104,14 +105,14 @@ class CloudForecastApi {
             selfRating = probabilities.sortedDescending().take(6).sum().coerceIn(0.0, 1.0),
             model = model,
             analysisMode = AiAnalysisMode.DEEP,
-            reasoningMode = if (isAi) AiReasoningMode.AUTO else AiReasoningMode.LOW,
-            reasoningProtocol = if (isAi) AiReasoningProtocol.AUTO else AiReasoningProtocol.NONE,
-            reasoningState = if (isAi) AiReasoningState.DEFAULT else AiReasoningState.UNSUPPORTED,
+            reasoningMode = AiReasoningMode.AUTO,
+            reasoningProtocol = AiReasoningProtocol.AUTO,
+            reasoningState = AiReasoningState.DEFAULT,
             reasoningTokens = null,
             inputTokens = null,
             outputTokens = null,
             estimatedCost = null,
-            executionNote = "云端全天后台生成 · 服务器不可用时不影响手机本地模式",
+            executionNote = "云端 AI 全天后台生成 · 服务器不可用时不影响手机本地模式",
             createdAtEpochMs = optLong("created_at_epoch_ms", System.currentTimeMillis()),
             latencyMs = 0L,
             responseId = "cloud-${optLong("id", cloudId.absoluteValue)}",
