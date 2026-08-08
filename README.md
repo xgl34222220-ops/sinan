@@ -4,12 +4,21 @@
 
 ## 当前版本
 
-- 当前正式版：**6.8.1**
+- 当前正式版：**6.9.0**
 - 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 正式应用 ID：`com.tianji.probabilitylab.nativev5`
+
+## v6.9.0 AI 服务配置中心
+
+- Android 设置页统一管理 OpenAI、DeepSeek 与自定义 / OpenAI 兼容接口，支持官方地址、中转 Base URL、Chat Completions / Responses 路由和任意兼容模型 ID。
+- 可以同时保存多个 AI 配置，但正式预测只调用唯一“当前 AI”，避免主页一次触发多个 API Key；当前选择会跨重启持久保存。
+- 每张 AI 卡片提供“当前 AI / 设为当前”，切换只修改本机选择，不发送 API 请求；单独“立即分析”仍只调用对应配置。
+- 支持第三方兼容网关的自定义模型路由，例如服务方提供的 `free` 模型 ID；具体额度、可用性和计费规则由对应服务商决定。
+- 同一目标期已有冻结结果时继续拒绝重复调用；API Key 保存在本机安全配置，不进入公开仓库、Release 或构建日志。
+- 本版本不修改 FastAPI 服务端预测引擎、开奖快车道、Dynamic AI v2、FCM / Telegram 和历史结算语义。
 
 ## v6.8.1 Android UI 精修
 
