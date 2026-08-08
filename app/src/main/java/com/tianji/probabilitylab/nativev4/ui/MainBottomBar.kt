@@ -239,9 +239,8 @@ private fun ChatNavItem(
     )
     Column(
         modifier = modifier
-            .heightIn(min = 60.dp)
+            .heightIn(min = 52.dp)
             .scale(pressScale)
-            .clip(RoundedCornerShape(20.dp))
             .semantics { role = Role.Button }
             .clickable(
                 interactionSource = interaction,
@@ -255,13 +254,13 @@ private fun ChatNavItem(
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(45.dp)
                 .offset(y = (-7).dp),
             contentAlignment = Alignment.Center,
         ) {
             if (isRunning) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(47.dp),
+                    modifier = Modifier.size(44.dp),
                     color = colors.accent,
                     trackColor = colors.accent.copy(alpha = 0.12f),
                     strokeWidth = 2.dp,
@@ -269,7 +268,7 @@ private fun ChatNavItem(
             }
             Box(
                 modifier = Modifier
-                    .size(41.dp)
+                    .size(39.dp)
                     .shadow(
                         elevation = if (colors.isOled) 0.dp else 10.dp,
                         shape = CircleShape,
@@ -289,7 +288,7 @@ private fun ChatNavItem(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = if (isRunning) "查看正在运行的 AI 任务" else "打开 AI 对话",
                     tint = Color.White,
-                    modifier = Modifier.size(19.dp),
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }
@@ -297,10 +296,9 @@ private fun ChatNavItem(
             if (isRunning) "运行中" else "问 AI",
             color = colors.accent,
             fontSize = 10.sp,
-            lineHeight = 12.sp,
+            lineHeight = 11.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
-            modifier = Modifier.offset(y = (-6).dp),
         )
     }
 }
