@@ -123,7 +123,13 @@ class AppController(context: Context) {
     var aiAvailableModels by mutableStateOf<Map<String, List<String>>>(emptyMap())
         private set
 
+    var activeAiProfileId by mutableStateOf(
+        preferences.getString("active_ai_profile_id", "").orEmpty(),
+    )
+        private set
+
     init {
+        ensureActiveAiProfile()
         refreshAll(force = true)
         aiConfigs.filter { it.canQueryModels }.forEach { loadAiModels(it.id) }
     }
@@ -266,6 +272,11 @@ class AppController(context: Context) {
             aiConfigs + normalized
         }
         aiConfigStore.saveAll(aiConfigs)
+        ensureActiveAiProfile(
+            preferredProfileId = normalized.id.takeIf {
+                activeAiProfileId.isBlank() && normalized.isComplete
+            },
+        )
         state = state.copy(
             aiError = null,
             aiStatuses = state.aiStatuses + (
@@ -283,7 +294,15 @@ class AppController(context: Context) {
         aiConfigs = aiConfigs.filterNot { it.id == profileId }
         aiAvailableModels = aiAvailableModels - profileId
         aiConfigStore.saveAll(aiConfigs)
+        ensureActiveAiProfile()
         state = state.copy(aiStatuses = state.aiStatuses - profileId)
+    }
+
+    fun selectActiveAiProfile(profileId: String) {
+        val selected = aiConfigs.firstOrNull { it.id == profileId && it.isComplete } ?: return
+        if (activeAiProfileId == selected.id) return
+        activeAiProfileId = selected.id
+        preferences.edit { putString("active_ai_profile_id", selected.id) }
     }
 
     fun loadAiModels(profileId: String) {
@@ -435,17 +454,28 @@ class AppController(context: Context) {
         val runningIds = state.aiStatuses.filterValues {
             it.state == AiConnectionState.ANALYZING || it.state == AiConnectionState.TESTING
         }.keys
-        if (profileId != null && profileId in runningIds) {
-            state = state.copy(aiError = "该 AI 仍在后台运行，请等待完成或先手动取消")
+        val selected = if (profileId != null) {
+            aiConfigs.firstOrNull { it.id == profileId && it.isComplete }?.also {
+                selectActiveAiProfile(it.id)
+            }
+        } else {
+            ensureActiveAiProfile()
+        }
+        if (selected == null) {
+            state = state.copy(aiError = "请先在设置中保存并启用一个完整的 AI 配置")
             return
         }
-        val requested = aiConfigs.filter {
-            it.isComplete && (profileId == null || it.id == profileId) && it.id !in runningIds
-        }
-        if (requested.isEmpty()) {
-            state = state.copy(aiError = "请先在数据页保存至少一个完整的 AI 配置")
+        if (selected.id in runningIds) {
+            state = state.copy(
+                aiError = if (profileId == null) {
+                    "当前 AI 仍在后台运行，请等待完成或先手动取消"
+                } else {
+                    "该 AI 仍在后台运行，请等待完成或先手动取消"
+                },
+            )
             return
         }
+        val requested = listOf(selected)
         val targetPeriod = state.report?.targetPeriod
         val configs = requested.filterNot { config ->
             targetPeriod != null && state.aiRecords.any {
@@ -942,6 +972,25 @@ class AppController(context: Context) {
             isRefreshing = false,
             error = networkFailure?.message,
         )
+    }
+
+    private fun ensureActiveAiProfile(preferredProfileId: String? = null): AiConfig? {
+        val preferred = preferredProfileId?.let { id ->
+            aiConfigs.firstOrNull { it.id == id && it.isComplete }
+        }
+        val current = aiConfigs.firstOrNull {
+            it.id == activeAiProfileId && it.isComplete
+        }
+        val resolved = preferred ?: current ?: aiConfigs.firstOrNull(AiConfig::isComplete)
+        val resolvedId = resolved?.id.orEmpty()
+        if (activeAiProfileId != resolvedId) {
+            activeAiProfileId = resolvedId
+            preferences.edit {
+                if (resolvedId.isBlank()) remove("active_ai_profile_id")
+                else putString("active_ai_profile_id", resolvedId)
+            }
+        }
+        return resolved
     }
 
     private fun savedLottery(): LotteryType {
