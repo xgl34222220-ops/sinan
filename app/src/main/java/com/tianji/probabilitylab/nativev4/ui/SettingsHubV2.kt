@@ -138,6 +138,7 @@ fun SettingsHubScreen(
     appearanceMode: AppearanceMode,
     aiConfigs: List<AiConfig>,
     aiAvailableModels: Map<String, List<String>>,
+    activeAiProfileId: String,
     onPaletteChanged: (PaletteMode) -> Unit,
     onAppearanceChanged: (AppearanceMode) -> Unit,
     onSaveAiConfig: (AiConfig) -> Unit,
@@ -147,6 +148,7 @@ fun SettingsHubScreen(
     onSelectAiModel: (String, String) -> Unit,
     onSelectAiMode: (String, AiAnalysisMode) -> Unit,
     onSelectAiReasoningMode: (String, AiReasoningMode) -> Unit,
+    onSelectActiveAi: (String) -> Unit,
     onAnalyzeAi: (String) -> Unit,
     onAiConcurrencyChanged: (Int) -> Unit,
     pushUnreadCount: Int,
@@ -158,6 +160,7 @@ fun SettingsHubScreen(
         SettingsPageV2.ROOT -> SettingsRootV2(
             state = state,
             aiConfigs = aiConfigs,
+            activeAiProfileId = activeAiProfileId,
             appearanceMode = appearanceMode,
             pushUnreadCount = pushUnreadCount,
             onOpenPushAlerts = onOpenPushAlerts,
@@ -168,6 +171,7 @@ fun SettingsHubScreen(
             state = state,
             configs = aiConfigs,
             catalogs = aiAvailableModels,
+            activeAiProfileId = activeAiProfileId,
             onBack = { page = SettingsPageV2.ROOT },
             onSave = onSaveAiConfig,
             onDelete = onDeleteAiConfig,
@@ -176,6 +180,7 @@ fun SettingsHubScreen(
             onSelectModel = onSelectAiModel,
             onSelectMode = onSelectAiMode,
             onSelectReasoning = onSelectAiReasoningMode,
+            onSelectActive = onSelectActiveAi,
             onAnalyze = onAnalyzeAi,
             onConcurrency = onAiConcurrencyChanged,
             modifier = modifier,
@@ -198,6 +203,7 @@ fun SettingsHubScreen(
 private fun SettingsRootV2(
     state: AppUiState,
     aiConfigs: List<AiConfig>,
+    activeAiProfileId: String,
     appearanceMode: AppearanceMode,
     pushUnreadCount: Int,
     onOpenPushAlerts: () -> Unit,
@@ -205,6 +211,7 @@ private fun SettingsRootV2(
     modifier: Modifier,
 ) {
     val colors = LocalTianjiColors.current
+    val activeAi = aiConfigs.firstOrNull { it.id == activeAiProfileId && it.isComplete }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
@@ -217,9 +224,9 @@ private fun SettingsRootV2(
             SettingsEntry(
                 Icons.Rounded.Psychology,
                 "AI 模型与接口",
-                "账户、Key、模型切换、推理模式和并发",
+                "可保存多个 Key，正式预测只调用当前 AI",
                 { onOpen(SettingsPageV2.AI) },
-                "${aiConfigs.count(AiConfig::isComplete)} 个可用",
+                activeAi?.let { "当前 ${it.provider.label}" } ?: "${aiConfigs.count(AiConfig::isComplete)} 个可用",
             )
         }
         item {
@@ -301,6 +308,7 @@ private fun AiSettingsPageV2(
     state: AppUiState,
     configs: List<AiConfig>,
     catalogs: Map<String, List<String>>,
+    activeAiProfileId: String,
     onBack: () -> Unit,
     onSave: (AiConfig) -> Unit,
     onDelete: (String) -> Unit,
@@ -309,6 +317,7 @@ private fun AiSettingsPageV2(
     onSelectModel: (String, String) -> Unit,
     onSelectMode: (String, AiAnalysisMode) -> Unit,
     onSelectReasoning: (String, AiReasoningMode) -> Unit,
+    onSelectActive: (String) -> Unit,
     onAnalyze: (String) -> Unit,
     onConcurrency: (Int) -> Unit,
     modifier: Modifier,
@@ -322,7 +331,7 @@ private fun AiSettingsPageV2(
         contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { SettingsPageHeaderV2("AI 服务", "官方接口、中转站、模型与能力检测统一管理", onBack) }
+        item { SettingsPageHeaderV2("AI 服务", "多个 Key 可保存，正式预测只调用当前 AI", onBack) }
         item {
             SurfaceCard(radius = 20.dp) {
                 Column(Modifier.padding(14.dp)) {
@@ -330,7 +339,7 @@ private fun AiSettingsPageV2(
                         Column(Modifier.weight(1f)) {
                             Text("并发任务", color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             Text(
-                                "同时运行的独立 AI 数量，建议根据接口限额选择",
+                                "单个 AI 的任务并行能力；正式预测仍只调用当前 AI",
                                 color = colors.textDim,
                                 fontSize = 11.sp,
                             )
@@ -371,6 +380,7 @@ private fun AiSettingsPageV2(
                 AiConfigCardV2(
                     config = config,
                     status = state.aiStatuses[config.id],
+                    isActive = config.id == activeAiProfileId,
                     models = (listOf(config.model) + catalogs[config.id].orEmpty() + config.provider.fallbackModels)
                         .map(String::trim)
                         .filter(String::isNotBlank)
@@ -379,6 +389,7 @@ private fun AiSettingsPageV2(
                     onDelete = { pendingDelete = config },
                     onTest = { onTest(config.id) },
                     onLoad = { onLoadModels(config.id) },
+                    onSetActive = { onSelectActive(config.id) },
                     onAnalyze = { onAnalyze(config.id) },
                     onModel = { onSelectModel(config.id, it) },
                     onMode = { onSelectMode(config.id, it) },
@@ -445,11 +456,13 @@ private fun AiSettingsPageV2(
 private fun AiConfigCardV2(
     config: AiConfig,
     status: com.tianji.probabilitylab.nativev4.ai.AiRunStatus?,
+    isActive: Boolean,
     models: List<String>,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onTest: () -> Unit,
     onLoad: () -> Unit,
+    onSetActive: () -> Unit,
     onAnalyze: () -> Unit,
     onModel: (String) -> Unit,
     onMode: (AiAnalysisMode) -> Unit,
@@ -501,12 +514,22 @@ private fun AiConfigCardV2(
                 }
             }
 
+            if (isActive) {
+                Text(
+                    "● 当前 AI · 主页正式预测只调用此配置",
+                    color = colors.accent,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 7.dp),
+                )
+            }
+
             Text(
                 status?.message ?: "配置已保存，尚未测试",
                 color = tint,
                 fontSize = 11.sp,
                 lineHeight = 16.sp,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = if (isActive) 4.dp else 8.dp),
             )
 
             val capability = config.capability
@@ -541,13 +564,18 @@ private fun AiConfigCardV2(
                 MiniButtonV2(
                     if (status?.state == AiConnectionState.ANALYZING) "正在分析" else "立即分析",
                     onAnalyze,
-                    Modifier.weight(1.25f),
+                    Modifier.weight(1.2f),
                     primary = true,
                 )
                 MiniButtonV2(
-                    if (expanded) "收起设置" else "更多设置",
+                    if (isActive) "当前 AI" else "设为当前",
+                    if (isActive) ({}) else onSetActive,
+                    Modifier.weight(0.9f),
+                )
+                MiniButtonV2(
+                    if (expanded) "收起" else "更多",
                     { expanded = !expanded },
-                    Modifier.weight(1f),
+                    Modifier.weight(0.8f),
                 )
             }
 

@@ -282,6 +282,7 @@ fun TianjiApp() {
                                     appearanceMode = appearanceMode,
                                     aiConfigs = controller.aiConfigs,
                                     aiAvailableModels = controller.aiAvailableModels,
+                                    activeAiProfileId = controller.activeAiProfileId,
                                     onPaletteChanged = { mode ->
                                         scope.launch { appearanceStore.setPalette(mode) }
                                     },
@@ -295,6 +296,7 @@ fun TianjiApp() {
                                     onSelectAiModel = controller::selectAiModel,
                                     onSelectAiMode = controller::selectAiAnalysisMode,
                                     onSelectAiReasoningMode = controller::selectAiReasoningMode,
+                                    onSelectActiveAi = controller::selectActiveAiProfile,
                                     onAiConcurrencyChanged = controller::setAiConcurrency,
                                     onAnalyzeAi = { id -> controller.analyzeWithAi(id) },
                                     pushUnreadCount = pushAlerts.count { !it.isRead },
