@@ -26,11 +26,9 @@ jobs:
           path = Path('server/app/web_console.py')
           text = path.read_text(encoding='utf-8')
 
-          hardcoded = '<div class=\\"model-switcher\\" id=\\"modelSwitcher\\"><button class=\\"model-choice\\" data-quick-model=\\"deepseek-v4-flash\\"><strong>DeepSeek V4 Flash</strong><span>速度优先 · 直接使用现有 Key</span></button><button class=\\"model-choice\\" data-quick-model=\\"deepseek-v4-pro\\"><strong>DeepSeek V4 Pro</strong><span>能力优先 · 直接使用现有 Key</span></button></div>'
-          dynamic = '<div class=\\"model-switcher\\" id=\\"modelSwitcher\\"></div>'
-          if text.count(hardcoded) != 1:
-              raise SystemExit(f'hardcoded switcher expected once, found {text.count(hardcoded)}')
-          text = text.replace(hardcoded, dynamic, 1)
+          html_start = text.index('<div class="model-switcher" id="modelSwitcher">')
+          html_end = text.index('<div class="dynamic-models" id="dynamicModels">', html_start)
+          text = text[:html_start] + '<div class="model-switcher" id="modelSwitcher"></div>' + text[html_end:]
 
           start = text.index('function renderQuick(){')
           end = text.index('\nfunction profiles(', start)
