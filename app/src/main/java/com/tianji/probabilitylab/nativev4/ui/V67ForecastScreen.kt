@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -500,11 +501,14 @@ private fun V67ProbabilityComparison(local: PositionPrediction, ai: AiAggregate?
         Text("同一名次下直接比较本地模型与 AI v2 的动态概率", color = colors.textDim, fontSize = 11.sp)
         Spacer(Modifier.height(11.dp))
         val order = (1..10).sortedByDescending { number ->
-            maxOf(local.probabilities.getOrElse(number - 1) { 0.0 }, ai?.probabilities?.getOrElse(number - 1) { 0.0 } ?: 0.0)
+            maxOf(
+                local.probabilities.getOrElse(number - 1) { 0.0 },
+                ai?.probabilities?.getOrElse(number - 1) { 0.0 } ?: 0.0,
+            )
         }
         order.forEach { number ->
             val localP = local.probabilities.getOrElse(number - 1) { 0.0 }
-            val aiP = ai?.probabilities?.getOrElse(number - 1) { 0.0 }
+            val aiP = ai?.probabilities?.getOrElse(number - 1) { 0.0 } ?: 0.0
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -520,7 +524,13 @@ private fun V67ProbabilityComparison(local: PositionPrediction, ai: AiAggregate?
                             color = colors.accent,
                             trackColor = colors.line,
                         )
-                        Text("${(localP * 100).format1()}%", color = colors.textSoft, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = TextAlign.End)
+                        Text(
+                            "${(localP * 100).format1()}%",
+                            color = colors.textSoft,
+                            fontSize = 10.sp,
+                            modifier = Modifier.width(48.dp),
+                            textAlign = TextAlign.End,
+                        )
                     }
                     Spacer(Modifier.height(3.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -531,7 +541,13 @@ private fun V67ProbabilityComparison(local: PositionPrediction, ai: AiAggregate?
                             color = colors.violet,
                             trackColor = colors.line,
                         )
-                        Text(if (ai == null) "—" else "${(aiP * 100).format1()}%", color = colors.textSoft, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = TextAlign.End)
+                        Text(
+                            if (ai == null) "—" else "${(aiP * 100).format1()}%",
+                            color = colors.textSoft,
+                            fontSize = 10.sp,
+                            modifier = Modifier.width(48.dp),
+                            textAlign = TextAlign.End,
+                        )
                     }
                 }
             }
@@ -554,9 +570,20 @@ private fun V67ModelPerformance(state: AppUiState) {
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(model.name, color = colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text(model.status, color = colors.textDim, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        model.status,
+                        color = colors.textDim,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                Text("权重 ${(model.weight * 100).format1()}%", color = colors.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "权重 ${(model.weight * 100).format1()}%",
+                    color = colors.accent,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                )
                 Spacer(Modifier.width(10.dp))
                 Text("命中 ${(model.hitRate * 100).format1()}%", color = colors.textDim, fontSize = 11.sp)
             }
@@ -618,7 +645,10 @@ private fun V67SegmentedTabs(labels: List<String>, selected: Int, onSelected: (I
 }
 
 @Composable
-private fun V67Panel(modifier: Modifier = Modifier, content: @Composable Column.() -> Unit) {
+private fun V67Panel(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val colors = LocalTianjiColors.current
     Column(
         modifier = modifier
@@ -627,10 +657,8 @@ private fun V67Panel(modifier: Modifier = Modifier, content: @Composable Column.
             .background(colors.surface.copy(alpha = 0.78f))
             .border(1.dp, colors.line, RoundedCornerShape(19.dp))
             .padding(13.dp),
-    ) {
-        @Suppress("UNCHECKED_CAST")
-        (content as @Composable Column.() -> Unit).invoke(this)
-    }
+        content = content,
+    )
 }
 
 @Composable
@@ -697,9 +725,14 @@ private fun aggregateAiForecasts(forecasts: List<AiForecast>): AiAggregate? {
         scores.indices.forEach { scores[it] /= totalWeight }
     }
     val ranking = scores.indices.sortedByDescending { scores[it] }.map { it + 1 }
-    val position = valid.groupingBy { it.position }.eachCount().maxWithOrNull(
-        compareBy<Map.Entry<Int, Int>> { it.value }.thenByDescending { -it.key },
-    )?.key ?: valid.first().position
+    val position = valid
+        .groupingBy { it.position }
+        .eachCount()
+        .entries
+        .sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key })
+        .firstOrNull()
+        ?.key
+        ?: valid.first().position
     return AiAggregate(
         position = position.coerceIn(0, 9),
         top6 = ranking.take(6),
