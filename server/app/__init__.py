@@ -30,11 +30,3 @@ from .console_final_polish import install as _install_console_final_polish
 
 _install_console_final_polish()
 del _install_console_final_polish
-
-# Realtime AI must finish early enough to be useful. Mandatory reviewers run in
-# parallel, DeepSeek uses compact non-thinking JSON first, and results that finish
-# inside the pre-draw publish guard are discarded instead of being pushed late.
-from .ai_deadline_fast import install as _install_ai_deadline_fast
-
-_install_ai_deadline_fast()
-del _install_ai_deadline_fast
