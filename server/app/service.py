@@ -17,6 +17,8 @@ from .runtime_config import RuntimeAiConfig, load_ai_config
 
 SERVICE_VERSION = "1.8.0"
 SAFETY_WINDOW_MS = 5_000
+AI_PUBLISH_GUARD_MS = 60_000
+AI_MIN_START_LEAD_MS = 225_000
 AI_RETRY_AFTER_MS = 30_000
 _AI_EXECUTOR = ThreadPoolExecutor(
     max_workers=max(2, len(LOTTERIES)),
@@ -80,10 +82,14 @@ def _ai_job_state(
 
 
 def _target_is_open(spec: LotterySpec, trained_through_period: str, target_period: str) -> bool:
+    """Fail closed once the target changes or enters the final 60-second publish window."""
     latest, current_next_period, _, next_draw_at = lottery_client.fetch_latest(spec)
     if latest.period != trained_through_period or current_next_period != target_period:
         return False
-    if next_draw_at is not None and int(time.time() * 1000) >= next_draw_at - SAFETY_WINDOW_MS:
+    if (
+        next_draw_at is not None
+        and int(time.time() * 1000) >= int(next_draw_at) - AI_PUBLISH_GUARD_MS
+    ):
         return False
     return database.get_draw(spec.key, target_period) is None
 
@@ -152,7 +158,7 @@ def _run_ai_prediction(
             },
         )
         if not _target_is_open(spec, trained_through_period, target_period):
-            message = "AI 完成时目标期已经封盘，结果未写入前向档案"
+            message = "AI 完成时已进入开奖前60秒硬截止窗口或目标期已变化，结果未写入前向档案"
             database.finish_forecast_job(
                 lottery=spec.key,
                 target_period=target_period,
@@ -281,10 +287,10 @@ def _schedule_ai_prediction(
     return True
 
 
-def _minimum_ai_lead_ms(ai_config: RuntimeAiConfig) -> int:
-    # 不能在临近开奖时才发起长请求。120 秒超时配置至少预留 150 秒，
-    # 同时上限控制在 4 分钟，避免五分钟彩种永远没有可用窗口。
-    return min(240_000, max(90_000, ai_config.timeout_seconds * 1000 + 30_000))
+def _minimum_ai_lead_ms(_ai_config: RuntimeAiConfig) -> int:
+    # This is only a scheduling/resource guard. The AI request itself keeps the exact
+    # Dynamic AI v2 provider parameters, reviewer order, token budget and thinking mode.
+    return AI_MIN_START_LEAD_MS
 
 
 def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]:
@@ -301,6 +307,8 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         draws, next_period, server_time, next_draw_at = lottery_client.fetch_recent(spec, sync_days)
         database.save_draws(draws)
 
+    # Settlement stays immediately after draw sync so AI sees the same freshly settled
+    # strategy weights it saw before this scheduling optimization.
     with _record_stage(stages, "settle_forecasts"):
         settled = database.settle_forecasts(lottery_key)
         learning_summary = {
@@ -309,8 +317,54 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         }
         _state(f"learning:{lottery_key}", learning_summary)
 
-    # Warning delivery is latency-sensitive: settle -> alert first -> routine Telegram queue.
-    # This keeps two/three-miss alerts from waiting behind ordinary prediction messages.
+    # Freeze the authoritative history snapshot immediately after settlement. Starting AI here
+    # removes Push/Telegram/native work from its critical path without changing ai.analyze().
+    with _record_stage(stages, "load_history"):
+        history = database.list_draws(lottery_key, spec.history_target)
+        latest = history[-1]
+
+    generated: list[str] = []
+    scheduled: list[str] = []
+    errors: dict[str, str] = {}
+    now_ms = int(time.time() * 1000)
+    remaining_ms = None if next_draw_at is None else next_draw_at - now_ms
+    before_safety_window = remaining_ms is None or remaining_ms > SAFETY_WINDOW_MS
+    target_candidate = bool(
+        next_period
+        and next_period != "待同步"
+        and before_safety_window
+        and database.get_draw(lottery_key, next_period) is None
+    )
+    ai_config = load_ai_config()
+
+    # AI is intentionally scheduled before notification delivery and native generation. The
+    # executor receives an immutable list copy, while the prediction engine itself is untouched.
+    if target_candidate:
+        ai_has_time = remaining_ms is None or remaining_ms > _minimum_ai_lead_ms(ai_config)
+        try:
+            with _record_stage(stages, "schedule_ai_early"):
+                if (
+                    allow_ai
+                    and ai_config.complete
+                    and ai_has_time
+                    and not database.has_forecast(lottery_key, next_period, "ai", ai_config.model)
+                ):
+                    if _schedule_ai_prediction(spec, history, next_period, latest.period, ai_config):
+                        scheduled.append("ai")
+                elif allow_ai and ai_config.complete and not ai_has_time:
+                    errors["ai"] = "距离开奖时间不足，本期不再启动新的完整 AI 请求"
+                    _ai_job_state(
+                        spec,
+                        status="skipped",
+                        target_period=next_period,
+                        model=ai_config.model,
+                        message=errors["ai"],
+                    )
+        except Exception as exc:
+            errors["ai"] = str(exc)[:500]
+
+    # Warning delivery remains ahead of routine Telegram/native work. Scheduling the AI above is
+    # non-blocking and only claims/submits a background job, so alert delivery is not held by AI.
     try:
         with _record_stage(stages, "deliver_push"):
             push_result = push_alerts.process_prediction_alerts(lottery_key)
@@ -341,24 +395,6 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
             {"message": str(exc)[:500], "at": int(time.time() * 1000)},
         )
 
-    with _record_stage(stages, "load_history"):
-        history = database.list_draws(lottery_key, spec.history_target)
-        latest = history[-1]
-
-    generated: list[str] = []
-    scheduled: list[str] = []
-    errors: dict[str, str] = {}
-    now_ms = int(time.time() * 1000)
-    remaining_ms = None if next_draw_at is None else next_draw_at - now_ms
-    before_safety_window = remaining_ms is None or remaining_ms > SAFETY_WINDOW_MS
-    target_candidate = bool(
-        next_period
-        and next_period != "待同步"
-        and before_safety_window
-        and database.get_draw(lottery_key, next_period) is None
-    )
-
-    ai_config = load_ai_config()
     base_result: dict[str, Any] = {
         "lottery": lottery_key,
         "latest_period": latest.period,
@@ -431,29 +467,6 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
                         "at": int(time.time() * 1000),
                     },
                 )
-
-        ai_has_time = remaining_ms is None or remaining_ms > _minimum_ai_lead_ms(ai_config)
-        try:
-            with _record_stage(stages, "schedule_ai"):
-                if (
-                    allow_ai
-                    and ai_config.complete
-                    and ai_has_time
-                    and not database.has_forecast(lottery_key, next_period, "ai", ai_config.model)
-                ):
-                    if _schedule_ai_prediction(spec, history, next_period, latest.period, ai_config):
-                        scheduled.append("ai")
-                elif allow_ai and ai_config.complete and not ai_has_time:
-                    errors["ai"] = "距离开奖时间不足，本期不再启动新的 AI 请求"
-                    _ai_job_state(
-                        spec,
-                        status="skipped",
-                        target_period=next_period,
-                        model=ai_config.model,
-                        message=errors["ai"],
-                    )
-        except Exception as exc:
-            errors["ai"] = str(exc)[:500]
 
     with _record_stage(stages, "publish_metrics"):
         base_result.update(
