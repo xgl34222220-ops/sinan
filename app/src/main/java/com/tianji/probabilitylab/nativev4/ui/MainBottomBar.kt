@@ -69,6 +69,7 @@ fun MainBottomBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 62.dp)
             .height(76.dp),
     ) {
         val slotWidth = maxWidth / 5
