@@ -127,6 +127,11 @@ def alert_reply_markup() -> dict[str, Any] | None:
     }
 
 
+# Backward-compatible helper kept for existing tests and older integrations.
+def _reply_markup() -> dict[str, Any] | None:
+    return alert_reply_markup()
+
+
 def recovery_reply_markup() -> dict[str, Any] | None:
     base = _base_url()
     if not base:
