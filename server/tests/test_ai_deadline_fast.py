@@ -72,14 +72,16 @@ class AiDeadlineFastTests(unittest.TestCase):
                 service._target_is_open(spec, "21348747", "21348748")
             )
 
-    def test_live_review_phase_starts_all_reviewers_in_parallel(self) -> None:
+    def test_live_review_phase_starts_all_reviewers_in_parallel_and_propagates_fast_context(self) -> None:
         barrier = threading.Barrier(3)
         started: list[int] = []
+        worker_contexts: list[bool] = []
         lock = threading.Lock()
 
         def task(reviewer: int) -> int:
             with lock:
                 started.append(reviewer)
+                worker_contexts.append(ai_deadline_fast._fast_context_enabled())
             barrier.wait(timeout=2.0)
             return reviewer
 
@@ -87,6 +89,7 @@ class AiDeadlineFastTests(unittest.TestCase):
             results = ai_ensemble._run_prefix_cached(3, task)
         self.assertEqual(set(started), {0, 1, 2})
         self.assertEqual(set(results), {0, 1, 2})
+        self.assertEqual(worker_contexts, [True, True, True])
 
     def test_deepseek_first_live_request_disables_thinking_and_caps_output(self) -> None:
         response = MagicMock()
