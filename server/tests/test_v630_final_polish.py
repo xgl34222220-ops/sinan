@@ -5,12 +5,14 @@ import unittest
 from app.console_v3 import enhance_console_html
 
 
-class V630FinalPolishTests(unittest.TestCase):
-    def test_console_installs_final_density_tokens(self) -> None:
+class V680FinalPolishTests(unittest.TestCase):
+    def test_console_installs_consolidated_latency_layer(self) -> None:
         html = enhance_console_html("<html><head></head><body></body></html>")
-        self.assertIn("Tianji v6.3 final polish", html)
-        self.assertIn("--v63-card-radius:18px", html)
-        self.assertIn(".v620-latency span", html)
+        self.assertIn("Tianji v6.8 consolidated experience layer", html)
+        self.assertIn("--v68-card-radius:18px", html)
+        self.assertIn("v68-pipeline", html)
+        self.assertIn("P50", html)
+        self.assertIn("P95", html)
         self.assertIn("font-size:11px", html)
 
 
