@@ -1,0 +1,189 @@
+name: Apply v6.9.2 AI controls optimization
+
+on:
+  push:
+    branches:
+      - fix/ai-publish-guard-40s
+    paths:
+      - .github/workflows/apply-v6.9.2-ai-controls.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ai-publish-guard-40s
+          fetch-depth: 0
+
+      - name: Apply deterministic source changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, got {count}: {old[:100]!r}')
+              write(path, text.replace(old, new, 1))
+
+          # --- server/app/service.py ---
+          path = 'server/app/service.py'
+          replace_once(
+              path,
+              '''_AI_EXECUTOR = ThreadPoolExecutor(\n    max_workers=max(2, len(LOTTERIES)),\n    thread_name_prefix="tianji-ai",\n)''',
+              '''_AI_EXECUTORS = {\n    key: ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"tianji-ai-{key}")\n    for key in LOTTERIES\n}''',
+          )
+          replace_once(
+              path,
+              '\n\ndef _ai_job_state(\n',
+              '''\n\ndef _lottery_ai_auto_enabled(lottery_key: str) -> bool:\n    """Return the per-lottery AI switch, defaulting to enabled for old installs."""\n    value = database.get_state(f"ai_auto:{lottery_key}")\n    if value is None:\n        return True\n    try:\n        decoded = json.loads(value[0])\n        if isinstance(decoded, dict):\n            return bool(decoded.get("enabled", True))\n        return bool(decoded)\n    except (TypeError, ValueError, json.JSONDecodeError):\n        return True\n\n\ndef _ai_job_state(\n''',
+          )
+          replace_once(path, '_AI_EXECUTOR.submit(', '_AI_EXECUTORS[spec.key].submit(')
+          replace_once(
+              path,
+              '    ai_config = load_ai_config()\n',
+              '    ai_config = load_ai_config()\n    lottery_ai_enabled = _lottery_ai_auto_enabled(lottery_key)\n',
+          )
+          replace_once(
+              path,
+              '''                if (\n                    allow_ai\n                    and ai_config.complete\n                    and ai_has_time\n''',
+              '''                if (\n                    allow_ai\n                    and lottery_ai_enabled\n                    and ai_config.complete\n                    and ai_has_time\n''',
+          )
+          replace_once(
+              path,
+              '''                elif allow_ai and ai_config.complete and not ai_has_time:\n                    errors["ai"] = "距离开奖时间不足，本期不再启动新的完整 AI 请求"\n''',
+              '''                elif allow_ai and ai_config.complete and not lottery_ai_enabled:\n                    _ai_job_state(\n                        spec,\n                        status="disabled",\n                        target_period=next_period,\n                        model=ai_config.model,\n                        message="该彩种 AI 自动预测已关闭",\n                    )\n                elif allow_ai and lottery_ai_enabled and ai_config.complete and not ai_has_time:\n                    errors["ai"] = "距离开奖时间不足，本期不再启动新的完整 AI 请求"\n''',
+          )
+          replace_once(path, '        "ai_allowed": allow_ai,\n', '        "ai_allowed": allow_ai and lottery_ai_enabled,\n')
+
+          # --- server/app/main.py ---
+          path = 'server/app/main.py'
+          replace_once(
+              path,
+              '''class AiAutoPayload(BaseModel):\n    enabled: bool\n\n\nclass PasswordPayload''',
+              '''class AiAutoPayload(BaseModel):\n    enabled: bool\n\n\nclass AiLotteryAutoPayload(BaseModel):\n    enabled: bool\n\n\nclass PasswordPayload''',
+          )
+          replace_once(
+              path,
+              '\n\ndef _lottery_overview(key: str) -> dict[str, Any]:\n',
+              '''\n\ndef _lottery_ai_auto_enabled(key: str) -> bool:\n    value = _decode_state(f"ai_auto:{key}")\n    if value is None:\n        return True\n    return bool(value.get("enabled", True))\n\n\ndef _lottery_overview(key: str) -> dict[str, Any]:\n''',
+          )
+          replace_once(
+              path,
+              '        "learning_diagnostics": database.strategy_snapshot_diagnostics(key),\n',
+              '        "learning_diagnostics": database.strategy_snapshot_diagnostics(key),\n        "ai_auto_enabled": _lottery_ai_auto_enabled(key),\n',
+          )
+          replace_once(
+              path,
+              '        "ai_registry": registry.public_dict(),\n',
+              '        "ai_registry": registry.public_dict(),\n        "ai_lottery_auto": {key: _lottery_ai_auto_enabled(key) for key in LOTTERIES},\n',
+          )
+          marker = '''@app.post("/admin/api/ai/test", dependencies=[Depends(require_admin_action)])\ndef test_ai(payload: AiConfigPayload) -> dict[str, object]:\n'''
+          insert = '''@app.put("/admin/api/ai/lotteries/{lottery_key}", dependencies=[Depends(require_admin_action)])\ndef update_ai_lottery_auto(lottery_key: str, payload: AiLotteryAutoPayload) -> dict[str, object]:\n    if lottery_key not in LOTTERIES:\n        raise HTTPException(status_code=404, detail="未知彩种")\n    database.set_state(\n        f"ai_auto:{lottery_key}",\n        json.dumps({"enabled": payload.enabled}, ensure_ascii=False),\n    )\n    if not payload.enabled:\n        database.delete_state(f"ai_error:{lottery_key}")\n    return {"lottery": lottery_key, "enabled": payload.enabled}\n\n\n'''
+          replace_once(path, marker, insert + marker)
+
+          # --- server/app/web_console.py ---
+          path = 'server/app/web_console.py'
+          text = read(path)
+          css_anchor = '.switch input:checked+.slider:before{transform:translateX(19px)}\n'
+          css_insert = '''.switch input:checked+.slider:before{transform:translateX(19px)}\n.lottery-ai-switches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.lottery-ai-switch{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border:1px solid var(--line);border-radius:15px;background:var(--soft)}.lottery-ai-switch strong{display:block;font-size:10px}.lottery-ai-switch span{display:block;margin-top:2px;font-size:8px;color:var(--muted)}\n'''
+          if text.count(css_anchor) != 1:
+              raise SystemExit('web_console.py: switch CSS anchor mismatch')
+          text = text.replace(css_anchor, css_insert, 1)
+          old_card = '<div class="card card-pad"><div class="switch-row"><div class="switch-copy"><strong>AI 自动预测</strong><div>关闭后不调用服务端 AI；开奖同步、本机云端统计和结算继续运行。</div></div><label class="switch"><input id="aiAutoEnabled" type="checkbox"><span class="slider"></span></label></div></div>'
+          new_card = '<div class="card card-pad"><div class="switch-row"><div class="switch-copy"><strong>AI 自动预测总开关</strong><div>关闭后所有彩种都不调用服务端 AI；开奖同步、本机云端统计和结算继续运行。</div></div><label class="switch"><input id="aiAutoEnabled" type="checkbox"><span class="slider"></span></label></div><div class="lottery-ai-switches" id="aiLotterySwitches"></div></div>'
+          if text.count(old_card) != 1:
+              raise SystemExit('web_console.py: AI switch card anchor mismatch')
+          text = text.replace(old_card, new_card, 1)
+          text = text.replace("discarded:['封盘丢弃','bad'],skipped:['等待下期','warn']", "discarded:['封盘丢弃','bad'],skipped:['等待下期','warn'],disabled:['已关闭','']", 1)
+
+          # Replace lottery card + diagnostics so per-lottery disabled state is visible.
+          pattern = re.compile(r'function lotteryCard\(x\)\{.*?\}\nfunction diagnostics\(d\)\{.*?\}\nfunction archive', re.S)
+          replacement = r'''function lotteryCard(x){const j=x.ai_auto_enabled===false?['已关闭','']:job(x.ai_job);return `<article class="card overview-card"><div class="lottery-title"><div><h3>${esc(x.name)}</h3><div class="sub">最新期 ${esc(x.latest_period||'等待同步')} · ${fmt(x.synced_at_epoch_ms)}</div></div><div class="target">目标期<strong>${esc(x.next_period||'待同步')}</strong></div></div><div class="numbers">${(x.numbers||[]).map(n=>`<span class="number">${n}</span>`).join('')}</div><div class="ai-strip"><div><div class="ai-title">AI 任务</div><div class="sub">${esc((x.ai_job&&x.ai_job.model)||'等待当前模型')}</div></div><span class="badge ${j[1]}">${j[0]}</span></div></article>`}\nfunction diagnostics(d){const rows=[`<article class="diag"><div class="diag-top"><span class="diag-title">后台工作进程</span><span class="badge ${d.health.worker==='ok'?'good':'warn'}">${d.health.worker==='ok'?'正常':'等待'}</span></div><div class="diag-body">最近心跳：${ago(d.health.last_worker_heartbeat_epoch_ms)}。负责开奖同步、结算和自动预测调度。</div></article>`];d.lotteries.forEach(x=>{const enabled=!!d.ai.auto_predict&&x.ai_auto_enabled!==false,j=enabled?job(x.ai_job):['已关闭',''],msg=enabled?(x.ai_job&&x.ai_job.message?friendlyError(x.ai_job.message):'等待进入合适的预测窗口'):'该彩种 AI 自动预测已关闭';rows.push(`<article class="diag"><div class="diag-top"><span class="diag-title">${esc(x.name)} · AI</span><span class="badge ${j[1]}">${j[0]}</span></div><div class="diag-body">${esc(msg)}<br>目标期：${esc((x.ai_job&&x.ai_job.target_period)||x.next_period||'—')} · 更新于 ${ago(x.ai_job&&(x.ai_job.updated_at_epoch_ms||x.ai_job.updated_at))}</div></article>`)});Object.entries(d.ai_errors||{}).forEach(([key,e])=>{const lot=d.lotteries.find(x=>x.key===key);rows.push(`<article class="diag"><div class="diag-top"><span class="diag-title">${esc(lot?lot.name:key)} · 历史失败记录</span><span class="badge bad">需留意</span></div><div class="diag-body">${esc(friendlyError(e&&e.message))}<br>记录目标期：${esc((e&&e.target_period)||'—')} · ${ago(e&&(e.completed_at_epoch_ms||e.at))}</div></article>`)});return rows.join('')}\nfunction archive'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'web_console.py: lottery/diagnostics function replacement count {count}')
+
+          # Render every discovered model as the same equal-height card.
+          pattern = re.compile(r'function renderQuick\(\)\{.*?\n\}\nfunction profiles', re.S)
+          replacement = r'''function renderQuick(){\n  const p=activeProfile(),current=p&&p.model||'',hasModels=discoveredModels.length>0;\n  $('quickCurrent').textContent=current||'尚未选择';\n  $('quickMeta').textContent=p?providerName(p)+' · '+p.api_key_hint+' · '+p.timeout_seconds+' 秒':'先添加一个接口和 API Key';\n  $('providerMark').textContent=providerMark(p);\n  $('quickStatus').textContent=p&&p.ready?(hasModels?'已读取支持列表':'待读取模型'):'未配置';\n  $('quickStatus').className='badge '+(p&&p.ready?(hasModels?'good':'warn'):'warn');\n  const models=[...new Set(discoveredModels.map(m=>String(m||'').trim()).filter(Boolean))];\n  $('modelSwitcher').innerHTML=models.map(m=>`<button class="model-choice ${m===current?'active':''}" data-quick-model="${esc(m)}"><strong>${esc(m)}</strong><span>${m===current?'当前模型':'此 Key 已确认支持'}</span></button>`).join('');\n  $('dynamicModels').innerHTML='';\n  document.querySelectorAll('[data-quick-model]').forEach(b=>{b.disabled=!(p&&p.ready);b.onclick=()=>switchModel(b.dataset.quickModel)});\n  $('readQuickModelsBtn').disabled=!(p&&p.ready);\n  $('manageCurrentBtn').disabled=!p;\n}\nfunction renderLotteryAiSwitches(d){\n  const flags=d.ai_lottery_auto||{};\n  $('aiLotterySwitches').innerHTML=(d.lotteries||[]).map(x=>`<div class="lottery-ai-switch"><div><strong>${esc(x.name)} AI</strong><span>${flags[x.key]===false?'已关闭，只保留开奖同步与本机云端':'已开启，参与自动 AI 预测'}</span></div><label class="switch"><input type="checkbox" data-ai-lottery="${esc(x.key)}" ${flags[x.key]===false?'':'checked'}><span class="slider"></span></label></div>`).join('');\n  document.querySelectorAll('[data-ai-lottery]').forEach(input=>input.onchange=async()=>{const enabled=input.checked,key=input.dataset.aiLottery;input.disabled=true;try{await api('/admin/api/ai/lotteries/'+encodeURIComponent(key),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});toast(enabled?'该彩种 AI 自动预测已开启':'该彩种 AI 自动预测已关闭');await load()}catch(e){input.checked=!enabled;toast(e.message,true)}finally{input.disabled=false}});\n}\nfunction profiles'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'web_console.py: renderQuick replacement count {count}')
+          old_render = "$('aiAutoEnabled').checked=!!d.ai_registry.auto_predict;profiles(d.ai_registry);renderQuick();"
+          new_render = "$('aiAutoEnabled').checked=!!d.ai_registry.auto_predict;renderLotteryAiSwitches(d);profiles(d.ai_registry);renderQuick();"
+          if text.count(old_render) != 1:
+              raise SystemExit('web_console.py: render state anchor mismatch')
+          text = text.replace(old_render, new_render, 1)
+          # Small pill models are no longer rendered; keep the legacy container inert for compatibility.
+          text = text.replace('.dynamic-models{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.dynamic-model{min-height:29px;padding:0 9px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font-size:8px;font-weight:720}.dynamic-model.active{color:#fff;background:var(--primary);border-color:transparent}', '.dynamic-models{display:none}', 1)
+          write(path, text)
+
+          # --- tests ---
+          path = 'server/tests/test_ai_original_engine_deadline.py'
+          text = read(path)
+          anchor = '''    def test_ai_is_scheduled_after_settlement_but_before_notifications_and_native(self) -> None:\n'''
+          extra = '''    def test_each_lottery_has_its_own_single_worker_ai_executor(self) -> None:\n        self.assertEqual(set(service.LOTTERIES), set(service._AI_EXECUTORS))\n        executors = list(service._AI_EXECUTORS.values())\n        self.assertEqual(len(executors), len({id(executor) for executor in executors}))\n        self.assertTrue(all(executor._max_workers == 1 for executor in executors))\n\n    def test_per_lottery_ai_switch_defaults_on_and_can_disable(self) -> None:\n        with patch.object(service.database, "get_state", return_value=None):\n            self.assertTrue(service._lottery_ai_auto_enabled("xyft"))\n        with patch.object(service.database, "get_state", return_value=('{"enabled":false}', 1)):\n            self.assertFalse(service._lottery_ai_auto_enabled("azxy10"))\n\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit('deadline test anchor mismatch')
+          text = text.replace(anchor, extra + anchor, 1)
+          write(path, text)
+
+          path = 'server/tests/test_web_console_v2.py'
+          text = read(path)
+          text = text.replace("            'id=\"aiAutoEnabled\"',\n", "            'id=\"aiAutoEnabled\"',\n            'id=\"aiLotterySwitches\"',\n", 1)
+          anchor = '        self.assertIn("switchModel", html)\n'
+          extra = '''        self.assertIn("renderLotteryAiSwitches", html)\n        self.assertIn("/admin/api/ai/lotteries/", html)\n        self.assertIn("models.map", html)\n        self.assertNotIn("const primary=models.slice", html)\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit('web console test anchor mismatch')
+          text = text.replace(anchor, anchor + extra, 1)
+          write(path, text)
+
+          # --- version metadata ---
+          replace_once('app/build.gradle.kts', '        versionCode = 76\n        versionName = "6.9.1"', '        versionCode = 77\n        versionName = "6.9.2"')
+          path = 'README.md'
+          text = read(path)
+          if text.count('- 当前正式版：**6.9.1**') != 1:
+              raise SystemExit('README current version mismatch')
+          text = text.replace('- 当前正式版：**6.9.1**', '- 当前正式版：**6.9.2**', 1)
+          section_anchor = '## v6.9.0 AI 服务配置中心\n'
+          section = '''## v6.9.2 彩种独立 AI 与并行调度\n\n- 云端 AI 发布硬截止从开奖前 60 秒调整为 40 秒，保留目标期变化与已开奖拒绝保护，减少慢模型在有效时间内完成却被过早丢弃的情况。\n- 影音先锋艇与澳洲幸运10使用独立 AI 执行槽位；两个彩种都开启时可真正同时分析，一个彩种的慢请求不会占用另一个彩种的 AI worker。\n- AI 工作台保留总开关，并新增每个彩种独立开关；关闭某个彩种只停止该彩种的 AI 调用，开奖同步、本机云端预测、结算与档案继续运行。\n- 同一彩种仍保持单任务串行和数据库租约去重，不因并行调度产生同一期重复 AI 消费。\n- 当前 Key 读取到的所有模型统一使用两列等高卡片展示，不再把前两个模型显示为大卡、其余模型显示为小胶囊。\n\n'''
+          if text.count(section_anchor) != 1:
+              raise SystemExit('README section anchor mismatch')
+          text = text.replace(section_anchor, section + section_anchor, 1)
+          write(path, text)
+
+          Path('RELEASE_NOTES_v6.9.2.md').write_text('''# 天机 v6.9.2\n\nv6.9.2 聚焦云端 AI 调度与控制台体验：两个彩种真正独立并行、每彩种可单独关闭 AI、模型卡片统一，并将发布硬截止由 60 秒调整为 40 秒。\n\n## AI 调度\n\n- 影音先锋艇与澳洲幸运10各使用独立单线程 AI executor，互不抢占 worker；同一个彩种仍保持串行，避免同一期重复消费。\n- 服务端原有 run_all_cycles 双彩种并行保持不变，新的独立 AI executor 进一步隔离上一轮慢请求造成的跨彩种排队。\n- AI 发布硬截止调整为开奖前 40 秒；目标期变化、目标期已开奖或已有前向记录时仍拒绝写入。\n\n## 彩种独立开关\n\n- AI 工作台保留全局总开关。\n- 新增“幸运飞艇 AI”和“澳洲幸运10 AI”独立开关，默认均开启，兼容旧部署。\n- 关闭某彩种只停止其服务端 AI 请求；开奖同步、本机云端统计/预测、结算、推送与历史档案继续运行。\n- 独立开关持久化在云端数据库，不改变现有 API Key、接口、模型账户格式。\n\n## 控制台 UI\n\n- 当前 Key 读取到的所有模型统一为两列等高模型卡。\n- 不再区分“前两个大卡 + 其余小胶囊”，当前模型继续使用高亮状态。\n- 总览与运行诊断会明确显示单个彩种 AI 已关闭，避免把旧任务状态误认为仍在排队。\n\n## 版本\n\n- versionName：`6.9.2`\n- versionCode：`77`\n- 正式应用 ID 与既有签名链保持不变，可直接覆盖升级 v6.9.1。\n\n> 天机用于统计实验、记录与真实前向验证。随机开奖不可可靠预测，本项目不承诺准确率、收益或必中。第三方 AI 网关的并发、速率、额度与计费由服务商决定。\n''', encoding='utf-8')
+          PY
+
+      - name: Validate server changes
+        shell: bash
+        run: |
+          python -m compileall -q server/app server/tests
+          cd server
+          python -m unittest discover -s tests -v
+
+      - name: Commit optimized v6.9.2 source and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-v6.9.2-ai-controls.yml
+          git add -- server/app/service.py server/app/main.py server/app/web_console.py server/tests/test_ai_original_engine_deadline.py server/tests/test_web_console_v2.py app/build.gradle.kts README.md RELEASE_NOTES_v6.9.2.md
+          git diff --cached --check
+          git status --short
+          git commit -m "feat: parallel per-lottery AI controls and 40s guard (v6.9.2)"
+          git push origin HEAD:fix/ai-publish-guard-40s
