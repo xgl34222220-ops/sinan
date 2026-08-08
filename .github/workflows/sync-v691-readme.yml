@@ -1,0 +1,44 @@
+name: Sync v6.9.1 README
+
+on:
+  push:
+    branches:
+      - feature/ai-compatible-auto-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-compatible-auto-recovery
+          fetch-depth: 0
+      - name: Sync formal version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('README.md')
+          text = path.read_text(encoding='utf-8')
+          old = '- 当前正式版：**6.9.0**'
+          new = '- 当前正式版：**6.9.1**'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one current version marker, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          rm -f .github/workflows/sync-v691-readme.yml
+          git diff --check
+      - name: Commit README sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git add -u .github/workflows/sync-v691-readme.yml
+          git commit -m "docs: mark v6.9.1 as current formal release"
+          git push origin HEAD:feature/ai-compatible-auto-recovery
