@@ -53,13 +53,16 @@ jobs:
           python tools/check-ui-contract.py
 
       - name: Unit tests, lint and builds
-        run: >-
-          gradle --no-daemon --stacktrace
-          :app:testDebugUnitTest
-          :app:testReleaseUnitTest
-          :app:lintDebug
-          :app:assembleDebug
-          :app:assembleRelease
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p app/build
+          gradle --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:testReleaseUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :app:assembleRelease 2>&1 | tee app/build/ci-gradle.log
 
       - name: Render Compose preview screenshot baselines
         run: gradle --no-daemon --stacktrace :app:updateDebugScreenshotTest
@@ -75,5 +78,6 @@ jobs:
             app/build/reports/lint-results-debug.html
             app/src/screenshotTestDebug/reference/
             app/build/reports/screenshotTest/
+            app/build/ci-gradle.log
           if-no-files-found: warn
           retention-days: 14
