@@ -63,7 +63,7 @@ class CloudForecastApi {
         buildList {
             for (index in 0 until array.length()) {
                 val value = array.optJSONObject(index) ?: continue
-                if (!value.optString("source").trim().equals("ai", ignoreCase = true)) continue
+                if (!isCloudAiForecastSource(value.optString("source"))) continue
                 value.toRecord(lottery)?.let(::add)
             }
         }
