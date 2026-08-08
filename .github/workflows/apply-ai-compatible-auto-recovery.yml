@@ -242,25 +242,6 @@ jobs:
               'endpoint helper copy',
           )
 
-          replace_once(
-              '''                Spacer(Modifier.height(8.dp))
-                  OutlinedTextField(
-                      value = model,''',
-              '''                if (endpoint.startsWith("https://")) {
-                  Text(
-                      "实际请求：${normalizeAiEndpointV2(endpoint, provider, apiRoute)}",
-                      color = colors.accent,
-                      fontSize = 10.sp,
-                      lineHeight = 15.sp,
-                      modifier = Modifier.padding(top = 3.dp),
-                  )
-              }
-              Spacer(Modifier.height(8.dp))
-              OutlinedTextField(
-                  value = model,''',
-              'request URL preview',
-          )
-
           path.write_text(text, encoding='utf-8')
           PY
           rm -f tools/patches/ai-compatible-auto-recovery.patch
