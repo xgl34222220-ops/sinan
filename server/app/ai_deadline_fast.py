@@ -24,7 +24,7 @@ AI_MAX_FAST_TOKENS = 900
 _INSTALLED = False
 _CONTEXT = threading.local()
 _ORIGINAL_RUN_PREFIX_CACHED = ai_ensemble._run_prefix_cached
-_ORIGINAL_AI_ANALYZE = service.ai.analyze
+_ORIGINAL_RUN_AI_PREDICTION = service._run_ai_prediction
 _ORIGINAL_CALL_JSON = ai_ensemble._call_json
 
 
@@ -55,10 +55,10 @@ def _run_prefix_cached_deadline_aware(count: int, task: Any) -> list[Any]:
     return _ORIGINAL_RUN_PREFIX_CACHED(count, task)
 
 
-def _ai_analyze_deadline_fast(*args: Any, **kwargs: Any) -> Any:
-    """Enable the fast review context without replacing the v2 continual engine itself."""
+def _run_ai_prediction_deadline_fast(*args: Any, **kwargs: Any) -> Any:
+    """Apply fast transport/reviewer scheduling only to the server's live AI task."""
     with _deadline_fast_context():
-        return _ORIGINAL_AI_ANALYZE(*args, **kwargs)
+        return _ORIGINAL_RUN_AI_PREDICTION(*args, **kwargs)
 
 
 def _is_deepseek_like(config: Any) -> bool:
@@ -203,7 +203,7 @@ def install() -> None:
         return
     ai_ensemble._run_prefix_cached = _run_prefix_cached_deadline_aware
     ai_ensemble._call_json = _fast_call_json
-    service.ai.analyze = _ai_analyze_deadline_fast
+    service._run_ai_prediction = _run_ai_prediction_deadline_fast
     service._minimum_ai_lead_ms = _minimum_ai_lead_ms
     service._target_is_open = _target_is_open_with_publish_guard
     _INSTALLED = True
