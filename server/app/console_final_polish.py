@@ -79,14 +79,27 @@ _FINAL_STYLE = r"""
 .v610-ai-job.bad .v610-ai-budget i{background:var(--bad)}
 .v610-ai-foot{display:flex;justify-content:space-between;gap:8px;margin-top:5px;color:var(--muted);font-size:8px}
 
+/* v6.10: one delivery center for FCM + Telegram instead of scattered diagnostics. */
+.v610-delivery-card{margin-top:11px;padding:15px 16px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:var(--shadow2)}
+.v610-delivery-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+.v610-delivery-head h3{margin:0;font-size:14px;letter-spacing:-.025em}.v610-delivery-head p{margin:3px 0 0;color:var(--muted);font-size:9px}
+.v610-delivery-state{display:inline-flex;align-items:center;gap:6px;min-height:25px;padding:0 9px;border-radius:999px;background:var(--good-soft);color:var(--good);font-size:9px;font-weight:800}
+.v610-delivery-state.warn{background:var(--warn-soft);color:var(--warn)}.v610-delivery-state.bad{background:var(--bad-soft);color:var(--bad)}
+.v610-delivery-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.v610-delivery-item{position:relative;overflow:hidden;padding:11px 12px;border-radius:15px;background:var(--soft);border:1px solid var(--line)}
+.v610-delivery-item:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--primary)}
+.v610-delivery-item.good:before{background:var(--good)}.v610-delivery-item.warn:before{background:var(--warn)}.v610-delivery-item.bad:before{background:var(--bad)}
+.v610-delivery-item span{display:block;color:var(--muted);font-size:9px}.v610-delivery-item strong{display:block;margin-top:3px;font-size:13px;letter-spacing:-.02em}.v610-delivery-item small{display:block;margin-top:3px;color:var(--muted);font-size:8px;line-height:1.45}
+.v610-delivery-foot{display:flex;justify-content:space-between;gap:8px;margin-top:8px;color:var(--muted);font-size:8px}
+
 @supports not (color:color-mix(in srgb,#000 50%,#fff)){
   body{background:var(--bg)}
-  .topbar,.hero,.card,.metric,.lottery-card,.sidebar,.icon-btn,.status{background:var(--surface)}
+  .topbar,.hero,.card,.metric,.lottery-card,.sidebar,.icon-btn,.status,.v610-delivery-card{background:var(--surface)}
   .model-choice{background:var(--solid)}
   .model-choice.active{background:var(--primary-soft)!important;border-color:var(--primary)!important}
 }
 
-@media(max-width:760px){.v68-pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.v610-ai-runtime{grid-template-columns:1fr}}
+@media(max-width:760px){.v68-pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.v610-ai-runtime{grid-template-columns:1fr}.v610-delivery-grid{grid-template-columns:1fr}}
 @media(max-width:520px){
   .v68-pipeline{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .v68-pipeline-item{padding:7px 8px}
@@ -155,6 +168,35 @@ _FINAL_SCRIPT = r"""
     }).join('');
   }
 
+  function ensureDeliveryCenter(){
+    let host=document.getElementById('v610DeliveryCenter');if(host)return host;
+    const panel=document.getElementById('panel-overview');if(!panel)return null;
+    const diagnostics=panel.querySelector('.card.card-pad');
+    host=document.createElement('section');host.id='v610DeliveryCenter';host.className='v610-delivery-card';
+    if(diagnostics)panel.insertBefore(host,diagnostics);else panel.appendChild(host);
+    return host;
+  }
+
+  function latestValue(items,key){
+    const values=items.map(item=>item[key]).filter(value=>value!==null&&value!==undefined&&Number.isFinite(Number(value)));
+    return values.length?Math.max(...values.map(Number)):null;
+  }
+
+  function channelState(items,key){
+    const values=items.map(item=>item[key]).filter(value=>value!==null&&value!==undefined);
+    if(values.some(value=>value===false))return['异常','bad'];
+    if(values.length&&values.every(value=>value===true))return['正常','good'];
+    return['等待数据','warn'];
+  }
+
+  function renderDeliveryCenter(data){
+    const host=ensureDeliveryCenter();if(!host)return;
+    const items=data.lotteries||[],push=channelState(items,'push_ok'),tg=channelState(items,'telegram_ok');
+    const overall=push[1]==='bad'||tg[1]==='bad'?['存在异常','bad']:push[1]==='good'&&tg[1]==='good'?['链路正常','']:['等待投递','warn'];
+    const latest=Math.max(0,...items.map(item=>Number(item.delivery_completed_at_epoch_ms||0)));
+    host.innerHTML=`<div class="v610-delivery-head"><div><h3>消息投递</h3><p>FCM 与 Telegram 的最近链路状态集中显示。</p></div><span class="v610-delivery-state ${overall[1]}">${overall[0]}</span></div><div class="v610-delivery-grid"><div class="v610-delivery-item ${push[1]}"><span>App / FCM</span><strong>${push[0]}</strong><small>最近投递 ${duration(latestValue(items,'push_latency_ms'))}</small></div><div class="v610-delivery-item ${tg[1]}"><span>Telegram</span><strong>${tg[0]}</strong><small>最近投递 ${duration(latestValue(items,'telegram_latency_ms'))}</small></div><div class="v610-delivery-item ${tone(latestValue(items,'delivery_latency_ms'))}"><span>完整通知链路</span><strong>${duration(latestValue(items,'delivery_latency_ms'))}</strong><small>开奖发现 → 结算 → 消息投递</small></div></div><div class="v610-delivery-foot"><span>${latest?'最近完成 '+new Date(latest).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}):'尚无完成记录'}</span><span>按彩种自动归组</span></div>`;
+  }
+
   async function pullAiState(){
     try{
       if(document.hidden)return;
@@ -171,6 +213,7 @@ _FINAL_SCRIPT = r"""
       const response=await fetch('/admin/api/realtime',{cache:'no-store'});
       if(!response.ok)throw new Error('realtime');
       const data=await response.json();
+      renderDeliveryCenter(data);
       const section=document.getElementById('v620Realtime');
       if(section){
         for(const item of data.lotteries||[]){
