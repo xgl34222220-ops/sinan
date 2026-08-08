@@ -60,7 +60,9 @@ internal fun V62AdaptiveScaffold(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val adaptiveInfo = currentWindowAdaptiveInfo(supportLargeAndXLargeWidth = true)
-    val useRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(600)
+    // A 600dp device loses ~92dp to the rail and previously ended up with a cramped phone-width
+    // content area. Switch only when the remaining pane can still use the v6.7 600dp two-column UI.
+    val useRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(720)
     val colors = LocalTianjiColors.current
 
     if (!useRail) {
