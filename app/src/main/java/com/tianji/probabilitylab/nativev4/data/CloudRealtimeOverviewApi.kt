@@ -30,7 +30,7 @@ class CloudRealtimeOverviewApi {
     fun fetchOverview(): Map<LotteryType, CloudRealtimeLottery> {
         val baseUrl = BuildConfig.TIANJI_CLOUD_BASE_URL.trim().trimEnd('/')
         if (!baseUrl.startsWith("https://")) return cache
-        val connection = URL("$baseUrl/v1/public/overview").openConnection() as HttpURLConnection
+        val connection = URL("$baseUrl/v1/public/realtime").openConnection() as HttpURLConnection
         return try {
             connection.requestMethod = "GET"
             connection.connectTimeout = 1_200
