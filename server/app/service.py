@@ -17,13 +17,13 @@ from .runtime_config import RuntimeAiConfig, load_ai_config
 
 SERVICE_VERSION = "1.8.0"
 SAFETY_WINDOW_MS = 5_000
-AI_PUBLISH_GUARD_MS = 60_000
+AI_PUBLISH_GUARD_MS = 40_000
 AI_MIN_START_LEAD_MS = 225_000
 AI_RETRY_AFTER_MS = 30_000
-_AI_EXECUTOR = ThreadPoolExecutor(
-    max_workers=max(2, len(LOTTERIES)),
-    thread_name_prefix="tianji-ai",
-)
+_AI_EXECUTORS = {
+    key: ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"tianji-ai-{key}")
+    for key in LOTTERIES
+}
 
 
 def _state(key: str, value: dict[str, Any]) -> None:
@@ -50,6 +50,20 @@ def _record_stage(stages: list[dict[str, Any]], name: str) -> Iterator[None]:
     finally:
         entry["completed_at_epoch_ms"] = int(time.time() * 1000)
         entry["duration_ms"] = round((time.monotonic() - started) * 1000, 1)
+
+
+def _lottery_ai_auto_enabled(lottery_key: str) -> bool:
+    """Return the per-lottery AI switch, defaulting to enabled for old installs."""
+    value = database.get_state(f"ai_auto:{lottery_key}")
+    if value is None:
+        return True
+    try:
+        decoded = json.loads(value[0])
+        if isinstance(decoded, dict):
+            return bool(decoded.get("enabled", True))
+        return bool(decoded)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return True
 
 
 def _ai_job_state(
@@ -82,7 +96,7 @@ def _ai_job_state(
 
 
 def _target_is_open(spec: LotterySpec, trained_through_period: str, target_period: str) -> bool:
-    """Fail closed once the target changes or enters the final 60-second publish window."""
+    """Fail closed once the target changes or enters the final 40-second publish window."""
     latest, current_next_period, _, next_draw_at = lottery_client.fetch_latest(spec)
     if latest.period != trained_through_period or current_next_period != target_period:
         return False
@@ -158,7 +172,7 @@ def _run_ai_prediction(
             },
         )
         if not _target_is_open(spec, trained_through_period, target_period):
-            message = "AI 完成时已进入开奖前60秒硬截止窗口或目标期已变化，结果未写入前向档案"
+            message = "AI 完成时已进入开奖前40秒硬截止窗口或目标期已变化，结果未写入前向档案"
             database.finish_forecast_job(
                 lottery=spec.key,
                 target_period=target_period,
@@ -276,7 +290,7 @@ def _schedule_ai_prediction(
         target_period=target_period,
         model=ai_config.model,
     )
-    _AI_EXECUTOR.submit(
+    _AI_EXECUTORS[spec.key].submit(
         _run_ai_prediction,
         spec,
         list(history),
@@ -336,6 +350,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         and database.get_draw(lottery_key, next_period) is None
     )
     ai_config = load_ai_config()
+    lottery_ai_enabled = _lottery_ai_auto_enabled(lottery_key)
 
     # AI is intentionally scheduled before notification delivery and native generation. The
     # executor receives an immutable list copy, while the prediction engine itself is untouched.
@@ -345,13 +360,22 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
             with _record_stage(stages, "schedule_ai_early"):
                 if (
                     allow_ai
+                    and lottery_ai_enabled
                     and ai_config.complete
                     and ai_has_time
                     and not database.has_forecast(lottery_key, next_period, "ai", ai_config.model)
                 ):
                     if _schedule_ai_prediction(spec, history, next_period, latest.period, ai_config):
                         scheduled.append("ai")
-                elif allow_ai and ai_config.complete and not ai_has_time:
+                elif allow_ai and ai_config.complete and not lottery_ai_enabled:
+                    _ai_job_state(
+                        spec,
+                        status="disabled",
+                        target_period=next_period,
+                        model=ai_config.model,
+                        message="该彩种 AI 自动预测已关闭",
+                    )
+                elif allow_ai and lottery_ai_enabled and ai_config.complete and not ai_has_time:
                     errors["ai"] = "距离开奖时间不足，本期不再启动新的完整 AI 请求"
                     _ai_job_state(
                         spec,
@@ -410,7 +434,7 @@ def run_lottery_cycle(lottery_key: str, allow_ai: bool = True) -> dict[str, Any]
         "errors": errors,
         "stages": stages,
         "ai_model": ai_config.model,
-        "ai_allowed": allow_ai,
+        "ai_allowed": allow_ai and lottery_ai_enabled,
         "server_time_epoch_ms": server_time,
         "next_draw_at_epoch_ms": next_draw_at,
         "remaining_to_draw_ms": remaining_ms,
