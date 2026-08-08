@@ -245,6 +245,11 @@ fun TianjiApp() {
                             focusedAlertId = null
                             showAlertCenter = true
                         },
+                        homeSubtitle = when {
+                            state.isAiAnalyzing -> "${state.lottery.displayName} · AI 分析中 · 目标 ${state.report?.targetPeriod ?: "待同步"}"
+                            state.report != null -> "${state.lottery.displayName} · 目标 ${state.report.targetPeriod} · 实时同步"
+                            else -> "${state.lottery.displayName} · 正在同步开奖与预测"
+                        },
                     )
                     Box(Modifier.weight(1f)) {
                         AnimatedContent(
