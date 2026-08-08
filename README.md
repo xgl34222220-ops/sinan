@@ -4,12 +4,24 @@
 
 ## 当前版本
 
-- 当前正式版：**6.6.0**
+- 当前正式版：**6.7.0**
 - 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 正式应用 ID：`com.tianji.probabilitylab.nativev5`
+
+## v6.7 双彩种实时同步与 UI 收敛
+
+- 新增轻量 `/v1/public/realtime`，一次请求同时返回幸运飞艇与澳洲幸运10的最新期号、开奖号码、下一期、开奖时间和同步时间。
+- Android 改为双彩种实时快照常驻同步；临期开奖窗口提高轮询频率，只有期号变化或兜底周期到达时才触发完整历史、结算和预测链路。
+- 手动刷新、Push 触发刷新和失败回退统一刷新两个彩种，不再只刷新当前页面。
+- AI / Chat 运行期间开奖同步继续执行，旧目标期结果仍由 target/deadline guard 拦截，避免过期 AI 写入前向档案。
+- 云端 `native` 预测从 Android AI 共识严格剔除，仅明确 `source=ai` 的记录进入 AI lane；云端 AI 与手机 AI 独立标识。
+- 首页重构为双彩种实时状态 + 本地模型 / AI v2 对称预测面板，直接展示动态 Top6 / Top7、本地重合、近 20 / 50 期表现和逐号码概率对比。
+- AI 联合聚合先确定共识名次，再聚合同名次预测，避免不同名次概率被平均到同一结果中。
+- 设置页、背景层级、字体缩放与平板断点统一收敛，减少重复卡片和装饰，提升 412dp 手机与 840dp 平板可读性。
+- Android 与服务端 CI 均增加 v6.7 契约测试；Compose 截图基线覆盖手机和平板新版首页。
 
 ## v6.6 Dynamic AI v2
 
@@ -21,7 +33,6 @@
 - AI reviewer 与统计先验根据 LogLoss、Brier、Top6 等真实结算指标持续调权，不再依赖固定目标的历史权重。
 - 新学习状态隔离到 `ai_v2_position_X:*`，旧 fixed-target / legacy 权重不会继续污染 v2。
 - 服务端回归测试覆盖动态候选、冻结历史预测、AI 前缀缓存和持续学习契约。
-- v6.6.0 Release 成功后，Production 服务端会同步部署同一 `main` 提交并重建 `api + worker`，通过 `/health` 后才视为上线完成。
 
 ## v6.5 UI Final Polish
 
@@ -93,6 +104,7 @@ deploy/backup.sh
 GET /health
 GET /health/live
 GET /health/ready
+GET /v1/public/realtime
 GET /v1/lotteries
 GET /v1/snapshot/{lottery}
 GET /v1/forecasts/{lottery}
