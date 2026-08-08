@@ -148,11 +148,15 @@ private fun SettingsRootV2(
     onOpen: (SettingsPageV2) -> Unit,
     modifier: Modifier,
 ) {
+    val colors = LocalTianjiColors.current
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        item("settings-section-core") {
+            Text("核心能力", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, top = 2.dp))
+        }
         item {
             SettingsEntry(
                 Icons.Rounded.Psychology,
@@ -180,6 +184,9 @@ private fun SettingsRootV2(
                 if (pushUnreadCount > 0) "$pushUnreadCount 条未读" else "已开启",
             )
         }
+        item("settings-section-personal") {
+            Text("个性化", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, top = 4.dp))
+        }
         item {
             SettingsEntry(
                 Icons.Rounded.ColorLens,
@@ -188,6 +195,9 @@ private fun SettingsRootV2(
                 { onOpen(SettingsPageV2.APPEARANCE) },
                 appearanceMode.label,
             )
+        }
+        item("settings-section-more") {
+            Text("更多", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, top = 4.dp))
         }
         item {
             SettingsEntry(
@@ -225,7 +235,7 @@ private fun SettingsPageHeaderV2(title: String, detail: String, onBack: () -> Un
         Spacer(Modifier.width(10.dp))
         Column {
             Text(title, color = colors.text, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-            Text(detail, color = colors.textDim, fontSize = 10.sp)
+            Text(detail, color = colors.textDim, fontSize = 11.sp)
         }
     }
 }
@@ -266,7 +276,7 @@ private fun AiSettingsPageV2(
                             Text(
                                 "同时运行的独立 AI 数量，建议根据接口限额选择",
                                 color = colors.textDim,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                             )
                         }
                         (1..3).forEach { value ->
@@ -427,7 +437,7 @@ private fun AiConfigCardV2(
                 Text(
                     aiStateLabelV594(status?.state),
                     color = tint,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 IconButton(onClick = onEdit, modifier = Modifier.size(35.dp)) {
@@ -470,7 +480,7 @@ private fun AiConfigCardV2(
                             Text(
                                 model,
                                 color = if (active) colors.accent else colors.textSoft,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                                 modifier = Modifier
                                     .clip(CircleShape)
@@ -511,7 +521,7 @@ private fun AiConfigCardV2(
                 Text(
                     "删除配置",
                     color = colors.red,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .align(Alignment.End)
@@ -624,14 +634,14 @@ private fun AiConfigEditorDialogV2(
                     shape = RoundedCornerShape(14.dp),
                 )
                 Spacer(Modifier.height(9.dp))
-                Text("历史窗口", color = colors.textDim, fontSize = 10.sp)
+                Text("历史窗口", color = colors.textDim, fontSize = 11.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     AiAnalysisMode.entries.forEach { item ->
                         SmallChoiceV2(item.label, mode == item, Modifier.weight(1f)) { mode = item }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("推理强度", color = colors.textDim, fontSize = 10.sp)
+                Text("推理强度", color = colors.textDim, fontSize = 11.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     AiReasoningMode.entries.forEach { item ->
                         SmallChoiceV2(item.label, reasoning == item, Modifier.weight(1f)) { reasoning = item }
@@ -728,7 +738,7 @@ private fun AppearanceSettingsPageV2(
             SurfaceCard(radius = 20.dp) {
                 Column(Modifier.padding(14.dp)) {
                     Text("显示模式", color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("浅色、深色和 OLED 不再与强调色绑定", color = colors.textDim, fontSize = 10.sp)
+                    Text("浅色、深色和 OLED 不再与强调色绑定", color = colors.textDim, fontSize = 11.sp)
                     Spacer(Modifier.height(10.dp))
                     AppearanceMode.entries.chunked(2).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -751,7 +761,7 @@ private fun AppearanceSettingsPageV2(
                     Text(
                         if (colors.monetSupported) "系统 Monet 已连接" else "当前系统不支持 Monet，使用后备色",
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                     )
                     Spacer(Modifier.height(10.dp))
                     PaletteMode.entries.filter { it != PaletteMode.OLED }.chunked(2).forEach { row ->
@@ -876,7 +886,7 @@ private fun SmallChoiceV2(
         Text(
             text,
             color = if (active) colors.accent else colors.textSoft,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -904,7 +914,7 @@ private fun MiniButtonV2(
         Text(
             text,
             color = if (primary) Color.White else colors.textSoft,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
         )
     }

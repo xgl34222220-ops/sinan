@@ -375,7 +375,7 @@ private fun V62ArchiveSummary(valid: Boolean, checked: Int, total: Int, settled:
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text("已结算 $settled / 总计 $total", color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
-                Text("档案结算进度", color = colors.textDim, fontSize = 10.sp)
+                Text("档案结算进度", color = colors.textDim, fontSize = 11.sp)
             }
         }
     }

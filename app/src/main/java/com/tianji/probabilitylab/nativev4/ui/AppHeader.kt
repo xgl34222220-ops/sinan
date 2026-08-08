@@ -130,7 +130,7 @@ fun CompactAppHeader(
                 Text(
                     unreadAlerts.coerceAtMost(99).toString(),
                     color = Color.White,
-                    fontSize = 9.sp,
+                    fontSize = 10.sp,
                     lineHeight = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     modifier = Modifier

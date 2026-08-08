@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -193,6 +194,7 @@ private fun V67DualLotteryStrip(
     onSelect: (LotteryType) -> Unit,
 ) {
     val colors = LocalTianjiColors.current
+    val nowEpochMs = rememberFreshnessNow()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -207,7 +209,8 @@ private fun V67DualLotteryStrip(
             val fallback = if (lottery == fallbackState.lottery) fallbackState.snapshot else null
             val period = item?.latestPeriod ?: fallback?.latest?.period ?: "同步中"
             val syncedAt = item?.syncedAtEpochMs ?: fallback?.sourceHealth?.syncedAtEpochMs
-            val fresh = syncedAt != null && System.currentTimeMillis() - syncedAt < 30_000L
+            val fresh = syncedAt != null && nowEpochMs - syncedAt < 30_000L
+            val freshness = freshnessLabel(syncedAt, nowEpochMs)
             val active = selected == lottery
             val tint = if (lottery == LotteryType.XYFT) colors.amber else colors.violet
             Column(
@@ -237,7 +240,7 @@ private fun V67DualLotteryStrip(
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    period,
+                    "${compactPeriodLabel(period)} · $freshness",
                     color = if (active) tint else colors.textDim,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
@@ -257,6 +260,7 @@ private fun V67LiveBand(
     onRefreshAll: () -> Unit,
 ) {
     val colors = LocalTianjiColors.current
+    val nowEpochMs = rememberFreshnessNow()
     val snapshot = state.snapshot ?: return
     val nextDrawAt = realtime?.nextDrawAtEpochMs ?: snapshot.nextDrawAtEpochMs
     var remaining by remember(nextDrawAt) { mutableIntStateOf(-1) }
@@ -282,7 +286,7 @@ private fun V67LiveBand(
     val numbers = realtime?.numbers ?: snapshot.latest.numbers
     val nextPeriod = realtime?.nextPeriod ?: snapshot.nextPeriod
     val syncedAt = realtime?.syncedAtEpochMs ?: snapshot.sourceHealth.syncedAtEpochMs
-    val fresh = System.currentTimeMillis() - syncedAt < 30_000L
+    val fresh = nowEpochMs - syncedAt < 30_000L
 
     Column(
         modifier = Modifier
@@ -303,7 +307,7 @@ private fun V67LiveBand(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        if (fresh) "双彩种实时同步" else "等待云端快照更新",
+                        if (fresh) "开奖快照已更新" else "等待云端快照更新",
                         color = if (fresh) colors.green else colors.amber,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
@@ -317,7 +321,7 @@ private fun V67LiveBand(
                     fontWeight = FontWeight.ExtraBold,
                 )
                 Text(
-                    "${ageLabel(syncedAt)} · 目标 $nextPeriod",
+                    "${freshnessLabel(syncedAt, nowEpochMs)} · 目标 $nextPeriod",
                     color = colors.textDim,
                     fontSize = 11.sp,
                 )
@@ -517,7 +521,7 @@ private fun V67ProbabilityComparison(local: PositionPrediction, ai: AiAggregate?
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("本地", color = colors.textDim, fontSize = 10.sp, modifier = Modifier.width(30.dp))
+                        Text("本地", color = colors.textDim, fontSize = 11.sp, modifier = Modifier.width(30.dp))
                         LinearProgressIndicator(
                             progress = { localP.toFloat().coerceIn(0f, 1f) },
                             modifier = Modifier.weight(1f).height(5.dp).clip(CircleShape),
@@ -527,14 +531,14 @@ private fun V67ProbabilityComparison(local: PositionPrediction, ai: AiAggregate?
                         Text(
                             "${(localP * 100).format1()}%",
                             color = colors.textSoft,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             modifier = Modifier.width(48.dp),
                             textAlign = TextAlign.End,
                         )
                     }
                     Spacer(Modifier.height(3.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("AI", color = colors.textDim, fontSize = 10.sp, modifier = Modifier.width(30.dp))
+                        Text("AI", color = colors.textDim, fontSize = 11.sp, modifier = Modifier.width(30.dp))
                         LinearProgressIndicator(
                             progress = { aiP.toFloat().coerceIn(0f, 1f) },
                             modifier = Modifier.weight(1f).height(5.dp).clip(CircleShape),
@@ -544,7 +548,7 @@ private fun V67ProbabilityComparison(local: PositionPrediction, ai: AiAggregate?
                         Text(
                             if (ai == null) "—" else "${(aiP * 100).format1()}%",
                             color = colors.textSoft,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             modifier = Modifier.width(48.dp),
                             textAlign = TextAlign.End,
                         )
@@ -573,7 +577,7 @@ private fun V67ModelPerformance(state: AppUiState) {
                     Text(
                         model.status,
                         color = colors.textDim,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -608,7 +612,7 @@ private fun V67PositionSelector(selected: Int, onSelected: (Int) -> Unit) {
                 Text(
                     (index + 1).toString(),
                     color = if (selected == index) colors.accent else colors.textDim,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = if (selected == index) FontWeight.ExtraBold else FontWeight.Medium,
                 )
             }
@@ -681,7 +685,7 @@ private fun V67Metric(label: String, value: String, modifier: Modifier = Modifie
             .background(colors.surfaceStrong.copy(alpha = 0.42f))
             .padding(horizontal = 8.dp, vertical = 8.dp),
     ) {
-        Text(label, color = colors.textDim, fontSize = 9.sp, maxLines = 1)
+        Text(label, color = colors.textDim, fontSize = 11.sp, maxLines = 1)
         Spacer(Modifier.height(3.dp))
         Text(value, color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
     }
@@ -692,7 +696,7 @@ private fun V67Pill(text: String, tint: Color) {
     Text(
         text,
         color = tint,
-        fontSize = 10.sp,
+        fontSize = 11.sp,
         fontWeight = FontWeight.ExtraBold,
         modifier = Modifier
             .clip(CircleShape)
@@ -755,12 +759,28 @@ private fun recentTop6Rate(records: List<AiForecastRecord>, limit: Int): Double?
 
 private fun AiAggregate?.orEmptyTop6(): List<Int> = this?.top6.orEmpty()
 
-private fun ageLabel(epochMs: Long): String {
-    val seconds = ((System.currentTimeMillis() - epochMs).coerceAtLeast(0L) / 1_000L).toInt()
+@Composable
+private fun rememberFreshnessNow(): Long {
+    var nowEpochMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000L)
+            nowEpochMs = System.currentTimeMillis()
+        }
+    }
+    return nowEpochMs
+}
+
+private fun compactPeriodLabel(period: String): String =
+    if (period.length > 8) period.takeLast(8) else period
+
+private fun freshnessLabel(epochMs: Long?, nowEpochMs: Long): String {
+    if (epochMs == null) return "等待同步"
+    val seconds = ((nowEpochMs - epochMs).coerceAtLeast(0L) / 1_000L).toInt()
     return when {
-        seconds < 3 -> "刚刚同步"
-        seconds < 60 -> "${seconds}秒前同步"
-        else -> "${seconds / 60}分钟前同步"
+        seconds < 3 -> "刚刚"
+        seconds < 60 -> "${seconds}秒前"
+        else -> "${seconds / 60}分钟前"
     }
 }
 

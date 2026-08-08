@@ -8,10 +8,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -218,8 +220,17 @@ fun V62PushAlertCenterScreen(
                             )
                         }
                     }
-                    V62AlertChipRow(V62AlertFilter.entries, filter, V62AlertFilter::label) { filterName = it.name }
+                    V62AlertChipRow(
+                        listOf(V62AlertFilter.ALL, V62AlertFilter.UNREAD),
+                        filter,
+                        V62AlertFilter::label,
+                    ) { filterName = it.name }
                     if (showFilters) {
+                        V62AlertChipRow(
+                            listOf(V62AlertFilter.PREDICTION, V62AlertFilter.RISK, V62AlertFilter.RECOVERY),
+                            filter,
+                            V62AlertFilter::label,
+                        ) { filterName = it.name }
                         V62AlertChipRow(V62AlertLottery.entries, lottery, V62AlertLottery::label) { lotteryName = it.name }
                         if (activeFilterCount > 0) {
                             TextButton(
@@ -446,15 +457,16 @@ private fun V62AlertCard(alert: PushAlert, focused: Boolean, onOpen: () -> Unit)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min)
             .clip(RoundedCornerShape(19.dp))
-            .background(if (focused) tint.copy(alpha = 0.11f) else colors.surface.copy(alpha = 0.82f))
-            .border(1.dp, if (focused) tint.copy(alpha = 0.28f) else colors.line, RoundedCornerShape(19.dp))
+            .background(if (focused) tint.copy(alpha = 0.07f) else colors.surface.copy(alpha = 0.82f))
+            .border(1.dp, if (focused) tint.copy(alpha = 0.22f) else colors.line, RoundedCornerShape(19.dp))
             .clickable(onClick = onOpen),
     ) {
         Box(
             modifier = Modifier
                 .width(if (alert.isRead) 3.dp else 4.dp)
-                .height(118.dp)
+                .fillMaxHeight()
                 .background(if (alert.isRead) colors.lineStrong else tint),
         )
         Column(Modifier.weight(1f).padding(14.dp)) {
@@ -481,7 +493,7 @@ private fun V62AlertCard(alert: PushAlert, focused: Boolean, onOpen: () -> Unit)
                         Text(
                             severityLabel,
                             color = tint,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier
                                 .clip(CircleShape)

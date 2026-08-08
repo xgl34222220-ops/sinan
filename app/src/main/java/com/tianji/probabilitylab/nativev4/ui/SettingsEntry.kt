@@ -1,6 +1,7 @@
 package com.tianji.probabilitylab.nativev4.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,11 +53,13 @@ fun SettingsEntry(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
-            .clip(RoundedCornerShape(13.dp))
+            .heightIn(min = 68.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.surface.copy(alpha = if (colors.isDark) 0.64f else 0.88f))
+            .border(1.dp, colors.line, RoundedCornerShape(16.dp))
             .semantics { role = Role.Button }
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(

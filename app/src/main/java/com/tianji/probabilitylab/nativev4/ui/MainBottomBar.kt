@@ -71,7 +71,7 @@ fun MainBottomBar(
             .fillMaxWidth()
             .heightIn(min = 62.dp)
             .shadow(
-                elevation = if (colors.isOled) 0.dp else 9.dp,
+                elevation = if (colors.isOled) 0.dp else 6.dp,
                 shape = RoundedCornerShape(23.dp),
                 ambientColor = Color.Black.copy(alpha = 0.16f),
                 spotColor = Color.Black.copy(alpha = 0.16f),
@@ -110,7 +110,7 @@ fun MainBottomBar(
                 .background(indicatorTint)
                 .border(
                     width = 1.dp,
-                    color = colors.accent.copy(alpha = 0.10f),
+                    color = colors.accent.copy(alpha = 0.07f),
                     shape = RoundedCornerShape(17.dp),
                 ),
         )
@@ -203,7 +203,7 @@ private fun StandardNavItem(
         Text(
             item.label,
             color = contentTint,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             lineHeight = 13.sp,
             fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium,
             maxLines = 1,
@@ -275,7 +275,7 @@ private fun ChatNavItem(
         Text(
             if (isRunning) "运行中" else "AI",
             color = colors.accent,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             lineHeight = 13.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
