@@ -150,18 +150,12 @@ jobs:
           )
 
           replace_once(
-              '''                    models = (listOf(config.model) + catalogs[config.id].orEmpty() + config.provider.fallbackModels)
-                          .map(String::trim)
-                          .filter(String::isNotBlank)
-                          .distinct(),''',
+              '                    models = (listOf(config.model) + catalogs[config.id].orEmpty() + config.provider.fallbackModels)',
               '''                    models = (
                           listOf(config.model) +
                               extractSuggestedModelsV2(state.aiStatuses[config.id]?.message) +
                               catalogs[config.id].orEmpty() + config.provider.fallbackModels
-                      )
-                          .map(String::trim)
-                          .filter(String::isNotBlank)
-                          .distinct(),''',
+                      )''',
               'suggested models merge',
           )
 
