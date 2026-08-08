@@ -32,13 +32,16 @@ import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +64,7 @@ import com.tianji.probabilitylab.nativev4.push.PushPreferences
 import com.tianji.probabilitylab.nativev4.push.PushProtocol
 import com.tianji.probabilitylab.nativev4.ui.theme.LocalTianjiColors
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -81,7 +85,7 @@ private enum class AlertLotteryFilter(val label: String, val key: String) {
 private enum class AlertSourceFilter(val label: String, val key: String) {
     ALL("全部来源", ""),
     AI("云端 AI", "ai"),
-    NATIVE("云端本地", "native"),
+    NATIVE("服务器模型", "native"),
 }
 
 @Composable
@@ -102,6 +106,7 @@ fun RefinedPushAlertCenterScreen(
     var lottery by rememberSaveable { mutableStateOf(AlertLotteryFilter.ALL) }
     var source by rememberSaveable { mutableStateOf(AlertSourceFilter.ALL) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showFilters by rememberSaveable { mutableStateOf(false) }
 
     val filtered = remember(alerts, kind, lottery, source, focusAlertId) {
         alerts
@@ -119,10 +124,18 @@ fun RefinedPushAlertCenterScreen(
             .filter { source.key.isBlank() || it.source == source.key }
             .sortedWith(
                 compareByDescending<PushAlert> { it.id == focusAlertId }
-                    .thenByDescending { it.id },
+                    .thenByDescending { it.createdAtEpochMs },
             )
             .toList()
     }
+    val grouped = remember(filtered) {
+        filtered.groupBy { alertDayLabel(it.createdAtEpochMs) }
+    }
+    val unreadCount = alerts.count { !it.isRead }
+    val advancedCount = listOf(
+        lottery != AlertLotteryFilter.ALL,
+        source != AlertSourceFilter.ALL,
+    ).count { it }
 
     Column(
         modifier = modifier
@@ -159,7 +172,10 @@ fun RefinedPushAlertCenterScreen(
                     fontWeight = FontWeight.ExtraBold,
                 )
                 Text(
-                    connectionTitle(status),
+                    buildString {
+                        append(connectionTitle(status))
+                        if (unreadCount > 0) append(" · $unreadCount 条未读")
+                    },
                     color = if (status.registered) colors.green else colors.amber,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -192,29 +208,13 @@ fun RefinedPushAlertCenterScreen(
 
             item("filters") {
                 SurfaceCard(radius = 20.dp) {
-                    Column(
-                        Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        FilterRow(
-                            values = AlertKindFilter.entries,
-                            selected = kind,
-                            label = AlertKindFilter::label,
-                            onSelected = { kind = it },
-                        )
-                        FilterRow(
-                            values = AlertLotteryFilter.entries,
-                            selected = lottery,
-                            label = AlertLotteryFilter::label,
-                            onSelected = { lottery = it },
-                        )
-                        FilterRow(
-                            values = AlertSourceFilter.entries,
-                            selected = source,
-                            label = AlertSourceFilter::label,
-                            onSelected = { source = it },
-                        )
-                    }
+                    PrimaryFilterRow(
+                        selected = kind,
+                        advancedCount = advancedCount,
+                        onSelected = { kind = it },
+                        onAdvanced = { showFilters = true },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+                    )
                 }
             }
 
@@ -231,12 +231,12 @@ fun RefinedPushAlertCenterScreen(
                             fontWeight = FontWeight.ExtraBold,
                         )
                         Text(
-                            "显示 ${filtered.size} 条 · ${alerts.count { !it.isRead }} 条未读",
+                            "显示 ${filtered.size} 条${if (advancedCount > 0) " · 已启用高级筛选" else ""}",
                             color = colors.textDim,
                             fontSize = 11.sp,
                         )
                     }
-                    if (alerts.any { !it.isRead }) {
+                    if (unreadCount > 0) {
                         TextButton(onClick = onReadAll) {
                             Text("全部已读", color = colors.accent, fontWeight = FontWeight.Bold)
                         }
@@ -267,7 +267,7 @@ fun RefinedPushAlertCenterScreen(
                                 modifier = Modifier.padding(top = 9.dp),
                             )
                             Text(
-                                "切换筛选条件可查看预测、预警和恢复记录",
+                                "调整类型或高级筛选即可查看其他记录",
                                 color = colors.textDim,
                                 fontSize = 11.sp,
                             )
@@ -275,13 +275,85 @@ fun RefinedPushAlertCenterScreen(
                     }
                 }
             } else {
-                items(filtered, key = PushAlert::id) { alert ->
-                    CompactAlertCard(
-                        alert = alert,
-                        focused = alert.id == focusAlertId,
-                        onRead = { onRead(alert.id) },
-                    )
+                grouped.forEach { (day, dayAlerts) ->
+                    item("day-$day") {
+                        Text(
+                            day,
+                            color = colors.textDim,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 3.dp, top = 2.dp),
+                        )
+                    }
+                    items(dayAlerts, key = PushAlert::id) { alert ->
+                        CompactAlertCard(
+                            alert = alert,
+                            focused = alert.id == focusAlertId,
+                            onRead = { onRead(alert.id) },
+                        )
+                    }
                 }
+            }
+        }
+    }
+
+    if (showFilters) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilters = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = colors.surface,
+            contentColor = colors.text,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.accent.copy(alpha = 0.11f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Rounded.Tune,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("高级筛选", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("只影响通知中心历史，不改变接收设置", color = colors.textDim, fontSize = 11.sp)
+                    }
+                    if (advancedCount > 0) {
+                        TextButton(onClick = {
+                            lottery = AlertLotteryFilter.ALL
+                            source = AlertSourceFilter.ALL
+                        }) {
+                            Text("重置", color = colors.accent, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Text("彩种", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                FilterRow(
+                    values = AlertLotteryFilter.entries,
+                    selected = lottery,
+                    label = AlertLotteryFilter::label,
+                    onSelected = { lottery = it },
+                )
+                Text("来源", color = colors.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                FilterRow(
+                    values = AlertSourceFilter.entries,
+                    selected = source,
+                    label = AlertSourceFilter::label,
+                    onSelected = { source = it },
+                )
             }
         }
     }
@@ -377,7 +449,7 @@ private fun AlertConnectionCard(
                 CompactPreferenceRow("云端 AI", preferences.aiEnabled) {
                     onPreferencesChange(preferences.copy(aiEnabled = it))
                 }
-                CompactPreferenceRow("云端本地", preferences.nativeEnabled) {
+                CompactPreferenceRow("服务器模型", preferences.nativeEnabled) {
                     onPreferencesChange(preferences.copy(nativeEnabled = it))
                 }
                 CompactPreferenceRow("升级预警", preferences.escalationEnabled) {
@@ -416,6 +488,35 @@ private fun CompactPreferenceRow(
                 checkedTrackColor = colors.accent,
                 uncheckedTrackColor = colors.lineStrong,
             ),
+        )
+    }
+}
+
+@Composable
+private fun PrimaryFilterRow(
+    selected: AlertKindFilter,
+    advancedCount: Int,
+    onSelected: (AlertKindFilter) -> Unit,
+    onAdvanced: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        AlertKindFilter.entries.forEach { value ->
+            FilterChipText(
+                text = value.label,
+                active = value == selected,
+                onClick = { onSelected(value) },
+            )
+        }
+        FilterChipText(
+            text = if (advancedCount > 0) "筛选 · $advancedCount" else "筛选",
+            active = advancedCount > 0,
+            onClick = onAdvanced,
         )
     }
 }
@@ -496,8 +597,8 @@ private fun CompactAlertCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(35.dp)
-                    .clip(RoundedCornerShape(11.dp))
+                    .size(37.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(visual.accent.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -545,6 +646,27 @@ private fun CompactAlertCard(
             }
         }
 
+        Row(
+            modifier = Modifier.padding(top = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (alert.latestTargetPeriod.isNotBlank()) {
+                AlertMetaPill("目标 ${alert.latestTargetPeriod}", visual.accent)
+            }
+            when {
+                alert.isRiskAlert && alert.streak > 0 -> AlertMetaPill("连续 ${alert.streak} 期", visual.accent)
+                alert.eventType == PushProtocol.EVENT_HIT_RECOVERY -> AlertMetaPill("计数已清零", colors.green)
+                alert.eventType == PushProtocol.EVENT_PREDICTION_READY -> AlertMetaPill("已冻结", colors.accent)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                formatAlertTimeV2(alert.createdAtEpochMs),
+                color = colors.textDim,
+                fontSize = 11.sp,
+            )
+        }
+
         if (alert.body.isNotBlank()) {
             Text(
                 alert.body,
@@ -557,48 +679,56 @@ private fun CompactAlertCard(
             )
         }
 
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val period = alert.latestTargetPeriod.ifBlank { "无目标期" }
-            Text(
-                "目标期 $period",
-                color = colors.textSoft,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                formatAlertTimeV2(alert.createdAtEpochMs),
-                color = colors.textDim,
-                fontSize = 11.sp,
-            )
-        }
-
         if (expanded) {
-            val sourceLine = listOf(alert.sourceName, alert.model)
-                .filter(String::isNotBlank)
-                .joinToString(" · ")
+            val sourceLine = listOf(
+                alert.sourceName.ifBlank {
+                    if (alert.source == "native") "服务器模型" else if (alert.source == "ai") "云端 AI" else ""
+                },
+                alert.model,
+            ).filter(String::isNotBlank).joinToString(" · ")
             if (sourceLine.isNotBlank()) {
                 Text(
                     sourceLine,
                     color = colors.textDim,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
-                    modifier = Modifier.padding(top = 6.dp),
+                    modifier = Modifier.padding(top = 7.dp),
                 )
             }
             if (alert.recentPeriods.isNotEmpty() && alert.isRiskAlert) {
-                Text(
-                    "最近期号：${alert.recentPeriods.joinToString("、")}",
-                    color = colors.textDim,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("轨迹", color = colors.textDim, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    alert.recentPeriods.takeLast(6).forEachIndexed { index, period ->
+                        if (index > 0) Text("→", color = colors.textDim, fontSize = 10.sp)
+                        AlertMetaPill(period, visual.accent)
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun AlertMetaPill(text: String, tint: Color) {
+    val colors = LocalTianjiColors.current
+    Text(
+        text,
+        color = tint,
+        fontSize = 10.sp,
+        lineHeight = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(tint.copy(alpha = 0.09f))
+            .border(1.dp, tint.copy(alpha = 0.18f), CircleShape)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    )
 }
 
 private fun connectionTitle(status: PushConnectionStatus): String = when {
@@ -655,5 +785,22 @@ private fun alertVisual(alert: PushAlert): AlertVisualV2 {
     }
 }
 
+private fun alertDayLabel(epochMs: Long): String {
+    val now = Calendar.getInstance()
+    val date = Calendar.getInstance().apply { timeInMillis = epochMs }
+    if (
+        now.get(Calendar.YEAR) == date.get(Calendar.YEAR) &&
+        now.get(Calendar.DAY_OF_YEAR) == date.get(Calendar.DAY_OF_YEAR)
+    ) return "今天"
+
+    val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+    if (
+        yesterday.get(Calendar.YEAR) == date.get(Calendar.YEAR) &&
+        yesterday.get(Calendar.DAY_OF_YEAR) == date.get(Calendar.DAY_OF_YEAR)
+    ) return "昨天"
+
+    return SimpleDateFormat("MM月dd日", Locale.getDefault()).format(Date(epochMs))
+}
+
 private fun formatAlertTimeV2(epochMs: Long): String =
-    SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(epochMs))
+    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(epochMs))
