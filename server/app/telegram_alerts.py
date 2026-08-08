@@ -141,6 +141,55 @@ def recovery_reply_markup() -> dict[str, Any] | None:
     }
 
 
+def _first_line(lines: list[str], prefix: str) -> str:
+    return next((line for line in lines if line.startswith(prefix)), "")
+
+
+def _compact_event_message(text: str) -> str:
+    """Keep audit-rich event text in storage while rendering a cleaner Telegram card."""
+    lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+    if not lines:
+        return str(text)
+
+    if "新一期云端 AI 预测" in lines[0]:
+        lottery = _first_line(lines, "<b>彩种：</b>")
+        target = _first_line(lines, "<b>目标期：</b>")
+        model = _first_line(lines, "<b>模型：</b>")
+        position = _first_line(lines, "<b>预测名次：</b>")
+        top6 = _first_line(lines, "<b>Top 6：</b>")
+        status = next(
+            (
+                line
+                for line in lines
+                if line.startswith("<b>当前状态：</b>")
+                or line.startswith("<b>🚨 加强关注：</b>")
+            ),
+            "",
+        )
+        result = ["🔮 <b>天机 AI · 新一期预测</b>", ""]
+        result.extend(line for line in (lottery, target, position) if line)
+        if top6:
+            result.extend(["", top6])
+        result.extend(line for line in (model, status) if line)
+        return "\n".join(result)
+
+    if "连续不中后恢复命中" in lines[0]:
+        keep_prefixes = (
+            "<b>彩种：</b>",
+            "<b>开奖期号：</b>",
+            "<b>模型：</b>",
+            "<b>预测名次：</b>",
+            "<b>预测 Top 6：</b>",
+            "<b>实际号码：</b>",
+            "<b>命中顺位：</b>",
+        )
+        result = ["✅ <b>天机 AI · 恢复命中</b>", ""]
+        result.extend(line for line in lines if line.startswith(keep_prefixes))
+        return "\n".join(result)
+
+    return str(text)
+
+
 def send_html_message(
     *,
     bot_token: str,
@@ -157,13 +206,22 @@ def send_html_message(
     if _is_native_message(text):
         return True, 204, _NATIVE_SUPPRESSED_MESSAGE
 
+    is_prediction = "新一期云端 AI 预测" in text
+    is_recovery = "连续不中后恢复命中" in text
+    if reply_markup is None:
+        if is_prediction:
+            reply_markup = prediction_reply_markup()
+        elif is_recovery:
+            reply_markup = recovery_reply_markup()
+
     url = f"{_TELEGRAM_API}/bot{token}/sendMessage"
     payload: dict[str, Any] = {
         "chat_id": target,
-        "text": text,
+        "text": _compact_event_message(text),
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
-        "disable_notification": disable_notification,
+        # Every-period prediction is intentionally quiet. Recovery/risk keeps attention.
+        "disable_notification": bool(disable_notification or is_prediction),
     }
     if reply_markup is not None:
         payload["reply_markup"] = reply_markup
