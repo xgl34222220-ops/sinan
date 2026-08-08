@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
@@ -88,6 +89,7 @@ private enum class AlertSourceFilter(val label: String, val key: String) {
     NATIVE("服务器模型", "native"),
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RefinedPushAlertCenterScreen(
     alerts: List<PushAlert>,
@@ -716,7 +718,6 @@ private fun CompactAlertCard(
 
 @Composable
 private fun AlertMetaPill(text: String, tint: Color) {
-    val colors = LocalTianjiColors.current
     Text(
         text,
         color = tint,
