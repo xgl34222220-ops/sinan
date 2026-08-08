@@ -4,12 +4,21 @@
 
 ## 当前版本
 
-- 当前正式版：**6.8.0**
+- 当前正式版：**6.8.1**
 - 发布策略：默认仅发布正式稳定版；只有明确测试需求时才使用 Alpha、Beta 或 RC
 - Android：Kotlin、Jetpack Compose、Material 3、Monet、WorkManager
 - 服务端：FastAPI、SQLite WAL、Docker Compose、Caddy HTTPS
 - 构建：Java 17、Gradle 8.13、Android SDK 36
 - 正式应用 ID：`com.tianji.probabilitylab.nativev5`
+
+## v6.8.1 Android UI 精修
+
+- 保持 v6.7 已确认的视觉骨架，不引入此前废弃的 V68 全量重构。
+- 首页双彩种状态栏改为短期号 + 实时新鲜度，减少与主开奖卡片的重复信息，新鲜度独立按秒刷新。
+- 统一过小辅助字号；底部 Liquid Dock 收轻阴影与选中描边，继续保持原有五项导航和中间 AI 入口。
+- 通知中心常驻筛选收敛为“全部 / 未读”，其余类型和彩种筛选集中到筛选面板，预警卡片层级同步收敛。
+- 设置页加入轻量“核心能力 / 个性化 / 更多”分组，统一条目 Surface、细边框和圆角层级。
+- 本版本不修改服务端、实时开奖快车道、预测算法、FCM / Telegram 链路与 VPS 部署逻辑。
 
 ## v6.8 稳定 UI 与实时链路观测
 
